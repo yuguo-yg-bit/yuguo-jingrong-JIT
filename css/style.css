@@ -1159,6 +1159,14 @@ html, body {
   z-index: 1;
 }
 
+/* 中奖号码区域：始终可见，在涂层上方 */
+.ticket-numbers-winning {
+  z-index: 5;
+  background: #fffef5;
+  border-radius: 8px 8px 0 0;
+  padding-bottom: 8px;
+}
+
 .ticket-numbers-header {
   text-align: center;
   font-size: 10px;
@@ -1267,7 +1275,7 @@ html, body {
   align-items: center;
   justify-content: center;
   background: rgba(255,254,245,0.92);
-  z-index: 4;
+  z-index: 6;
 }
 
 .lottery-result.show {

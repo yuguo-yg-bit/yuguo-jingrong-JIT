@@ -727,9 +727,19 @@ var JITApp = (function() {
       var targetVoucher = voucher;
       setTimeout(function() {
         JITLottery.start("lotteryCanvas", function(prize) {
-          _showToast("🎉 恭喜获得 " + prize.discount + "！" + prize.label, "success");
-          _saveLotteryResult(prize, targetVoucher);
+          // 刮开后显示匹配结果
+          var matched = JITLottery.getMatchedCount();
+          if (matched > 0) {
+            _showToast("🎉 匹配" + matched + "个号码！获得 " + prize.discount, "success");
+          } else {
+            _showToast("😅 未中奖，下次好运！", "");
+          }
         });
+        // 随机后立刻保存折数，不等用户刮！
+        var prize = JITLottery.getCurrentPrize();
+        if (prize) {
+          _saveLotteryResult(prize, targetVoucher);
+        }
       }, 300);
     }
   };
