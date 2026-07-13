@@ -67,16 +67,32 @@ var JITApi = (function() {
     });
   };
 
-  var _uploadFileToRepo = function(path, base64Content, commitMsg) {
+  var _getFileSha = function(path) {
     var url = _apiBase + "/repos/" + _repoFull + "/contents/" + encodeURIComponent(path);
     return _safeRequest(url, {
-      method: "PUT",
-      headers: _headers(),
-      body: JSON.stringify({
+      method: "GET",
+      headers: _headers()
+    }).then(function(result) {
+      return result && result.sha ? result.sha : null;
+    }).catch(function() {
+      return null;
+    });
+  };
+
+  var _uploadFileToRepo = function(path, base64Content, commitMsg) {
+    return _getFileSha(path).then(function(sha) {
+      var url = _apiBase + "/repos/" + _repoFull + "/contents/" + encodeURIComponent(path);
+      var body = {
         message: commitMsg || "upload image",
         content: base64Content,
         branch: "main"
-      })
+      };
+      if (sha) body.sha = sha;
+      return _safeRequest(url, {
+        method: "PUT",
+        headers: _headers(),
+        body: JSON.stringify(body)
+      });
     }).then(function(result) {
       return result && result.content ? result.content.download_url : "";
     });
