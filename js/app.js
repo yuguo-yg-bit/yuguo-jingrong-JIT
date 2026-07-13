@@ -688,6 +688,18 @@ var JITApp = (function() {
       _showToast("请先添加凭证并等待审核通过后再参与抽奖", "error");
       return;
     }
+    var latestVoucher = null;
+    _allVouchers.forEach(function(v) {
+      var sameUser = String(v.username || "").toLowerCase() === String(_currentUser || "").toLowerCase();
+      if (!sameUser) return;
+      if (!latestVoucher || (v._createdAt || "") > (latestVoucher._createdAt || "")) {
+        latestVoucher = v;
+      }
+    });
+    if (latestVoucher && latestVoucher.discount) {
+      _showToast("该订单已抽过奖（" + latestVoucher.discount + "），不能重复抽奖！", "error");
+      return;
+    }
     var overlay = document.getElementById("lotteryOverlay");
     if (overlay) {
       overlay.classList.add("active");
@@ -923,20 +935,26 @@ var JITApp = (function() {
   var _openPaymentModal = function(voucher) {
     if (!voucher) return;
     var paymentType = voucher.paymentMethodType || "userFirst";
-    var amount = voucher.finalPrice || voucher.originalPrice || voucher.amount || "0";
+    var originalAmount = parseFloat(voucher.originalPrice || voucher.amount || 0);
+    var discountValue = parseFloat(voucher.discountValue || 1);
+    var finalAmount = isNaN(originalAmount) ? 0 : (originalAmount * discountValue);
+    var discountAmount = originalAmount - finalAmount;
 
     if (paymentType === "unionFirst") {
       var overlay = document.getElementById("wechatPayOverlay");
       var amountEl = document.getElementById("wechatPayAmount");
       if (overlay) {
-        if (amountEl) amountEl.textContent = "支付金额：" + amount;
+        if (amountEl) amountEl.textContent = "支付金额：\u00a5" + finalAmount.toFixed(2) + "（原价\u00a5" + originalAmount.toFixed(2) + " \u00d7 " + (voucher.discount || "10折") + "）";
         overlay.classList.add("active");
       }
     } else {
       var overlay2 = document.getElementById("userFirstPayOverlay");
       var subEl = document.getElementById("userFirstPaySub");
       if (overlay2) {
-        if (subEl) subEl.textContent = "优惠金额：" + amount;
+        if (subEl) {
+          var discountStr = discountAmount > 0 ? "\u00a5" + discountAmount.toFixed(2) : (discountAmount < 0 ? "-\u00a5" + Math.abs(discountAmount).toFixed(2) + "（工会额外给您）" : "\u00a50.00");
+          subEl.innerHTML = "\u539f\u4ef7\uff1a\u00a5" + originalAmount.toFixed(2) + "<br>\u6298\u6263\uff1a" + (voucher.discount || "10\u6298") + "<br>\u60a8\u5148\u652f\u4ed8\uff1a\u00a5" + originalAmount.toFixed(2) + "<br>\u5de5\u4f1a\u8fd4\u8fd8\uff1a" + discountStr;
+        }
         overlay2.classList.add("active");
       }
     }
