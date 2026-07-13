@@ -164,13 +164,6 @@ var JITApp = (function() {
       });
     }
 
-    var btnLotteryNew = document.getElementById("btnLotteryNew");
-    if (btnLotteryNew) {
-      btnLotteryNew.addEventListener("click", function() {
-        JITLottery.reset("lotteryCanvas");
-      });
-    }
-
     var btnLotteryClose = document.getElementById("btnLotteryClose");
     if (btnLotteryClose) {
       btnLotteryClose.addEventListener("click", _closeLotteryModal);
@@ -1013,12 +1006,16 @@ var JITApp = (function() {
       if (!isNaN(amountValue)) {
         updatedVoucher.finalPrice = (amountValue * prize.value).toFixed(2) + "元";
       }
-      JITApi.updateVoucherWithLottery(targetVoucher._issueNumber, updatedVoucher).catch(function(err) {
+      // 等待更新完成后再刷新数据
+      JITApi.updateVoucherWithLottery(targetVoucher._issueNumber, updatedVoucher).then(function() {
+        JITApi.invalidateCache("allVouchers");
+        JITApi.invalidateCache("allVouchersForId");
+        _loadData();
+        _showToast("✅ 抽奖结果已保存：" + prize.discount, "success");
+      }).catch(function(err) {
         console.error("更新抽奖结果失败:", err);
+        _showToast("抽奖结果保存失败，请重试", "error");
       });
-      // 刷新页面数据
-      JITApi.invalidateCache("allVouchersForId");
-      _loadData();
     }
   };
 

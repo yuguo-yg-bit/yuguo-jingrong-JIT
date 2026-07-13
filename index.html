@@ -252,12 +252,74 @@
           <span class="prize-max-label">最高奖金</span>
           <span class="prize-max-amount">¥100,000</span>
         </div>
-        <!-- 刮奖区 -->
+        <!-- 号码匹配区 -->
         <div class="ticket-scratch-zone">
           <div class="ticket-scratch-label">刮开区</div>
           <div class="ticket-card" id="lotteryCard">
+            <!-- 中奖号码区域 -->
+            <div class="ticket-numbers-section">
+              <div class="ticket-numbers-header">中奖号码</div>
+              <div class="ticket-numbers-grid" id="winningNumbersGrid">
+                <span class="ticket-num" data-idx="0">??</span>
+                <span class="ticket-num" data-idx="1">??</span>
+                <span class="ticket-num" data-idx="2">??</span>
+                <span class="ticket-num" data-idx="3">??</span>
+                <span class="ticket-num" data-idx="4">??</span>
+              </div>
+            </div>
+            <!-- 分隔线 -->
+            <div class="ticket-numbers-divider"></div>
+            <!-- 你的号码区域 -->
+            <div class="ticket-numbers-section">
+              <div class="ticket-numbers-header">你的号码</div>
+              <div class="ticket-numbers-grid" id="yourNumbersGrid">
+                <div class="ticket-num-cell" data-idx="0">
+                  <span class="ticket-num ticket-num-your">??</span>
+                  <span class="ticket-num-discount">??</span>
+                </div>
+                <div class="ticket-num-cell" data-idx="1">
+                  <span class="ticket-num ticket-num-your">??</span>
+                  <span class="ticket-num-discount">??</span>
+                </div>
+                <div class="ticket-num-cell" data-idx="2">
+                  <span class="ticket-num ticket-num-your">??</span>
+                  <span class="ticket-num-discount">??</span>
+                </div>
+                <div class="ticket-num-cell" data-idx="3">
+                  <span class="ticket-num ticket-num-your">??</span>
+                  <span class="ticket-num-discount">??</span>
+                </div>
+                <div class="ticket-num-cell" data-idx="4">
+                  <span class="ticket-num ticket-num-your">??</span>
+                  <span class="ticket-num-discount">??</span>
+                </div>
+                <div class="ticket-num-cell" data-idx="5">
+                  <span class="ticket-num ticket-num-your">??</span>
+                  <span class="ticket-num-discount">??</span>
+                </div>
+                <div class="ticket-num-cell" data-idx="6">
+                  <span class="ticket-num ticket-num-your">??</span>
+                  <span class="ticket-num-discount">??</span>
+                </div>
+                <div class="ticket-num-cell" data-idx="7">
+                  <span class="ticket-num ticket-num-your">??</span>
+                  <span class="ticket-num-discount">??</span>
+                </div>
+                <div class="ticket-num-cell" data-idx="8">
+                  <span class="ticket-num ticket-num-your">??</span>
+                  <span class="ticket-num-discount">??</span>
+                </div>
+                <div class="ticket-num-cell" data-idx="9">
+                  <span class="ticket-num ticket-num-your">??</span>
+                  <span class="ticket-num-discount">??</span>
+                </div>
+              </div>
+            </div>
+            <!-- 涂层 Canvas -->
             <canvas class="lottery-canvas" id="lotteryCanvas"></canvas>
+            <!-- 匹配结果 -->
             <div class="lottery-result" id="lotteryResult">
+              <div class="lottery-match-info" id="lotteryMatchInfo"></div>
               <span class="lottery-discount" id="lotteryDiscount"></span>
               <span class="lottery-label" id="lotteryLabel"></span>
             </div>
@@ -267,7 +329,7 @@
         <div class="ticket-bottom">
           <div class="ticket-bottom-left">
             <div class="ticket-bottom-item">面值: <span class="ticket-highlight">免费</span></div>
-            <div class="ticket-bottom-item">玩法: 刮开有奖</div>
+            <div class="ticket-bottom-item">玩法: 号码匹配</div>
           </div>
           <div class="ticket-bottom-right">
             <div class="ticket-bottom-item">编号: <span id="ticketNumber">XXXXXX</span></div>
@@ -275,10 +337,7 @@
           </div>
         </div>
         <!-- 刮开提示 -->
-        <div class="ticket-scratch-hint" id="lotteryInfo">用手指或鼠标刮开涂层查看奖品！</div>
-      </div>
-      <div class="lottery-actions">
-        <button class="btn-lottery-new" id="btnLotteryNew">🎰 再来一张</button>
+        <div class="ticket-scratch-hint" id="lotteryInfo">刮开涂层，匹配号码赢折扣！</div>
       </div>
     </div>
   </div>
