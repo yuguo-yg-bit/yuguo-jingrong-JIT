@@ -332,7 +332,7 @@ var JITApi = (function() {
     return _createIssue(title, body, [JITConfig.getLabels().voucher, JITConfig.getLabels().pending]);
   };
 
-  var _submitVoucherWithImages = function(voucherData, shopPhotoFile, orderPhotoFiles) {
+  var _submitVoucherWithImages = function(voucherData, shopPhotoFile, orderPhotoFiles, isNewShopPhoto, anyNewOrderPhotos) {
     var voucherId = voucherData.voucherId || Date.now();
     var username = voucherData.username || "user";
     var ts = Date.now();
@@ -341,7 +341,7 @@ var JITApi = (function() {
 
     var uploadPromises = [];
 
-    if (shopPhotoFile) {
+    if (shopPhotoFile && isNewShopPhoto) {
       uploadPromises.push(
         _uploadImageToRepo(shopPhotoFile, folderPath, "shop.png", commitMsg).then(function(url) {
           voucherData.shopPhoto = url;
@@ -349,10 +349,10 @@ var JITApi = (function() {
       );
     }
 
-    if (orderPhotoFiles && orderPhotoFiles.length > 0) {
+    if (orderPhotoFiles && orderPhotoFiles.length > 0 && anyNewOrderPhotos) {
       uploadPromises.push(
         _uploadImagesToRepo(orderPhotoFiles, folderPath, commitMsg).then(function(urls) {
-          voucherData.orderPhotos = urls;
+          voucherData.orderPhotos = (voucherData.orderPhotos || []).concat(urls);
         })
       );
     }
@@ -367,13 +367,22 @@ var JITApi = (function() {
     }
 
     return Promise.all(uploadPromises).then(function() {
-      return _submitVoucher(voucherData);
+      if (voucherData._issueNumber) {
+        return _updateVoucherIssueBody(voucherData);
+      } else {
+        return _submitVoucher(voucherData);
+      }
     });
   };
 
-  var _updateVoucherWithLottery = function(issueNumber, voucherData) {
+  var _updateVoucherIssueBody = function(voucherData) {
     var body = _formatIssueBody(voucherData);
-    return _updateIssue(issueNumber, { body: body });
+    return _updateIssue(voucherData._issueNumber, { body: body });
+  };
+
+  var _updateVoucherIssue = function(voucherData) {
+    var body = _formatIssueBody(voucherData);
+    return _updateIssue(voucherData._issueNumber, { body: body });
   };
 
   var _getVouchers = function(page, perPage) {
@@ -426,6 +435,7 @@ var JITApi = (function() {
     compressImage: _compressImage,
     updateIssue: _updateIssue,
     updateVoucherWithLottery: _updateVoucherWithLottery,
+    updateVoucherIssue: _updateVoucherIssue,
     parseVoucherData: _parseVoucherData,
     getNextVoucherId: _getNextVoucherId,
     ensureLabels: _ensureLabels

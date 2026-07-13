@@ -14,6 +14,7 @@ var JITApp = (function() {
   var _orderPhotos = [];
   var _orderPhotoFiles = [];
   var _signatureData = null;
+  var _editingVoucher = null;
 
   var _init = function() {
     _initBackgroundParticles();
@@ -241,14 +242,27 @@ var JITApp = (function() {
     var ordersTableBody = document.getElementById("ordersTableBody");
     if (ordersTableBody) {
       ordersTableBody.addEventListener("click", function(e) {
-        var btn = e.target.closest(".pay-order-btn");
-        if (!btn) return;
-        var issueNumber = btn.getAttribute("data-issue-number");
-        var voucher = _allVouchers.find(function(item) {
-          return String(item._issueNumber) === String(issueNumber);
-        });
-        if (voucher) {
-          _openPaymentModal(voucher);
+        var payBtn = e.target.closest(".pay-order-btn");
+        if (payBtn) {
+          var issueNumber = payBtn.getAttribute("data-issue-number");
+          var voucher = _allVouchers.find(function(item) {
+            return String(item._issueNumber) === String(issueNumber);
+          });
+          if (voucher) {
+            _openPaymentModal(voucher);
+          }
+          return;
+        }
+        var editBtn = e.target.closest(".edit-order-btn");
+        if (editBtn) {
+          var issueNum = editBtn.getAttribute("data-issue-number");
+          var v = _allVouchers.find(function(item) {
+            return String(item._issueNumber) === String(issueNum);
+          });
+          if (v) {
+            _openEditVoucherModal(v);
+          }
+          return;
         }
       });
     }
@@ -569,7 +583,12 @@ var JITApp = (function() {
       html += "<td>" + _escapeHtml(originalPrice) + "</td>";
       html += "<td>" + _escapeHtml(finalPrice) + "</td>";
       html += "<td><span class=\"status-badge " + statusClass + "\">" + _escapeHtml(statusText) + "</span></td>";
-      html += "<td><button class=\"pay-order-btn\" data-issue-number=\"" + _escapeHtml(v._issueNumber || "") + "\">去支付</button></td>";
+      var actions = "";
+      if (v.statusType === "pending") {
+        actions += "<button class=\"edit-order-btn\" data-issue-number=\"" + _escapeHtml(v._issueNumber || "") + "\">编辑</button>";
+      }
+      actions += "<button class=\"pay-order-btn\" data-issue-number=\"" + _escapeHtml(v._issueNumber || "") + "\">去支付</button>";
+      html += "<td>" + actions + "</td>";
       html += "</tr>";
     });
 
@@ -665,6 +684,24 @@ var JITApp = (function() {
       _showLoginPrompt();
       return;
     }
+    _editingVoucher = null;
+    var overlay = document.getElementById("modalOverlay");
+    if (overlay) {
+      overlay.classList.add("active");
+      _resetForm();
+    }
+  };
+
+  var _openEditVoucherModal = function(voucher) {
+    if (!_currentUser) {
+      _showToast("请先登录", "error");
+      return;
+    }
+    if (!voucher || voucher.statusType !== "pending") {
+      _showToast("只能编辑未审核的凭证", "error");
+      return;
+    }
+    _editingVoucher = voucher;
     var overlay = document.getElementById("modalOverlay");
     if (overlay) {
       overlay.classList.add("active");
@@ -720,6 +757,12 @@ var JITApp = (function() {
   };
 
   var _resetForm = function() {
+    var isEdit = !!_editingVoucher;
+    var title = document.querySelector("#modalAddVoucher .modal-title");
+    var btn = document.getElementById("btnSubmitVoucher");
+    if (title) title.textContent = isEdit ? "编辑凭证" : "添加凭证";
+    if (btn) btn.textContent = isEdit ? "保存修改" : "添加凭证并提交审核";
+
     var paymentInputs = document.querySelectorAll('input[name="paymentMethod"]');
     paymentInputs.forEach(function(input) {
       input.checked = false;
@@ -732,13 +775,34 @@ var JITApp = (function() {
     document.getElementById("previewOrderPhotos").innerHTML = "";
     document.getElementById("inputOrderPhoto").value = "";
     _orderPhotos = [];
+    _orderPhotoFiles = [];
     document.getElementById("inputAmount").value = "";
     document.getElementById("inputRemark").value = "";
     document.getElementById("locationInfo").textContent = "未获取定位";
     document.getElementById("inputLatitude").value = "";
     document.getElementById("inputLongitude").value = "";
     _clearSignature();
+    _signatureData = null;
     _hideAllErrors();
+
+    if (isEdit && _editingVoucher) {
+      var v = _editingVoucher;
+      if (v.paymentMethodType) {
+        var radio = document.querySelector('input[name="paymentMethod"][value="' + v.paymentMethodType + '"]');
+        if (radio) radio.checked = true;
+      }
+      document.getElementById("inputShopName").value = v.shopName || "";
+      document.getElementById("inputAmount").value = v.originalPrice || v.amount || "";
+      document.getElementById("inputRemark").value = v.remark || "";
+      if (v.latitude) document.getElementById("inputLatitude").value = v.latitude;
+      if (v.longitude) document.getElementById("inputLongitude").value = v.longitude;
+      if (v.latitude || v.longitude) {
+        document.getElementById("locationInfo").textContent = (v.latitude || v.longitude) ? "已定位" : "未获取定位";
+      }
+      if (v.signature) {
+        _signatureData = v.signature;
+      }
+    }
   };
 
   var _hideAllErrors = function() {
@@ -823,13 +887,15 @@ var JITApp = (function() {
       _showError("errorShopName", "请输入店铺名称");
       hasError = true;
     }
-    if (!shopPhotoFile) {
-      _showError("errorShopPhoto", "请上传店铺照片");
-      hasError = true;
-    }
-    if (!orderPhotoFiles || orderPhotoFiles.length === 0) {
-      _showError("errorOrderPhoto", "请上传商品订单截图");
-      hasError = true;
+    if (!_editingVoucher) {
+      if (!shopPhotoFile) {
+        _showError("errorShopPhoto", "请上传店铺照片");
+        hasError = true;
+      }
+      if (!orderPhotoFiles || orderPhotoFiles.length === 0) {
+        _showError("errorOrderPhoto", "请上传商品订单截图");
+        hasError = true;
+      }
     }
     if (!amount) {
       _showError("errorAmount", "请输入余额金额");
@@ -846,7 +912,7 @@ var JITApp = (function() {
     var originalText = btn.textContent;
     btn.disabled = true;
     btn.classList.add("btn-loading");
-    btn.textContent = "提交中...";
+    btn.textContent = _editingVoucher ? "保存中..." : "提交中...";
 
     var voucherData = {
       shopName: shopName,
@@ -861,27 +927,69 @@ var JITApp = (function() {
       username: _currentUser,
       status: "待审核",
       statusType: "pending",
-      discount: "",
-      discountValue: 0,
+      discount: _editingVoucher ? _editingVoucher.discount : "",
+      discountValue: _editingVoucher ? _editingVoucher.discountValue : 0,
       originalPrice: amount,
       finalPrice: amount,
       paymentMethod: paymentMethodValue,
       paymentMethodText: paymentMethodText,
-      paymentNote: paymentMethodText
+      paymentNote: paymentMethodText,
+      _issueNumber: _editingVoucher ? _editingVoucher._issueNumber : null,
+      _createdAt: _editingVoucher ? _editingVoucher._createdAt : Date.now()
     };
 
-    JITApi.getNextVoucherId().then(function(nextId) {
-      voucherData.voucherId = nextId;
-      return JITApi.ensureLabels();
-    }).then(function() {
-      return JITApi.submitVoucherWithImages(voucherData, shopPhotoFile, _orderPhotoFiles);
-    }).then(function(result) {
-      _showToast("凭证提交成功！现在开始抽奖！", "success");
-      _closeAddVoucherModal();
-      _loadData();
-      setTimeout(function() {
-        _openLotteryModal();
-      }, 500);
+    if (_editingVoucher) {
+      voucherData.discount = _editingVoucher.discount;
+      voucherData.discountValue = _editingVoucher.discountValue;
+    }
+
+    if (_editingVoucher && _editingVoucher._issueNumber) {
+      var isNewShopPhoto = !!shopPhotoFile;
+      var anyNewOrderPhotos = _orderPhotoFiles && _orderPhotoFiles.length > 0;
+      if (!isNewShopPhoto && !anyNewOrderPhotos) {
+        voucherData.shopPhoto = _editingVoucher.shopPhoto || "";
+        voucherData.orderPhotos = (_editingVoucher.orderPhotos || []).slice();
+        JITApi.updateVoucherIssue(voucherData).then(function() {
+          _showToast("凭证修改成功！", "success");
+          _closeAddVoucherModal();
+          _loadData();
+        }).catch(function(err) {
+          _showToast("保存失败: " + err.message, "error");
+          console.error("保存修改失败:", err);
+        }).finally(function() {
+          btn.disabled = false;
+          btn.classList.remove("btn-loading");
+          btn.textContent = originalText;
+        });
+      } else {
+        voucherData.shopPhoto = _editingVoucher.shopPhoto || "";
+        voucherData.orderPhotos = (_editingVoucher.orderPhotos || []).slice();
+        JITApi.submitVoucherWithImages(voucherData, shopPhotoFile, _orderPhotoFiles, isNewShopPhoto, anyNewOrderPhotos).then(function(result) {
+          _showToast("凭证修改成功！", "success");
+          _closeAddVoucherModal();
+          _loadData();
+        }).catch(function(err) {
+          _showToast("保存失败: " + err.message, "error");
+          console.error("保存修改失败:", err);
+        }).finally(function() {
+          btn.disabled = false;
+          btn.classList.remove("btn-loading");
+          btn.textContent = originalText;
+        });
+      }
+    } else {
+      JITApi.getNextVoucherId().then(function(nextId) {
+        voucherData.voucherId = nextId;
+        return JITApi.ensureLabels();
+      }).then(function() {
+        return JITApi.submitVoucherWithImages(voucherData, shopPhotoFile, _orderPhotoFiles, false, false);
+      }).then(function(result) {
+        _showToast("凭证提交成功！现在开始抽奖！", "success");
+        _closeAddVoucherModal();
+        _loadData();
+        setTimeout(function() {
+          _openLotteryModal();
+        }, 500);
     }).catch(function(err) {
       _showToast("提交失败: " + err.message, "error");
       console.error("提交凭证失败:", err);

@@ -1328,6 +1328,30 @@ html, body {
   transform: translateY(0);
 }
 
+.edit-order-btn {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.2), rgba(76, 175, 80, 0.08));
+  border: 1px solid #4caf50;
+  border-radius: var(--radius-sm);
+  color: #4caf50;
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  margin-right: 8px;
+}
+
+.edit-order-btn:hover {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.4), rgba(76, 175, 80, 0.15));
+  box-shadow: 0 0 12px rgba(76, 175, 80, 0.5);
+  transform: translateY(-1px);
+}
+
+.edit-order-btn:active {
+  transform: translateY(0);
+}
+
 @media (max-width: 1200px) {
   .header-center {
     order: 3;

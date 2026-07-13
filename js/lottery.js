@@ -139,10 +139,6 @@ var JITLottery = (function() {
     if (info) {
       info.textContent = "恭喜中奖！" + (_currentPrize ? _currentPrize.label : "");
     }
-    var newBtn = document.getElementById("btnLotteryNew");
-    if (newBtn) {
-      newBtn.style.display = "block";
-    }
 
     if (_onRevealed && _currentPrize) {
       _onRevealed(_currentPrize);
@@ -203,8 +199,6 @@ var JITLottery = (function() {
 
     _initCanvas(canvasId);
 
-    var newBtn = document.getElementById("btnLotteryNew");
-    if (newBtn) newBtn.style.display = "none";
     var info = document.getElementById("lotteryInfo");
     if (info) info.textContent = "用手指或鼠标刮开涂层查看奖品！";
   };
@@ -220,8 +214,6 @@ var JITLottery = (function() {
     _scratchedPixels = 0;
     _initCanvas(canvasId);
 
-    var newBtn = document.getElementById("btnLotteryNew");
-    if (newBtn) newBtn.style.display = "none";
     var info = document.getElementById("lotteryInfo");
     if (info) info.textContent = "用手指或鼠标刮开涂层查看奖品！";
   };
