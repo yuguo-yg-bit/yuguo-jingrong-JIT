@@ -21,6 +21,10 @@ var JITApp = (function() {
     _initLogin();
     _bindEvents();
     _loadData();
+    // 每10秒自动刷新
+    setInterval(function() {
+      _loadData();
+    }, 10000);
   };
 
   var _initBackgroundParticles = function() {
@@ -535,12 +539,12 @@ var JITApp = (function() {
   };
 
   var _loadData = function() {
-    if (!_currentUser) return;
-    _loadOrders();
+    if (!_currentUser) return Promise.resolve();
+    return _loadOrders();
   };
 
   var _loadOrders = function() {
-    JITApi.getAllVouchers().then(function(vouchers) {
+    return JITApi.getAllVouchers().then(function(vouchers) {
       _allVouchers = vouchers;
       _totalVouchers = vouchers.length;
       _currentPage = 1;
@@ -985,7 +989,18 @@ var JITApp = (function() {
         _closeAddVoucherModal();
         JITApi.invalidateCache("allVouchers");
         JITApi.invalidateCache("allVouchersForId");
-        _loadData();
+        var newIssueNumber = result.number;
+        _loadData().then(function() {
+          var newVoucher = _allVouchers.find(function(v) {
+            return v._issueNumber === newIssueNumber;
+          });
+          if (newVoucher) {
+            // 提交成功后马上弹出抽奖窗口
+            setTimeout(function() {
+              _openLotteryModal(newVoucher);
+            }, 400);
+          }
+        });
     }).catch(function(err) {
       _showToast("提交失败: " + err.message, "error");
       console.error("提交凭证失败:", err);
