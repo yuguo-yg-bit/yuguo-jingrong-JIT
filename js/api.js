@@ -67,8 +67,12 @@ var JITApi = (function() {
     });
   };
 
+  var _encodePath = function(path) {
+    return path.split("/").map(function(seg) { return encodeURIComponent(seg); }).join("/");
+  };
+
   var _getFileSha = function(path) {
-    var url = _apiBase + "/repos/" + _repoFull + "/contents/" + encodeURIComponent(path);
+    var url = _apiBase + "/repos/" + _repoFull + "/contents/" + _encodePath(path);
     return _safeRequest(url, {
       method: "GET",
       headers: _headers()
@@ -81,7 +85,7 @@ var JITApi = (function() {
 
   var _uploadFileToRepo = function(path, base64Content, commitMsg) {
     return _getFileSha(path).then(function(sha) {
-      var url = _apiBase + "/repos/" + _repoFull + "/contents/" + encodeURIComponent(path);
+      var url = _apiBase + "/repos/" + _repoFull + "/contents/" + _encodePath(path);
       var body = {
         message: commitMsg || "upload image",
         content: base64Content,
