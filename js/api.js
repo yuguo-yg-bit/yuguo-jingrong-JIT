@@ -16,8 +16,13 @@ var JITApi = (function() {
     return fetch(url, options).then(function(resp) {
       if (!resp.ok) {
         return resp.json().then(function(err) {
-          throw new Error(err.message || "请求失败: " + resp.status);
-        }).catch(function() {
+          var msg = "";
+          if (err.errors && err.errors.length > 0) {
+            msg = err.errors.map(function(e) { return e.message || e.code || JSON.stringify(e); }).join("; ");
+          }
+          throw new Error(msg || err.message || "请求失败: " + resp.status);
+        }).catch(function(e) {
+          if (e.message && e.message !== "请求失败: " + resp.status) throw e;
           throw new Error("请求失败: " + resp.status);
         });
       }
@@ -28,15 +33,58 @@ var JITApi = (function() {
 
   var _uploadImage = function(file) {
     return new Promise(function(resolve, reject) {
-      var reader = new FileReader();
-      reader.onload = function(e) {
-        resolve(e.target.result);
+      if (!file || !file.type.match(/image\//)) {
+        var reader = new FileReader();
+        reader.onload = function(e) { resolve(e.target.result); };
+        reader.onerror = function() { reject(new Error("图片读取失败")); };
+        reader.readAsDataURL(file);
+        return;
+      }
+      var img = new Image();
+      var url = URL.createObjectURL(file);
+      img.onload = function() {
+        URL.revokeObjectURL(url);
+        var maxW = 800;
+        var maxH = 800;
+        var w = img.width;
+        var h = img.height;
+        if (w > maxW || h > maxH) {
+          var ratio = Math.min(maxW / w, maxH / h);
+          w = Math.round(w * ratio);
+          h = Math.round(h * ratio);
+        }
+        var canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        var ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", 0.6));
       };
-      reader.onerror = function() {
-        reject(new Error("图片读取失败"));
+      img.onerror = function() {
+        URL.revokeObjectURL(url);
+        var reader = new FileReader();
+        reader.onload = function(e) { resolve(e.target.result); };
+        reader.onerror = function() { reject(new Error("图片读取失败")); };
+        reader.readAsDataURL(file);
       };
-      reader.readAsDataURL(file);
+      img.src = url;
     });
+  };
+
+  var _ensureLabels = function() {
+    var labels = JITConfig.getLabels();
+    var labelNames = Object.values(labels);
+    var url = _apiBase + "/repos/" + _repoFull + "/labels";
+    var promises = labelNames.map(function(name) {
+      return _safeRequest(url, {
+        method: "POST",
+        headers: _headers(),
+        body: JSON.stringify({ name: name, color: "0366d6" })
+      }).catch(function() {
+        return Promise.resolve(null);
+      });
+    });
+    return Promise.all(promises);
   };
 
   var _createIssue = function(title, body, labels) {
@@ -278,6 +326,7 @@ var JITApi = (function() {
     updateIssue: _updateIssue,
     updateVoucherWithLottery: _updateVoucherWithLottery,
     parseVoucherData: _parseVoucherData,
-    getNextVoucherId: _getNextVoucherId
+    getNextVoucherId: _getNextVoucherId,
+    ensureLabels: _ensureLabels
   };
 })();

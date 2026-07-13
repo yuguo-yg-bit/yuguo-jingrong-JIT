@@ -859,7 +859,9 @@ var JITApp = (function() {
 
       return JITApi.getNextVoucherId().then(function(nextId) {
         voucherData.voucherId = nextId;
-        return JITApi.submitVoucher(voucherData);
+        return JITApi.ensureLabels().then(function() {
+          return JITApi.submitVoucher(voucherData);
+        });
       });
     }).then(function(result) {
       _showToast("凭证提交成功！现在开始抽奖！", "success");
