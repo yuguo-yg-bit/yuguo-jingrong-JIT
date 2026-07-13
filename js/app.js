@@ -12,6 +12,7 @@ var JITApp = (function() {
   var _totalVouchers = 0;
   var _allVouchers = [];
   var _orderPhotos = [];
+  var _orderPhotoFiles = [];
   var _signatureData = null;
 
   var _init = function() {
@@ -314,9 +315,11 @@ var JITApp = (function() {
       inputOrderPhoto.addEventListener("change", function(e) {
         var files = Array.from(e.target.files);
         _orderPhotos = [];
+        _orderPhotoFiles = [];
         var previewList = document.getElementById("previewOrderPhotos");
         if (previewList) previewList.innerHTML = "";
         files.forEach(function(file, index) {
+          _orderPhotoFiles.push(file);
           var reader = new FileReader();
           reader.onload = function(ev) {
             _orderPhotos.push({ name: file.name, data: ev.target.result });
@@ -820,49 +823,33 @@ var JITApp = (function() {
     btn.classList.add("btn-loading");
     btn.textContent = "提交中...";
 
-    var processImages = function() {
-      var promises = [];
-      if (shopPhotoFile) {
-        promises.push(JITApi.uploadImage(shopPhotoFile));
-      }
-      for (var i = 0; i < _orderPhotos.length; i++) {
-        promises.push(Promise.resolve(_orderPhotos[i].data));
-      }
-      return Promise.all(promises);
+    var voucherData = {
+      shopName: shopName,
+      date: new Date().toISOString().split("T")[0],
+      shopPhoto: "",
+      orderPhotos: [],
+      latitude: latitude,
+      longitude: longitude,
+      amount: amount.replace("元", ""),
+      signature: _signatureData,
+      remark: remark || "",
+      username: _currentUser,
+      status: "待审核",
+      statusType: "pending",
+      discount: "",
+      discountValue: 0,
+      originalPrice: amount,
+      finalPrice: amount,
+      paymentMethod: paymentMethodValue,
+      paymentMethodText: paymentMethodText,
+      paymentNote: paymentMethodText
     };
 
-    processImages().then(function(images) {
-      var shopPhotoData = images[0] || "";
-      var orderPhotosData = images.slice(shopPhotoFile ? 1 : 0);
-
-      var voucherData = {
-        shopName: shopName,
-        date: new Date().toISOString().split("T")[0],
-        shopPhoto: shopPhotoData,
-        orderPhotos: orderPhotosData,
-        latitude: latitude,
-        longitude: longitude,
-        amount: amount.replace("元", ""),
-        signature: _signatureData,
-        remark: remark || "",
-        username: _currentUser,
-        status: "待审核",
-        statusType: "pending",
-        discount: "",
-        discountValue: 0,
-        originalPrice: amount,
-        finalPrice: amount,
-        paymentMethod: paymentMethodValue,
-        paymentMethodText: paymentMethodText,
-        paymentNote: paymentMethodText
-      };
-
-      return JITApi.getNextVoucherId().then(function(nextId) {
-        voucherData.voucherId = nextId;
-        return JITApi.ensureLabels().then(function() {
-          return JITApi.submitVoucher(voucherData);
-        });
-      });
+    JITApi.getNextVoucherId().then(function(nextId) {
+      voucherData.voucherId = nextId;
+      return JITApi.ensureLabels();
+    }).then(function() {
+      return JITApi.submitVoucherWithImages(voucherData, shopPhotoFile, _orderPhotoFiles);
     }).then(function(result) {
       _showToast("凭证提交成功！现在开始抽奖！", "success");
       _closeAddVoucherModal();

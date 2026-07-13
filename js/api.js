@@ -31,13 +31,10 @@ var JITApi = (function() {
     });
   };
 
-  var _uploadImage = function(file) {
+  var _compressImage = function(file) {
     return new Promise(function(resolve, reject) {
-      if (!file || !file.type.match(/image\//)) {
-        var reader = new FileReader();
-        reader.onload = function(e) { resolve(e.target.result); };
-        reader.onerror = function() { reject(new Error("图片读取失败")); };
-        reader.readAsDataURL(file);
+      if (!file || !file.type || !file.type.match(/image\//)) {
+        reject(new Error("不是图片文件"));
         return;
       }
       var img = new Image();
@@ -58,17 +55,52 @@ var JITApi = (function() {
         canvas.height = h;
         var ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL("image/jpeg", 0.6));
+        var dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+        var base64 = dataUrl.split(",")[1];
+        resolve(base64);
       };
       img.onerror = function() {
         URL.revokeObjectURL(url);
-        var reader = new FileReader();
-        reader.onload = function(e) { resolve(e.target.result); };
-        reader.onerror = function() { reject(new Error("图片读取失败")); };
-        reader.readAsDataURL(file);
+        reject(new Error("图片加载失败"));
       };
       img.src = url;
     });
+  };
+
+  var _uploadFileToRepo = function(path, base64Content, commitMsg) {
+    var url = _apiBase + "/repos/" + _repoFull + "/contents/" + encodeURIComponent(path);
+    return _safeRequest(url, {
+      method: "PUT",
+      headers: _headers(),
+      body: JSON.stringify({
+        message: commitMsg || "upload image",
+        content: base64Content,
+        branch: "main"
+      })
+    }).then(function(result) {
+      return result && result.content ? result.content.download_url : "";
+    });
+  };
+
+  var _uploadImageToRepo = function(file, fileName, commitMsg) {
+    return _compressImage(file).then(function(base64) {
+      return _uploadFileToRepo("uploads/" + fileName, base64, commitMsg);
+    });
+  };
+
+  var _uploadImagesToRepo = function(files, prefix, commitMsg) {
+    var uploads = [];
+    for (var i = 0; i < files.length; i++) {
+      (function(file, index) {
+        var ext = "jpg";
+        var name = file.name || ("image_" + index);
+        var dotIdx = name.lastIndexOf(".");
+        if (dotIdx > -1) ext = name.substring(dotIdx + 1);
+        var fileName = prefix + "_" + index + "." + ext;
+        uploads.push(_uploadImageToRepo(file, fileName, commitMsg));
+      })(files[i], i);
+    }
+    return Promise.all(uploads);
   };
 
   var _ensureLabels = function() {
@@ -271,6 +303,43 @@ var JITApi = (function() {
     return _createIssue(title, body, [JITConfig.getLabels().voucher, JITConfig.getLabels().pending]);
   };
 
+  var _submitVoucherWithImages = function(voucherData, shopPhotoFile, orderPhotoFiles) {
+    var voucherId = voucherData.voucherId || Date.now();
+    var prefix = "voucher_" + (voucherData.username || "user") + "_" + voucherId;
+    var commitMsg = "上传凭证图片: " + (voucherData.shopName || "") + " #" + voucherId;
+
+    var uploadPromises = [];
+
+    if (shopPhotoFile) {
+      uploadPromises.push(
+        _uploadImageToRepo(shopPhotoFile, prefix + "_shop.jpg", commitMsg).then(function(url) {
+          voucherData.shopPhoto = url;
+        })
+      );
+    }
+
+    if (orderPhotoFiles && orderPhotoFiles.length > 0) {
+      uploadPromises.push(
+        _uploadImagesToRepo(orderPhotoFiles, prefix + "_order", commitMsg).then(function(urls) {
+          voucherData.orderPhotos = urls;
+        })
+      );
+    }
+
+    if (voucherData.signature && voucherData.signature.indexOf("base64,") > -1) {
+      var sigBase64 = voucherData.signature.split(",")[1];
+      uploadPromises.push(
+        _uploadFileToRepo("uploads/" + prefix + "_signature.png", sigBase64, commitMsg).then(function(url) {
+          voucherData.signature = url;
+        })
+      );
+    }
+
+    return Promise.all(uploadPromises).then(function() {
+      return _submitVoucher(voucherData);
+    });
+  };
+
   var _updateVoucherWithLottery = function(issueNumber, voucherData) {
     var body = _formatIssueBody(voucherData);
     return _updateIssue(issueNumber, { body: body });
@@ -320,9 +389,10 @@ var JITApi = (function() {
     getVouchers: _getVouchers,
     getAllVouchers: _getAllVouchers,
     submitVoucher: _submitVoucher,
+    submitVoucherWithImages: _submitVoucherWithImages,
     getVoucherCount: _getVoucherCount,
     getApprovedCount: _getApprovedCount,
-    uploadImage: _uploadImage,
+    compressImage: _compressImage,
     updateIssue: _updateIssue,
     updateVoucherWithLottery: _updateVoucherWithLottery,
     parseVoucherData: _parseVoucherData,
