@@ -3,7 +3,7 @@ var JITConfig = (function() {
   var _pt2 = "5Fv6UxjRX";
 
   var _repoOwner = "yuguo-yg-bit";
-  var _repoName = "yuguojingrong-JIT";
+  var _repoName = "yuguo-jingrong-JIT";
 
   var _getTokenPart1 = function() {
     return _pt1 + _pt2;
