@@ -1021,7 +1021,7 @@ var JITApp = (function() {
         JITApi.invalidateCache("allVouchers");
         JITApi.invalidateCache("allVouchersForId");
         _loadData();
-        _showToast("✅ 抽奖结果已保存：" + prize.discount, "success");
+        _showToast("保存成功！", "success");
       }).catch(function(err) {
         console.error("更新抽奖结果失败:", err);
         _showToast("抽奖结果保存失败，请重试", "error");
