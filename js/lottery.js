@@ -51,34 +51,86 @@ var JITLottery = (function() {
     var w = _canvas.width;
     var h = _canvas.height;
 
+    // 银灰色金属质感涂层
     var gradient = _ctx.createLinearGradient(0, 0, w, h);
-    gradient.addColorStop(0, "#1a237e");
-    gradient.addColorStop(0.3, "#283593");
-    gradient.addColorStop(0.6, "#1565c0");
-    gradient.addColorStop(1, "#0d47a1");
+    gradient.addColorStop(0, "#c0c0c0");
+    gradient.addColorStop(0.2, "#e8e8e8");
+    gradient.addColorStop(0.4, "#a8a8a8");
+    gradient.addColorStop(0.6, "#d0d0d0");
+    gradient.addColorStop(0.8, "#b0b0b0");
+    gradient.addColorStop(1, "#c8c8c8");
     _ctx.fillStyle = gradient;
     _ctx.fillRect(0, 0, w, h);
 
-    _ctx.fillStyle = "rgba(255,255,255,0.05)";
-    for (var i = 0; i < 50; i++) {
+    // 金属颗粒纹理
+    _ctx.fillStyle = "rgba(255,255,255,0.08)";
+    for (var i = 0; i < 80; i++) {
       var x = Math.random() * w;
       var y = Math.random() * h;
-      var r = Math.random() * 3 + 1;
+      var r = Math.random() * 2 + 0.5;
       _ctx.beginPath();
       _ctx.arc(x, y, r, 0, Math.PI * 2);
       _ctx.fill();
     }
 
-    _ctx.fillStyle = "rgba(66, 165, 245, 0.8)";
-    _ctx.font = "bold 18px sans-serif";
+    // 暗纹颗粒
+    _ctx.fillStyle = "rgba(0,0,0,0.05)";
+    for (var i = 0; i < 40; i++) {
+      var x = Math.random() * w;
+      var y = Math.random() * h;
+      var r = Math.random() * 1.5 + 0.3;
+      _ctx.beginPath();
+      _ctx.arc(x, y, r, 0, Math.PI * 2);
+      _ctx.fill();
+    }
+
+    // 红色边框
+    _ctx.strokeStyle = "rgba(204,0,0,0.6)";
+    _ctx.lineWidth = 2;
+    _ctx.strokeRect(8, 8, w - 16, h - 16);
+
+    // 内框装饰
+    _ctx.strokeStyle = "rgba(204,0,0,0.2)";
+    _ctx.lineWidth = 1;
+    _ctx.setLineDash([4, 4]);
+    _ctx.strokeRect(14, 14, w - 28, h - 28);
+    _ctx.setLineDash([]);
+
+    // "顶呱刮" 品牌文字
+    _ctx.fillStyle = "rgba(204,0,0,0.5)";
+    _ctx.font = "bold 16px sans-serif";
     _ctx.textAlign = "center";
     _ctx.textBaseline = "middle";
-    _ctx.fillText("刮开此处", w / 2, h / 2 - 15);
-    _ctx.fillText("查看奖品", w / 2, h / 2 + 15);
+    _ctx.fillText("顶呱刮", w / 2, h / 2 - 18);
 
-    _ctx.strokeStyle = "rgba(66, 165, 245, 0.4)";
-    _ctx.lineWidth = 1;
-    _ctx.strokeRect(10, 10, w - 20, h - 20);
+    // "刮开有奖" 提示
+    _ctx.fillStyle = "rgba(139,0,0,0.45)";
+    _ctx.font = "bold 12px sans-serif";
+    _ctx.fillText("刮开有奖", w / 2, h / 2 + 10);
+
+    // 装饰小星星
+    _ctx.fillStyle = "rgba(255,215,0,0.3)";
+    var starX = 30, starY = 20;
+    _drawStar(_ctx, starX, starY, 5, 6, 3);
+    _drawStar(_ctx, w - starX, starY, 5, 6, 3);
+    _drawStar(_ctx, starX, h - starY, 5, 6, 3);
+    _drawStar(_ctx, w - starX, h - starY, 5, 6, 3);
+  };
+
+  var _drawStar = function(ctx, cx, cy, spikes, outerR, innerR) {
+    var rot = Math.PI / 2 * 3;
+    var step = Math.PI / spikes;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - outerR);
+    for (var i = 0; i < spikes; i++) {
+      ctx.lineTo(cx + Math.cos(rot) * outerR, cy + Math.sin(rot) * outerR);
+      rot += step;
+      ctx.lineTo(cx + Math.cos(rot) * innerR, cy + Math.sin(rot) * innerR);
+      rot += step;
+    }
+    ctx.lineTo(cx, cy - outerR);
+    ctx.closePath();
+    ctx.fill();
   };
 
   var _getPos = function(e) {
@@ -137,7 +189,7 @@ var JITLottery = (function() {
 
     var info = document.getElementById("lotteryInfo");
     if (info) {
-      info.textContent = "恭喜中奖！" + (_currentPrize ? _currentPrize.label : "");
+      info.textContent = "🎉 恭喜中奖！" + (_currentPrize ? _currentPrize.label : "") + " 🎉";
     }
 
     if (_onRevealed && _currentPrize) {
@@ -192,6 +244,17 @@ var JITLottery = (function() {
     _currentPrize = _getRandomPrize();
     _onRevealed = onRevealed;
 
+    // 生成随机彩票编号
+    var ticketNum = document.getElementById("ticketNumber");
+    if (ticketNum) {
+      var chars = "0123456789";
+      var num = "";
+      for (var i = 0; i < 6; i++) {
+        num += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      ticketNum.textContent = num;
+    }
+
     var discountEl = document.getElementById("lotteryDiscount");
     var labelEl = document.getElementById("lotteryLabel");
     if (discountEl) discountEl.textContent = _currentPrize.discount;
@@ -205,6 +268,17 @@ var JITLottery = (function() {
 
   var _reset = function(canvasId) {
     _currentPrize = _getRandomPrize();
+
+    // 生成随机彩票编号
+    var ticketNum = document.getElementById("ticketNumber");
+    if (ticketNum) {
+      var chars = "0123456789";
+      var num = "";
+      for (var i = 0; i < 6; i++) {
+        num += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      ticketNum.textContent = num;
+    }
 
     var discountEl = document.getElementById("lotteryDiscount");
     var labelEl = document.getElementById("lotteryLabel");
@@ -221,6 +295,17 @@ var JITLottery = (function() {
   return {
     start: _start,
     reset: _reset,
-    getCurrentPrize: function() { return _currentPrize; }
+    getCurrentPrize: function() { return _currentPrize; },
+    updatePrizeConfig: function(config) {
+      if (!Array.isArray(config)) return;
+      config.forEach(function(item, index) {
+        if (_prizes[index]) {
+          _prizes[index].weight = item.weight;
+        }
+      });
+    },
+    setThreshold: function(threshold) {
+      _revealThreshold = typeof threshold === "number" ? threshold : 0.4;
+    }
   };
 })();

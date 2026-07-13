@@ -208,6 +208,30 @@ var JITApi = (function() {
     });
   };
 
+  var _deleteIssue = function(issueNumber) {
+    var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber;
+    // GitHub API 不能真正删除 issue，只能关闭并移除标签
+    return _safeRequest(url, {
+      method: "PATCH",
+      headers: _headers(),
+      body: JSON.stringify({
+        state: "closed",
+        labels: ["deleted"]
+      })
+    });
+  };
+
+  var _closeIssue = function(issueNumber) {
+    var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber;
+    return _safeRequest(url, {
+      method: "PATCH",
+      headers: _headers(),
+      body: JSON.stringify({
+        state: "closed"
+      })
+    });
+  };
+
   var _formatIssueBody = function(voucherData) {
     var orderPhotos = "";
     if (Array.isArray(voucherData.orderPhotos)) {
@@ -482,6 +506,8 @@ var JITApi = (function() {
     getApprovedCount: _getApprovedCount,
     compressImage: _compressImage,
     updateIssue: _updateIssue,
+    deleteIssue: _deleteIssue,
+    closeIssue: _closeIssue,
     updateVoucherWithLottery: _updateVoucherWithLottery,
     updateVoucherIssue: _updateVoucherIssue,
     parseVoucherData: _parseVoucherData,

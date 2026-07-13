@@ -947,15 +947,38 @@ html, body {
   transform: translateY(0);
 }
 
+/* ============================================
+   中国体育彩票 · 顶呱刮 样式
+   ============================================ */
 .lottery-container {
-  background: var(--bg-secondary);
-  border: 1px solid var(--ice-blue);
-  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, #cc0000, #8b0000, #cc0000);
+  border: 3px solid #ffd700;
+  border-radius: 16px;
   width: 90%;
-  max-width: 420px;
-  box-shadow: 0 0 60px rgba(66, 165, 245, 0.3), 0 20px 60px rgba(0, 0, 0, 0.5);
+  max-width: 400px;
+  box-shadow: 0 0 60px rgba(204, 0, 0, 0.4), 0 0 120px rgba(255, 215, 0, 0.15), 0 20px 60px rgba(0, 0, 0, 0.5);
   transform: translateY(20px);
   transition: transform var(--transition-normal);
+  position: relative;
+  overflow: hidden;
+}
+
+.lottery-container::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 20px,
+    rgba(255, 215, 0, 0.03) 20px,
+    rgba(255, 215, 0, 0.03) 21px
+  );
+  pointer-events: none;
+  z-index: 0;
 }
 
 .modal-overlay.active .lottery-container {
@@ -966,33 +989,166 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-dim);
+  padding: 12px 16px 8px;
+  position: relative;
+  z-index: 1;
 }
 
-.lottery-title {
-  font-size: 18px;
+.lottery-header-brand {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.lottery-brand-cn {
+  font-size: 16px;
+  font-weight: 900;
+  color: #ffd700;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.5), 0 0 10px rgba(255, 215, 0, 0.3);
+  letter-spacing: 2px;
+}
+
+.lottery-brand-en {
+  font-size: 9px;
+  font-weight: 600;
+  color: rgba(255, 215, 0, 0.7);
+  letter-spacing: 1px;
+}
+
+.lottery-close {
+  background: rgba(0,0,0,0.3);
+  border: 2px solid #ffd700;
+  color: #ffd700;
+  font-size: 22px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
   font-weight: 700;
-  color: var(--ice-blue);
-  text-shadow: 0 0 10px rgba(66, 165, 245, 0.3);
+  line-height: 1;
+}
+
+.lottery-close:hover {
+  background: rgba(255, 215, 0, 0.2);
+  box-shadow: 0 0 15px rgba(255, 215, 0, 0.4);
 }
 
 .lottery-body {
-  padding: 24px;
+  padding: 0 16px 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
+  position: relative;
+  z-index: 1;
 }
 
-.lottery-card {
-  position: relative;
-  width: 300px;
-  height: 200px;
-  border-radius: var(--radius-lg);
+/* ===== 彩票票面 ===== */
+.lottery-ticket {
+  background: linear-gradient(180deg, #fff8e7, #fff3d6, #fff8e7);
+  border-radius: 12px;
+  border: 2px solid #ffd700;
+  width: 100%;
+  max-width: 340px;
+  box-shadow: inset 0 0 20px rgba(255, 215, 0, 0.15), 0 4px 15px rgba(0,0,0,0.3);
   overflow: hidden;
-  border: 2px solid var(--ice-blue);
-  box-shadow: 0 0 20px rgba(66, 165, 245, 0.3);
+  position: relative;
+}
+
+/* 票面顶部装饰条 */
+.ticket-top {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px 4px;
+  background: linear-gradient(90deg, #cc0000, #ff1a1a, #cc0000);
+}
+
+.ticket-top-pattern {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.pattern-dot {
+  width: 4px;
+  height: 4px;
+  background: #ffd700;
+  border-radius: 50%;
+}
+
+.pattern-line {
+  width: 20px;
+  height: 1px;
+  background: #ffd700;
+}
+
+.pattern-diamond {
+  color: #ffd700;
+  font-size: 10px;
+  margin: 0 2px;
+}
+
+.ticket-brand {
+  font-size: 22px;
+  font-weight: 900;
+  color: #ffd700;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  letter-spacing: 4px;
+  padding: 0 12px;
+}
+
+/* 最高奖金 */
+.ticket-prize-max {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 0 4px;
+  background: linear-gradient(90deg, transparent, rgba(204,0,0,0.06), transparent);
+}
+
+.prize-max-label {
+  font-size: 10px;
+  color: #8b0000;
+  font-weight: 600;
+  letter-spacing: 2px;
+}
+
+.prize-max-amount {
+  font-size: 22px;
+  font-weight: 900;
+  color: #cc0000;
+  text-shadow: 0 1px 2px rgba(204,0,0,0.2);
+  letter-spacing: 2px;
+}
+
+/* 刮开区 */
+.ticket-scratch-zone {
+  padding: 4px 16px;
+}
+
+.ticket-scratch-label {
+  text-align: center;
+  font-size: 11px;
+  color: #8b0000;
+  font-weight: 700;
+  margin-bottom: 4px;
+  letter-spacing: 3px;
+}
+
+.ticket-card {
+  position: relative;
+  width: 100%;
+  height: 160px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid #cc0000;
+  box-shadow: inset 0 0 15px rgba(204,0,0,0.1);
 }
 
 .lottery-canvas {
@@ -1015,44 +1171,108 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #0d1322, #101a33);
+  background: linear-gradient(135deg, #fff8e7, #fff3d6);
   z-index: 1;
 }
 
 .lottery-discount {
-  font-size: 48px;
+  font-size: 42px;
   font-weight: 900;
-  color: var(--ice-blue);
-  text-shadow: 0 0 20px var(--ice-blue-glow);
+  color: #cc0000;
+  text-shadow: 0 2px 4px rgba(204,0,0,0.2);
 }
 
 .lottery-label {
-  font-size: 16px;
-  color: var(--ice-blue-light);
+  font-size: 14px;
+  color: #8b0000;
+  margin-top: 2px;
+  font-weight: 600;
+}
+
+/* 票面底部 */
+.ticket-bottom {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 16px 8px;
+  border-top: 1px dashed rgba(139,0,0,0.2);
   margin-top: 4px;
 }
 
-.lottery-info {
-  font-size: 13px;
-  color: var(--text-secondary);
+.ticket-bottom-left,
+.ticket-bottom-right {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ticket-bottom-item {
+  font-size: 9px;
+  color: #666;
+  font-weight: 500;
+}
+
+.ticket-highlight {
+  color: #cc0000;
+  font-weight: 700;
+}
+
+.ticket-scratch-hint {
   text-align: center;
+  font-size: 11px;
+  color: #cc0000;
+  font-weight: 600;
+  padding: 0 16px 8px;
+  letter-spacing: 1px;
+}
+
+/* 操作按钮 */
+.lottery-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  width: 100%;
 }
 
 .btn-lottery-new {
-  background: linear-gradient(135deg, var(--ice-blue), #1e88e5);
-  border: none;
-  border-radius: var(--radius-md);
-  color: #fff;
-  padding: 10px 24px;
+  background: linear-gradient(135deg, #ffd700, #ffaa00);
+  border: 2px solid #ffd700;
+  border-radius: 25px;
+  color: #8b0000;
+  padding: 8px 28px;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 800;
   cursor: pointer;
   transition: all var(--transition-fast);
+  letter-spacing: 1px;
+  box-shadow: 0 2px 10px rgba(255, 215, 0, 0.3);
 }
 
 .btn-lottery-new:hover {
-  box-shadow: 0 0 20px var(--ice-blue-glow);
-  transform: translateY(-2px);
+  box-shadow: 0 0 20px rgba(255, 215, 0, 0.5), 0 4px 15px rgba(255, 215, 0, 0.3);
+  transform: translateY(-2px) scale(1.02);
+  background: linear-gradient(135deg, #ffe44d, #ffbb00);
+}
+
+/* 响应式 */
+@media (max-width: 480px) {
+  .lottery-container {
+    max-width: 340px;
+  }
+  .lottery-ticket {
+    max-width: 290px;
+  }
+  .ticket-card {
+    height: 140px;
+  }
+  .lottery-discount {
+    font-size: 36px;
+  }
+  .ticket-brand {
+    font-size: 18px;
+  }
+  .prize-max-amount {
+    font-size: 18px;
+  }
 }
 
 .toast {
@@ -1350,6 +1570,516 @@ html, body {
 
 .edit-order-btn:active {
   transform: translateY(0);
+}
+
+.lottery-order-btn {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.25), rgba(255, 170, 0, 0.1));
+  border: 1px solid #ffd700;
+  border-radius: var(--radius-sm);
+  color: #ffd700;
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  margin-right: 8px;
+  text-shadow: 0 0 5px rgba(255, 215, 0, 0.2);
+}
+
+.lottery-order-btn:hover {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.4), rgba(255, 170, 0, 0.2));
+  box-shadow: 0 0 15px rgba(255, 215, 0, 0.4);
+  transform: translateY(-1px);
+}
+
+.lottery-order-btn:active {
+  transform: translateY(0);
+}
+
+/* ============================================
+   后台管理中心
+   ============================================ */
+.admin-container {
+  background: var(--bg-secondary);
+  border: 1px solid #ffd700;
+  border-radius: var(--radius-lg);
+  width: 90%;
+  max-width: 700px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 0 60px rgba(255, 215, 0, 0.15), 0 20px 60px rgba(0, 0, 0, 0.5);
+  transform: translateY(20px);
+  transition: transform var(--transition-normal);
+}
+
+.modal-overlay.active .admin-container {
+  transform: translateY(0);
+}
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(255, 215, 0, 0.2);
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.08), transparent);
+}
+
+.admin-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffd700;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+}
+
+.admin-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 10px 16px 0;
+  background: rgba(255, 215, 0, 0.03);
+  border-bottom: 1px solid rgba(255, 215, 0, 0.1);
+  overflow-x: auto;
+}
+
+.admin-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  color: var(--text-secondary);
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.admin-tab:hover {
+  color: #ffd700;
+  background: rgba(255, 215, 0, 0.05);
+}
+
+.admin-tab.active {
+  color: #ffd700;
+  background: rgba(255, 215, 0, 0.08);
+  border-color: rgba(255, 215, 0, 0.2);
+  text-shadow: 0 0 5px rgba(255, 215, 0, 0.2);
+}
+
+.admin-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.admin-panel {
+  display: none;
+}
+
+.admin-panel.active {
+  display: block;
+}
+
+.admin-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ice-blue);
+}
+
+.admin-refresh-btn {
+  background: rgba(255, 215, 0, 0.1);
+  border: 1px solid rgba(255, 215, 0, 0.3);
+  border-radius: var(--radius-sm);
+  color: #ffd700;
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.admin-refresh-btn:hover {
+  background: rgba(255, 215, 0, 0.2);
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.2);
+}
+
+.admin-loading {
+  text-align: center;
+  padding: 30px;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+/* 审核列表 */
+.admin-review-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(10, 14, 23, 0.6);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-md);
+  margin-bottom: 10px;
+  transition: all var(--transition-fast);
+}
+
+.admin-review-item:hover {
+  border-color: rgba(255, 215, 0, 0.2);
+  background: rgba(10, 14, 23, 0.8);
+}
+
+.admin-review-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-review-shop {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 3px;
+}
+
+.admin-review-detail {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.admin-review-detail span {
+  color: var(--ice-blue);
+}
+
+.admin-review-photos {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.admin-review-photo {
+  width: 60px;
+  height: 60px;
+  border-radius: 4px;
+  object-fit: cover;
+  border: 1px solid var(--border-dim);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.admin-review-photo:hover {
+  transform: scale(1.1);
+  border-color: var(--ice-blue);
+}
+
+.admin-review-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.admin-btn-approve {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.2), rgba(76, 175, 80, 0.08));
+  border: 1px solid #4caf50;
+  border-radius: var(--radius-sm);
+  color: #4caf50;
+  padding: 6px 18px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.admin-btn-approve:hover {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.4), rgba(76, 175, 80, 0.15));
+  box-shadow: 0 0 12px rgba(76, 175, 80, 0.3);
+}
+
+.admin-btn-reject {
+  background: linear-gradient(135deg, rgba(239, 83, 80, 0.2), rgba(239, 83, 80, 0.08));
+  border: 1px solid #ef5350;
+  border-radius: var(--radius-sm);
+  color: #ef5350;
+  padding: 6px 18px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.admin-btn-reject:hover {
+  background: linear-gradient(135deg, rgba(239, 83, 80, 0.4), rgba(239, 83, 80, 0.15));
+  box-shadow: 0 0 12px rgba(239, 83, 80, 0.3);
+}
+
+.admin-btn-delete {
+  background: linear-gradient(135deg, rgba(255, 0, 0, 0.15), rgba(255, 0, 0, 0.05));
+  border: 1px solid rgba(255, 0, 0, 0.4);
+  border-radius: var(--radius-sm);
+  color: #ff4444;
+  padding: 6px 18px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.admin-btn-delete:hover {
+  background: linear-gradient(135deg, rgba(255, 0, 0, 0.3), rgba(255, 0, 0, 0.1));
+  box-shadow: 0 0 12px rgba(255, 0, 0, 0.3);
+}
+
+/* 抽奖概率配置 */
+.admin-lottery-config {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-lottery-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: rgba(10, 14, 23, 0.6);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+}
+
+.admin-lottery-discount {
+  width: 60px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffd700;
+}
+
+.admin-lottery-label {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.admin-lottery-weight {
+  width: 70px;
+  padding: 4px 8px;
+  background: rgba(10, 14, 23, 0.8);
+  border: 1px solid var(--ice-blue-border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 13px;
+  text-align: center;
+  outline: none;
+}
+
+.admin-lottery-weight:focus {
+  border-color: var(--ice-blue);
+  box-shadow: 0 0 8px rgba(66, 165, 245, 0.2);
+}
+
+.admin-lottery-total {
+  margin-top: 8px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* 用户管理 */
+.admin-users-config {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.admin-user-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(10, 14, 23, 0.6);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+}
+
+.admin-user-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.admin-user-role {
+  font-size: 11px;
+  color: #ffd700;
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+.admin-user-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.admin-user-delete-btn {
+  background: rgba(239, 83, 80, 0.15);
+  border: 1px solid rgba(239, 83, 80, 0.3);
+  border-radius: 4px;
+  color: #ef5350;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.admin-user-delete-btn:hover {
+  background: rgba(239, 83, 80, 0.3);
+}
+
+.admin-user-form {
+  margin-top: 10px;
+  padding: 12px;
+  background: rgba(10, 14, 23, 0.6);
+  border: 1px solid var(--ice-blue-border);
+  border-radius: var(--radius-sm);
+}
+
+.admin-user-form-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.admin-input {
+  flex: 1;
+  min-width: 120px;
+  padding: 7px 12px;
+  background: rgba(10, 14, 23, 0.8);
+  border: 1px solid var(--ice-blue-border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+}
+
+.admin-input:focus {
+  border-color: var(--ice-blue);
+  box-shadow: 0 0 8px rgba(66, 165, 245, 0.2);
+}
+
+.admin-btn-small {
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: none;
+}
+
+.admin-btn-save {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.2), rgba(76, 175, 80, 0.08));
+  border: 1px solid #4caf50;
+  color: #4caf50;
+}
+
+.admin-btn-save:hover {
+  background: rgba(76, 175, 80, 0.3);
+}
+
+.admin-btn-cancel {
+  background: rgba(239, 83, 80, 0.15);
+  border: 1px solid rgba(239, 83, 80, 0.3);
+  color: #ef5350;
+}
+
+.admin-btn-cancel:hover {
+  background: rgba(239, 83, 80, 0.3);
+}
+
+/* 高级设置 */
+.admin-settings-config {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(10, 14, 23, 0.6);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+}
+
+.admin-setting-label {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.admin-setting-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.admin-setting-input {
+  width: 100px;
+  padding: 5px 10px;
+  background: rgba(10, 14, 23, 0.8);
+  border: 1px solid var(--ice-blue-border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 13px;
+  text-align: center;
+  outline: none;
+}
+
+.admin-setting-input:focus {
+  border-color: var(--ice-blue);
+  box-shadow: 0 0 8px rgba(66, 165, 245, 0.2);
+}
+
+.admin-setting-toggle {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  background: var(--border-dim);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: none;
+  padding: 0;
+}
+
+.admin-setting-toggle.active {
+  background: #4caf50;
+}
+
+.admin-setting-toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: #fff;
+  border-radius: 50%;
+  transition: all var(--transition-fast);
+}
+
+.admin-setting-toggle.active::after {
+  left: 22px;
 }
 
 @media (max-width: 1200px) {

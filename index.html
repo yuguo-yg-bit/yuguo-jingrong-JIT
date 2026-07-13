@@ -48,6 +48,10 @@
           <span class="module-tip">编辑凭证</span>
           <button class="module-btn" id="btnWriteVoucher">编辑凭证</button>
         </div>
+        <div class="nav-module" id="moduleAdmin" style="display:none;">
+          <span class="module-tip" style="color:#ffd700;">⚙ 后台管理</span>
+          <button class="module-btn" id="btnAdmin" style="border-color:#ffd700;color:#ffd700;">管理后台</button>
+        </div>
       </div>
     </div>
     <div class="header-right">
@@ -221,18 +225,61 @@
 <div class="modal-overlay" id="lotteryOverlay">
   <div class="lottery-container" id="lotteryContainer">
     <div class="lottery-header">
-      <h3 class="lottery-title">刮刮乐抽奖</h3>
-      <button class="modal-close" id="btnLotteryClose">&times;</button>
+      <div class="lottery-header-brand">
+        <span class="lottery-brand-cn">中国体育彩票</span>
+        <span class="lottery-brand-en">CHINA SPORTS LOTTERY</span>
+      </div>
+      <button class="lottery-close" id="btnLotteryClose">&times;</button>
     </div>
     <div class="lottery-body">
-      <div class="lottery-card" id="lotteryCard">
-        <canvas class="lottery-canvas" id="lotteryCanvas"></canvas>
-        <div class="lottery-result" id="lotteryResult">
-          <span class="lottery-discount" id="lotteryDiscount"></span>
-          <span class="lottery-label" id="lotteryLabel"></span>
+      <div class="lottery-ticket" id="lotteryTicket">
+        <!-- 票面顶部装饰 -->
+        <div class="ticket-top">
+          <div class="ticket-top-pattern">
+            <span class="pattern-dot"></span><span class="pattern-line"></span><span class="pattern-dot"></span>
+            <span class="pattern-diamond">◆</span>
+            <span class="pattern-dot"></span><span class="pattern-line"></span><span class="pattern-dot"></span>
+          </div>
+          <div class="ticket-brand">顶呱刮</div>
+          <div class="ticket-top-pattern">
+            <span class="pattern-dot"></span><span class="pattern-line"></span><span class="pattern-dot"></span>
+            <span class="pattern-diamond">◆</span>
+            <span class="pattern-dot"></span><span class="pattern-line"></span><span class="pattern-dot"></span>
+          </div>
         </div>
+        <!-- 奖金额度 -->
+        <div class="ticket-prize-max">
+          <span class="prize-max-label">最高奖金</span>
+          <span class="prize-max-amount">¥100,000</span>
+        </div>
+        <!-- 刮奖区 -->
+        <div class="ticket-scratch-zone">
+          <div class="ticket-scratch-label">刮开区</div>
+          <div class="ticket-card" id="lotteryCard">
+            <canvas class="lottery-canvas" id="lotteryCanvas"></canvas>
+            <div class="lottery-result" id="lotteryResult">
+              <span class="lottery-discount" id="lotteryDiscount"></span>
+              <span class="lottery-label" id="lotteryLabel"></span>
+            </div>
+          </div>
+        </div>
+        <!-- 票面底部信息 -->
+        <div class="ticket-bottom">
+          <div class="ticket-bottom-left">
+            <div class="ticket-bottom-item">面值: <span class="ticket-highlight">免费</span></div>
+            <div class="ticket-bottom-item">玩法: 刮开有奖</div>
+          </div>
+          <div class="ticket-bottom-right">
+            <div class="ticket-bottom-item">编号: <span id="ticketNumber">XXXXXX</span></div>
+            <div class="ticket-bottom-item">国家体育总局体育彩票管理中心</div>
+          </div>
+        </div>
+        <!-- 刮开提示 -->
+        <div class="ticket-scratch-hint" id="lotteryInfo">用手指或鼠标刮开涂层查看奖品！</div>
       </div>
-      <div class="lottery-info" id="lotteryInfo">用手指或鼠标刮开涂层查看奖品！</div>
+      <div class="lottery-actions">
+        <button class="btn-lottery-new" id="btnLotteryNew">🎰 再来一张</button>
+      </div>
     </div>
   </div>
 </div>
@@ -267,6 +314,73 @@
       </svg>
       <p class="user-first-pay-text">人工之后会支付给您的账户！</p>
       <p class="user-first-pay-sub" id="userFirstPaySub"></p>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 后台管理弹窗 ===== -->
+<div class="modal-overlay" id="adminOverlay">
+  <div class="admin-container" id="adminContainer">
+    <div class="admin-header">
+      <h3 class="admin-title">⚙ 后台管理中心</h3>
+      <button class="modal-close" id="btnAdminClose">&times;</button>
+    </div>
+    <div class="admin-tabs">
+      <button class="admin-tab active" data-tab="review">📋 审核订单</button>
+      <button class="admin-tab" data-tab="lottery">🎲 抽奖概率</button>
+      <button class="admin-tab" data-tab="users">👥 用户管理</button>
+      <button class="admin-tab" data-tab="settings">🔧 高级设置</button>
+    </div>
+    <div class="admin-body">
+      <!-- ===== 审核订单 ===== -->
+      <div class="admin-panel active" id="adminReviewPanel">
+        <div class="admin-panel-header">
+          <span>待审核订单列表</span>
+          <button class="admin-refresh-btn" id="btnAdminRefreshReview">🔄 刷新</button>
+        </div>
+        <div class="admin-review-list" id="adminReviewList">
+          <div class="admin-loading">加载中...</div>
+        </div>
+      </div>
+      <!-- ===== 抽奖概率 ===== -->
+      <div class="admin-panel" id="adminLotteryPanel">
+        <div class="admin-panel-header">
+          <span>抽奖概率配置</span>
+          <button class="admin-refresh-btn" id="btnAdminSaveLottery">💾 保存配置</button>
+        </div>
+        <div class="admin-lottery-config" id="adminLotteryConfig">
+          <div class="admin-loading">加载中...</div>
+        </div>
+      </div>
+      <!-- ===== 用户管理 ===== -->
+      <div class="admin-panel" id="adminUsersPanel">
+        <div class="admin-panel-header">
+          <span>用户管理</span>
+          <button class="admin-refresh-btn" id="btnAdminAddUser">➕ 添加用户</button>
+        </div>
+        <div class="admin-users-config" id="adminUsersConfig">
+          <div class="admin-loading">加载中...</div>
+        </div>
+        <!-- 添加用户表单 -->
+        <div class="admin-user-form" id="adminUserForm" style="display:none;">
+          <div class="admin-user-form-row">
+            <input type="text" class="admin-input" id="adminNewUsername" placeholder="用户名">
+            <input type="text" class="admin-input" id="adminNewPassword" placeholder="密码">
+            <button class="admin-btn-small admin-btn-save" id="btnAdminConfirmAddUser">确认添加</button>
+            <button class="admin-btn-small admin-btn-cancel" id="btnAdminCancelAddUser">取消</button>
+          </div>
+        </div>
+      </div>
+      <!-- ===== 高级设置 ===== -->
+      <div class="admin-panel" id="adminSettingsPanel">
+        <div class="admin-panel-header">
+          <span>高级设置</span>
+          <button class="admin-refresh-btn" id="btnAdminSaveSettings">💾 保存设置</button>
+        </div>
+        <div class="admin-settings-config" id="adminSettingsConfig">
+          <div class="admin-loading">加载中...</div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
