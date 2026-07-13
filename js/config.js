@@ -4,6 +4,7 @@ var JITConfig = (function() {
 
   var _repoOwner = "yuguo-yg-bit";
   var _repoName = "yuguo-jingrong-JIT";
+  var _imageRepoName = "yuguo-jingrong-JIT-images";
 
   var _getTokenPart1 = function() {
     return _pt1 + _pt2;
@@ -32,8 +33,10 @@ var JITConfig = (function() {
     getApiBase: function() { return _apiBase; },
     getRepoOwner: function() { return _repoOwner; },
     getRepoName: function() { return _repoName; },
+    getImageRepoName: function() { return _imageRepoName; },
     getLabels: function() { return _labels; },
     getUsers: function() { return _users; },
-    getRepoFull: function() { return _repoOwner + "/" + _repoName; }
+    getRepoFull: function() { return _repoOwner + "/" + _repoName; },
+    getImageRepoFull: function() { return _repoOwner + "/" + _imageRepoName; }
   };
 })();
