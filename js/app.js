@@ -286,6 +286,11 @@ var JITApp = (function() {
       inputShopPhoto.addEventListener("change", function(e) {
         var file = e.target.files[0];
         if (file) {
+          if (file.size > 20 * 1024 * 1024) {
+            _showToast("图片不能超过20MB！", "error");
+            inputShopPhoto.value = "";
+            return;
+          }
           var reader = new FileReader();
           reader.onload = function(ev) {
             var preview = document.getElementById("previewShopPhoto");
@@ -318,7 +323,12 @@ var JITApp = (function() {
         _orderPhotoFiles = [];
         var previewList = document.getElementById("previewOrderPhotos");
         if (previewList) previewList.innerHTML = "";
+        var oversizedCount = 0;
         files.forEach(function(file, index) {
+          if (file.size > 20 * 1024 * 1024) {
+            oversizedCount++;
+            return;
+          }
           _orderPhotoFiles.push(file);
           var reader = new FileReader();
           reader.onload = function(ev) {
@@ -331,6 +341,9 @@ var JITApp = (function() {
           };
           reader.readAsDataURL(file);
         });
+        if (oversizedCount > 0) {
+          _showToast("已跳过" + oversizedCount + "张超过20MB的图片！", "error");
+        }
       });
     }
 

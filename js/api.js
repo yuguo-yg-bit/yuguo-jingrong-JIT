@@ -98,22 +98,18 @@ var JITApi = (function() {
     });
   };
 
-  var _uploadImageToRepo = function(file, fileName, commitMsg) {
+  var _uploadImageToRepo = function(file, folderPath, fileName, commitMsg) {
     return _compressImage(file).then(function(base64) {
-      return _uploadFileToRepo("uploads/" + fileName, base64, commitMsg);
+      return _uploadFileToRepo(folderPath + "/" + fileName, base64, commitMsg);
     });
   };
 
-  var _uploadImagesToRepo = function(files, prefix, commitMsg) {
+  var _uploadImagesToRepo = function(files, folderPath, commitMsg) {
     var uploads = [];
     for (var i = 0; i < files.length; i++) {
       (function(file, index) {
-        var ext = "jpg";
-        var name = file.name || ("image_" + index);
-        var dotIdx = name.lastIndexOf(".");
-        if (dotIdx > -1) ext = name.substring(dotIdx + 1);
-        var fileName = prefix + "_" + index + "." + ext;
-        uploads.push(_uploadImageToRepo(file, fileName, commitMsg));
+        var fileName = "order_" + (index + 1) + ".png";
+        uploads.push(_uploadImageToRepo(file, folderPath, fileName, commitMsg));
       })(files[i], i);
     }
     return Promise.all(uploads);
@@ -321,14 +317,15 @@ var JITApi = (function() {
 
   var _submitVoucherWithImages = function(voucherData, shopPhotoFile, orderPhotoFiles) {
     var voucherId = voucherData.voucherId || Date.now();
-    var prefix = "voucher_" + (voucherData.username || "user") + "_" + voucherId;
+    var username = voucherData.username || "user";
+    var folderPath = "uploads/" + username + "/" + voucherId;
     var commitMsg = "上传凭证图片: " + (voucherData.shopName || "") + " #" + voucherId;
 
     var uploadPromises = [];
 
     if (shopPhotoFile) {
       uploadPromises.push(
-        _uploadImageToRepo(shopPhotoFile, prefix + "_shop.jpg", commitMsg).then(function(url) {
+        _uploadImageToRepo(shopPhotoFile, folderPath, "shop.png", commitMsg).then(function(url) {
           voucherData.shopPhoto = url;
         })
       );
@@ -336,7 +333,7 @@ var JITApi = (function() {
 
     if (orderPhotoFiles && orderPhotoFiles.length > 0) {
       uploadPromises.push(
-        _uploadImagesToRepo(orderPhotoFiles, prefix + "_order", commitMsg).then(function(urls) {
+        _uploadImagesToRepo(orderPhotoFiles, folderPath, commitMsg).then(function(urls) {
           voucherData.orderPhotos = urls;
         })
       );
@@ -345,7 +342,7 @@ var JITApi = (function() {
     if (voucherData.signature && voucherData.signature.indexOf("base64,") > -1) {
       var sigBase64 = voucherData.signature.split(",")[1];
       uploadPromises.push(
-        _uploadFileToRepo("uploads/" + prefix + "_signature.png", sigBase64, commitMsg).then(function(url) {
+        _uploadFileToRepo(folderPath + "/signature.png", sigBase64, commitMsg).then(function(url) {
           voucherData.signature = url;
         })
       );
