@@ -42,8 +42,8 @@ var JITApi = (function() {
       var url = URL.createObjectURL(file);
       img.onload = function() {
         URL.revokeObjectURL(url);
-        var maxW = 800;
-        var maxH = 800;
+        var maxW = 600;
+        var maxH = 600;
         var w = img.width;
         var h = img.height;
         if (w > maxW || h > maxH) {
@@ -56,7 +56,7 @@ var JITApi = (function() {
         canvas.height = h;
         var ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, w, h);
-        var dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+        var dataUrl = canvas.toDataURL("image/jpeg", 0.5);
         var base64 = dataUrl.split(",")[1];
         resolve(base64);
       };
@@ -174,11 +174,29 @@ var JITApi = (function() {
 
   var _getAllIssues = function(labels) {
     var labelStr = labels ? labels.join(",") : "";
-    var url = _apiBase + "/repos/" + _repoFull + "/issues?state=all&labels=" + encodeURIComponent(labelStr) + "&per_page=100&sort=created&direction=desc";
-    return _safeRequest(url, {
-      method: "GET",
-      headers: _headers()
-    });
+    var perPage = 100;
+    var page = 1;
+    var allIssues = [];
+
+    var _fetchPage = function() {
+      var url = _apiBase + "/repos/" + _repoFull + "/issues?state=all&labels=" + encodeURIComponent(labelStr) + "&per_page=" + perPage + "&page=" + page + "&sort=created&direction=desc";
+      return _safeRequest(url, {
+        method: "GET",
+        headers: _headers()
+      }).then(function(issues) {
+        if (!issues || !Array.isArray(issues) || issues.length === 0) {
+          return allIssues;
+        }
+        allIssues = allIssues.concat(issues);
+        if (issues.length < perPage) {
+          return allIssues;
+        }
+        page++;
+        return _fetchPage();
+      });
+    };
+
+    return _fetchPage();
   };
 
   var _updateIssue = function(issueNumber, updates) {
@@ -385,6 +403,32 @@ var JITApi = (function() {
     return _updateIssue(voucherData._issueNumber, { body: body });
   };
 
+  var _updateVoucherWithLottery = function(issueNumber, voucherData) {
+    var body = _formatIssueBody(voucherData);
+    return _updateIssue(issueNumber, { body: body });
+  };
+
+  var _cache = {};
+  var _CACHE_TTL = 30000;
+
+  var _getCachedOrFetch = function(key, fetchFn) {
+    var now = Date.now();
+    if (_cache[key] && (now - _cache[key].ts < _CACHE_TTL)) {
+      return Promise.resolve(_cache[key].data);
+    }
+    return fetchFn().then(function(data) {
+      _cache[key] = { data: data, ts: Date.now() };
+      return data;
+    }).catch(function(err) {
+      if (_cache[key]) return _cache[key].data;
+      throw err;
+    });
+  };
+
+  var _invalidateCache = function(key) {
+    delete _cache[key];
+  };
+
   var _getVouchers = function(page, perPage) {
     return _getIssues([JITConfig.getLabels().voucher], page, perPage).then(function(issues) {
       return issues.map(_parseVoucherData).filter(function(d) { return d !== null; });
@@ -392,34 +436,38 @@ var JITApi = (function() {
   };
 
   var _getAllVouchers = function() {
-    return _getAllIssues([JITConfig.getLabels().voucher]).then(function(issues) {
-      return issues.map(_parseVoucherData).filter(function(d) { return d !== null; });
+    return _getCachedOrFetch("allVouchers", function() {
+      return _getAllIssues([JITConfig.getLabels().voucher]).then(function(issues) {
+        return issues.map(_parseVoucherData).filter(function(d) { return d !== null; });
+      });
     });
   };
 
   var _getVoucherCount = function() {
-    return _getAllIssues([JITConfig.getLabels().voucher]).then(function(issues) {
-      return issues.length;
+    return _getAllVouchers().then(function(vouchers) {
+      return vouchers.length;
     });
   };
 
   var _getApprovedCount = function() {
-    return _getAllIssues([JITConfig.getLabels().voucher, JITConfig.getLabels().approved]).then(function(issues) {
-      return issues.length;
+    return _getAllVouchers().then(function(vouchers) {
+      return vouchers.filter(function(v) { return v.statusType === "approved"; }).length;
     });
   };
 
   var _getNextVoucherId = function() {
-    return _getAllIssues([JITConfig.getLabels().voucher]).then(function(issues) {
-      var maxId = 0;
-      issues.forEach(function(issue) {
-        var data = _parseVoucherData(issue);
-        if (data && data.voucherId) {
-          var num = parseInt(data.voucherId, 10);
-          if (!isNaN(num) && num > maxId) maxId = num;
-        }
+    return _getCachedOrFetch("allVouchersForId", function() {
+      return _getAllIssues([JITConfig.getLabels().voucher]).then(function(issues) {
+        var maxId = 0;
+        issues.forEach(function(issue) {
+          var data = _parseVoucherData(issue);
+          if (data && data.voucherId) {
+            var num = parseInt(data.voucherId, 10);
+            if (!isNaN(num) && num > maxId) maxId = num;
+          }
+        });
+        return maxId + 1;
       });
-      return maxId + 1;
     }).catch(function() {
       return 1;
     });
@@ -438,6 +486,7 @@ var JITApi = (function() {
     updateVoucherIssue: _updateVoucherIssue,
     parseVoucherData: _parseVoucherData,
     getNextVoucherId: _getNextVoucherId,
-    ensureLabels: _ensureLabels
+    ensureLabels: _ensureLabels,
+    invalidateCache: _invalidateCache
   };
 })();

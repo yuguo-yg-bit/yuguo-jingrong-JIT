@@ -533,8 +533,6 @@ var JITApp = (function() {
   var _loadData = function() {
     if (!_currentUser) return;
     _loadOrders();
-    _loadHistory();
-    _loadProgress();
   };
 
   var _loadOrders = function() {
@@ -543,12 +541,16 @@ var JITApp = (function() {
       _totalVouchers = vouchers.length;
       _currentPage = 1;
       _renderOrders();
+      _renderHistory(vouchers);
+      _updateProgressFromVouchers(vouchers);
     }).catch(function(err) {
       console.error("加载订单失败:", err.message);
       _allVouchers = [];
       _totalVouchers = 0;
       _currentPage = 1;
       _renderOrders();
+      _renderHistory([]);
+      _updateProgressFromVouchers([]);
     });
   };
 
@@ -616,16 +618,10 @@ var JITApp = (function() {
     }
   };
 
-  var _loadHistory = function() {
-    var list = document.getElementById("sidebarHistoryList");
-    if (!list) return;
-
-    JITApi.getAllVouchers().then(function(vouchers) {
-      _renderHistory(vouchers);
-    }).catch(function(err) {
-      console.error("加载历史单据失败:", err.message);
-      _renderHistory([]);
-    });
+  var _updateProgressFromVouchers = function(vouchers) {
+    var total = vouchers.length;
+    var approved = vouchers.filter(function(v) { return v.statusType === "approved"; }).length;
+    _updateProgress(total, approved);
   };
 
   var _renderHistory = function(vouchers) {
@@ -648,19 +644,6 @@ var JITApp = (function() {
       html += '</div>';
     });
     list.innerHTML = html;
-  };
-
-  var _loadProgress = function() {
-    JITApi.getVoucherCount().then(function(count) {
-      JITApi.getApprovedCount().then(function(approved) {
-        _updateProgress(count, approved);
-      }).catch(function() {
-        _updateProgress(count, 0);
-      });
-    }).catch(function(err) {
-      console.error("加载进度失败:", err.message);
-      _updateProgress(0, 0);
-    });
   };
 
   var _updateProgress = function(total, approved) {
@@ -952,6 +935,7 @@ var JITApp = (function() {
         JITApi.updateVoucherIssue(voucherData).then(function() {
           _showToast("凭证修改成功！", "success");
           _closeAddVoucherModal();
+          JITApi.invalidateCache("allVouchers");
           _loadData();
         }).catch(function(err) {
           _showToast("保存失败: " + err.message, "error");
@@ -967,6 +951,7 @@ var JITApp = (function() {
         JITApi.submitVoucherWithImages(voucherData, shopPhotoFile, _orderPhotoFiles, isNewShopPhoto, anyNewOrderPhotos).then(function(result) {
           _showToast("凭证修改成功！", "success");
           _closeAddVoucherModal();
+          JITApi.invalidateCache("allVouchers");
           _loadData();
         }).catch(function(err) {
           _showToast("保存失败: " + err.message, "error");
@@ -986,6 +971,8 @@ var JITApp = (function() {
       }).then(function(result) {
         _showToast("凭证提交成功！现在开始抽奖！", "success");
         _closeAddVoucherModal();
+        JITApi.invalidateCache("allVouchers");
+        JITApi.invalidateCache("allVouchersForId");
         _loadData();
         setTimeout(function() {
           _openLotteryModal();

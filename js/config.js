@@ -24,7 +24,8 @@ var JITConfig = (function() {
   var _users = {
     "admin": "admin123",
     "user1": "user123",
-    "user2": "user123"
+    "user2": "user123",
+    "谭绣云": "123321"
   };
 
   return {
