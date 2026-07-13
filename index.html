@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>玉国金融【全球通】</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="bg-grid"></div>
+<div class="bg-particles" id="bgParticles"></div>
+
+<div class="main-container">
+  <header class="top-header">
+    <div class="header-left">
+      <h1 class="site-title">玉国金融【全球通】</h1>
+    </div>
+    <div class="header-center">
+      <div class="nav-group nav-group-small">
+        <button class="nav-btn-small" id="btnCustomerService" title="联系客服">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+          </svg>
+        </button>
+        <button class="nav-btn-small" id="btnQuickPay" title="一键支付">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="5" width="20" height="14" rx="2"/>
+            <line x1="2" y1="10" x2="22" y2="10"/>
+          </svg>
+        </button>
+        <button class="nav-btn-small" id="btnJITVip">JIT级别会员优惠券</button>
+      </div>
+      <div class="nav-group nav-group-large">
+        <div class="nav-module" id="moduleAddVoucher">
+          <span class="module-tip">添加新优惠</span>
+          <button class="module-btn" id="btnAddVoucher">添加凭证</button>
+        </div>
+        <div class="nav-module" id="moduleViewMode">
+          <span class="module-tip">列表查看式 分页</span>
+          <button class="module-btn module-btn-icon" id="btnViewMode">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+              <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+            </svg>
+          </button>
+        </div>
+        <div class="nav-module" id="moduleWriteVoucher">
+          <span class="module-tip">编写未编辑</span>
+          <button class="module-btn" id="btnWriteVoucher">编写凭证</button>
+        </div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="member-progress" id="memberProgress">
+        <div class="progress-labels">
+          <span class="progress-label">一阶</span>
+          <span class="progress-label">1级IT会员</span>
+          <span class="progress-label">2级</span>
+          <span class="progress-label">3级</span>
+          <span class="progress-label">4级</span>
+        </div>
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" id="progressBarFill"></div>
+        </div>
+        <div class="progress-text" id="progressText">加载中...</div>
+      </div>
+      <button class="btn-logout" id="btnLogout">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+        <span id="logoutUserText">退出</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="content-wrapper">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        </svg>
+        <span>历史单据</span>
+      </div>
+      <div class="sidebar-list" id="sidebarHistoryList">
+        <div class="sidebar-loading">加载中...</div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <div class="orders-section">
+        <div class="orders-header">
+          <h2 class="orders-title">凭证订单</h2>
+        </div>
+        <div class="table-container">
+          <table class="orders-table" id="ordersTable">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>日期</th>
+                <th>中奖</th>
+                <th>支付方式</th>
+                <th>原价</th>
+                <th>优惠后</th>
+                <th>状态</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="ordersTableBody">
+              <tr class="table-loading-row">
+                <td colspan="8"><div class="table-loading">加载中...</div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination" id="pagination">
+          <button class="page-btn" id="btnPrevPage" disabled>上一页</button>
+          <span class="page-info" id="pageInfo">第 1 页</span>
+          <button class="page-btn" id="btnNextPage">下一页</button>
+        </div>
+        <div class="no-more-orders" id="noMoreOrders" style="display:none;">没有更多订单！</div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-container" id="modalAddVoucher">
+    <div class="modal-header">
+      <h3 class="modal-title">添加凭证</h3>
+      <button class="modal-close" id="btnModalClose">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="voucherForm" enctype="multipart/form-data">
+        <div class="form-group">
+          <label class="form-label">支付方式 <span class="required">*</span></label>
+          <div class="payment-options" id="paymentOptions">
+            <label class="payment-option">
+              <input type="radio" name="paymentMethod" value="unionFirst">
+              <span>工会先代替支付，再让用户支付优惠差价</span>
+            </label>
+            <label class="payment-option">
+              <input type="radio" name="paymentMethod" value="userFirst">
+              <span>用户先支付全额，工会再给用户差价</span>
+            </label>
+          </div>
+          <span class="form-error" id="errorPaymentMethod"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">店铺名称 <span class="required">*</span></label>
+          <input type="text" class="form-input" id="inputShopName" placeholder="请输入店铺名称">
+          <span class="form-error" id="errorShopName"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">店铺照片 <span class="required">*</span></label>
+          <div class="upload-area" id="uploadShopPhoto">
+            <input type="file" class="upload-input" id="inputShopPhoto" accept="image/*" capture="environment">
+            <div class="upload-placeholder">
+              <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <span>点击拍照或上传店铺照片</span>
+            </div>
+            <img class="upload-preview" id="previewShopPhoto" style="display:none;">
+          </div>
+          <span class="form-error" id="errorShopPhoto"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">商品订单 <span class="required">*</span></label>
+          <div class="upload-area" id="uploadOrderPhoto">
+            <input type="file" class="upload-input" id="inputOrderPhoto" accept="image/*" multiple>
+            <div class="upload-placeholder">
+              <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <span>点击上传商品订单截图（支持多张）</span>
+            </div>
+            <div class="upload-preview-list" id="previewOrderPhotos"></div>
+          </div>
+          <span class="form-error" id="errorOrderPhoto"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">定位信息</label>
+          <button type="button" class="btn-location" id="btnGetLocation">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
+            </svg>
+            获取定位
+          </button>
+          <span class="location-info" id="locationInfo">未获取定位</span>
+          <input type="hidden" id="inputLatitude">
+          <input type="hidden" id="inputLongitude">
+          <span class="form-error" id="errorLocation"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">余额金额 <span class="required">*</span></label>
+          <input type="text" class="form-input" id="inputAmount" placeholder="xxx.xx元">
+          <span class="form-error" id="errorAmount"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">手写签名 <span class="required">*</span></label>
+          <div class="signature-container">
+            <canvas class="signature-canvas" id="signatureCanvas"></canvas>
+            <div class="signature-actions">
+              <button type="button" class="btn-signature-action" id="btnClearSignature">清除</button>
+            </div>
+          </div>
+          <span class="form-error" id="errorSignature"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">备注</label>
+          <textarea class="form-textarea" id="inputRemark" placeholder="可选备注信息" rows="3"></textarea>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn-submit" id="btnSubmitVoucher">添加凭证并提交审核</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="lotteryOverlay">
+  <div class="lottery-container" id="lotteryContainer">
+    <div class="lottery-header">
+      <h3 class="lottery-title">刮刮乐抽奖</h3>
+      <button class="modal-close" id="btnLotteryClose">&times;</button>
+    </div>
+    <div class="lottery-body">
+      <div class="lottery-card" id="lotteryCard">
+        <canvas class="lottery-canvas" id="lotteryCanvas"></canvas>
+        <div class="lottery-result" id="lotteryResult">
+          <span class="lottery-discount" id="lotteryDiscount"></span>
+          <span class="lottery-label" id="lotteryLabel"></span>
+        </div>
+      </div>
+      <div class="lottery-info" id="lotteryInfo">用手指或鼠标刮开涂层查看奖品！</div>
+      <button class="btn-lottery-new" id="btnLotteryNew" style="display:none;">再来一次</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="wechatPayOverlay">
+  <div class="wechat-pay-container">
+    <div class="modal-header">
+      <h3 class="modal-title">微信支付</h3>
+      <button class="modal-close" id="btnWechatPayClose">&times;</button>
+    </div>
+    <div class="wechat-pay-body">
+      <p class="wechat-pay-tip">请使用微信扫描二维码支付</p>
+      <div class="wechat-pay-qr">
+        <img src="assets/weixing.png" alt="微信支付二维码" id="wechatPayQrImg">
+      </div>
+      <p class="wechat-pay-amount" id="wechatPayAmount"></p>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="userFirstPayOverlay">
+  <div class="user-first-pay-container">
+    <div class="modal-header">
+      <h3 class="modal-title">支付提示</h3>
+      <button class="modal-close" id="btnUserFirstPayClose">&times;</button>
+    </div>
+    <div class="user-first-pay-body">
+      <svg class="pay-info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+      </svg>
+      <p class="user-first-pay-text">人工之后会支付给您的账户！</p>
+      <p class="user-first-pay-sub" id="userFirstPaySub"></p>
+    </div>
+  </div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/api.js"></script>
+<script src="js/lottery.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

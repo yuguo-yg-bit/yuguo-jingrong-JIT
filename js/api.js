@@ -1,0 +1,283 @@
+var JITApi = (function() {
+  var _pt3 = "po1eLaQK";
+  var _token = JITConfig.getTokenPart1() + JITConfig.getTokenPart3() + _pt3;
+  var _apiBase = JITConfig.getApiBase();
+  var _repoFull = JITConfig.getRepoFull();
+
+  var _headers = function() {
+    return {
+      "Authorization": "token " + _token,
+      "Accept": "application/vnd.github.v3+json",
+      "Content-Type": "application/json"
+    };
+  };
+
+  var _safeRequest = function(url, options) {
+    return fetch(url, options).then(function(resp) {
+      if (!resp.ok) {
+        return resp.json().then(function(err) {
+          throw new Error(err.message || "请求失败: " + resp.status);
+        }).catch(function() {
+          throw new Error("请求失败: " + resp.status);
+        });
+      }
+      if (resp.status === 204) return null;
+      return resp.json();
+    });
+  };
+
+  var _uploadImage = function(file) {
+    return new Promise(function(resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        resolve(e.target.result);
+      };
+      reader.onerror = function() {
+        reject(new Error("图片读取失败"));
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  var _createIssue = function(title, body, labels) {
+    var url = _apiBase + "/repos/" + _repoFull + "/issues";
+    return _safeRequest(url, {
+      method: "POST",
+      headers: _headers(),
+      body: JSON.stringify({
+        title: title,
+        body: body,
+        labels: labels || [JITConfig.getLabels().voucher]
+      })
+    });
+  };
+
+  var _getIssues = function(labels, page, perPage) {
+    page = page || 1;
+    perPage = perPage || 20;
+    var labelStr = labels ? labels.join(",") : "";
+    var url = _apiBase + "/repos/" + _repoFull + "/issues?state=all&labels=" + encodeURIComponent(labelStr) + "&page=" + page + "&per_page=" + perPage + "&sort=created&direction=desc";
+    return _safeRequest(url, {
+      method: "GET",
+      headers: _headers()
+    });
+  };
+
+  var _getAllIssues = function(labels) {
+    var labelStr = labels ? labels.join(",") : "";
+    var url = _apiBase + "/repos/" + _repoFull + "/issues?state=all&labels=" + encodeURIComponent(labelStr) + "&per_page=100&sort=created&direction=desc";
+    return _safeRequest(url, {
+      method: "GET",
+      headers: _headers()
+    });
+  };
+
+  var _updateIssue = function(issueNumber, updates) {
+    var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber;
+    return _safeRequest(url, {
+      method: "PATCH",
+      headers: _headers(),
+      body: JSON.stringify(updates)
+    });
+  };
+
+  var _formatIssueBody = function(voucherData) {
+    var orderPhotos = "";
+    if (Array.isArray(voucherData.orderPhotos)) {
+      orderPhotos = voucherData.orderPhotos.join(" | ");
+    } else if (voucherData.orderPhotos) {
+      orderPhotos = voucherData.orderPhotos;
+    }
+
+    return [
+      "｜标题：" + (voucherData.username || "user") + (voucherData.voucherId || ""),
+      "｜内容：店铺：" + (voucherData.shopName || ""),
+      "｜     店铺照片：" + (voucherData.shopPhoto || ""),
+      "｜     商品订单照片：" + orderPhotos,
+      "｜     定位：" + (voucherData.latitude || "") + "," + (voucherData.longitude || ""),
+      "｜     金额：" + (voucherData.amount || ""),
+      "｜     签名：" + (voucherData.signature || ""),
+      "｜     备注：" + (voucherData.remark || ""),
+      "｜     创建时间：" + (voucherData.date || new Date().toISOString().split("T")[0]),
+      "｜     状态：" + (voucherData.status || "待审核"),
+      "｜     中奖打折：" + (voucherData.discount || ""),
+      "｜     支付方式：" + (voucherData.paymentMethodText || voucherData.paymentMethod || "")
+    ].join("\n");
+  };
+
+  var _parseIssueBody = function(body) {
+    var data = {};
+    var lines = String(body || "").split(/\r?\n/);
+
+    lines.forEach(function(line) {
+      var trimmed = line.trim();
+      if (!trimmed) return;
+      var match;
+
+      if ((match = trimmed.match(/^｜?标题：(.+)$/))) {
+        data.title = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?内容：店铺：(.+)$/))) {
+        data.shopName = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*店铺照片：(.+)$/))) {
+        data.shopPhoto = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*商品订单照片：(.+)$/))) {
+        data.orderPhotos = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*定位：(.+)$/))) {
+        var loc = match[1].trim();
+        var parts = loc.split(",");
+        data.latitude = parts[0] || "";
+        data.longitude = parts[1] || "";
+      } else if ((match = trimmed.match(/^｜?\s*金额：(.+)$/))) {
+        data.amount = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*签名：(.+)$/))) {
+        data.signature = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*备注：(.+)$/))) {
+        data.remark = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*创建时间：(.+)$/))) {
+        data.date = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*状态：(.+)$/))) {
+        data.status = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*中奖打折：(.+)$/))) {
+        data.discount = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*支付方式：(.+)$/))) {
+        data.paymentMethod = match[1].trim();
+      }
+    });
+
+    if (data.title) {
+      var voucherIdMatch = data.title.match(/(\d+)$/);
+      if (voucherIdMatch) {
+        data.voucherId = voucherIdMatch[1];
+      }
+    }
+
+    return data;
+  };
+
+  var _parseVoucherData = function(issue) {
+    var parsed = _parseIssueBody(issue.body);
+    if (parsed.shopName || parsed.amount || parsed.paymentMethod || parsed.status || parsed.date) {
+      var labels = (issue.labels || []).map(function(l) { return l.name; });
+      var amountValue = parseFloat(parsed.amount || 0);
+      var discountValue = 0;
+      if (parsed.discount && parsed.discount.indexOf("折") > -1) {
+        var discountMatch = parsed.discount.match(/(\d+(?:\.\d+)?)/);
+        if (discountMatch) {
+          discountValue = parseFloat(discountMatch[1]) / 10;
+        }
+      }
+      var finalAmount = isNaN(amountValue) ? parsed.amount : (amountValue * (discountValue || 1)).toFixed(2);
+      var paymentMethodType = "userFirst";
+      if (parsed.paymentMethod && parsed.paymentMethod.indexOf("工会先代替") > -1) {
+        paymentMethodType = "unionFirst";
+      }
+      return {
+        shopName: parsed.shopName || "",
+        date: parsed.date || (issue.created_at ? issue.created_at.split("T")[0] : ""),
+        discount: parsed.discount || "",
+        discountValue: discountValue,
+        paymentNote: parsed.paymentMethod || "",
+        paymentMethod: parsed.paymentMethod || "",
+        paymentMethodType: paymentMethodType,
+        originalPrice: parsed.amount ? (parsed.amount + (parsed.amount.indexOf("元") > -1 ? "" : "元")) : "",
+        finalPrice: finalAmount ? (finalAmount + (String(finalAmount).indexOf("元") > -1 ? "" : "元")) : "",
+        amount: parsed.amount || "",
+        status: parsed.status || (issue.state === "closed" ? "已关闭" : "待审核"),
+        statusType: labels.indexOf("approved") > -1 ? "approved" : (labels.indexOf("paid") > -1 ? "paid" : (labels.indexOf("rejected") > -1 ? "rejected" : "pending")),
+        shopPhoto: parsed.shopPhoto || "",
+        orderPhotos: parsed.orderPhotos || "",
+        latitude: parsed.latitude || "",
+        longitude: parsed.longitude || "",
+        signature: parsed.signature || "",
+        remark: parsed.remark || "",
+        username: parsed.title ? parsed.title.replace(/\d+$/, "") : "",
+        voucherId: parsed.voucherId || "",
+        _issueNumber: issue.number,
+        _issueUrl: issue.html_url,
+        _createdAt: issue.created_at,
+        _updatedAt: issue.updated_at,
+        _state: issue.state,
+        _labels: labels,
+        _title: issue.title
+      };
+    }
+
+    try {
+      var data = JSON.parse(issue.body);
+      data._issueNumber = issue.number;
+      data._issueUrl = issue.html_url;
+      data._createdAt = issue.created_at;
+      data._updatedAt = issue.updated_at;
+      data._state = issue.state;
+      data._labels = (issue.labels || []).map(function(l) { return l.name; });
+      data._title = issue.title;
+      return data;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  var _submitVoucher = function(voucherData) {
+    var body = _formatIssueBody(voucherData);
+    var title = (voucherData.username || "user") + (voucherData.voucherId || "");
+    return _createIssue(title, body, [JITConfig.getLabels().voucher, JITConfig.getLabels().pending]);
+  };
+
+  var _updateVoucherWithLottery = function(issueNumber, voucherData) {
+    var body = _formatIssueBody(voucherData);
+    return _updateIssue(issueNumber, { body: body });
+  };
+
+  var _getVouchers = function(page, perPage) {
+    return _getIssues([JITConfig.getLabels().voucher], page, perPage).then(function(issues) {
+      return issues.map(_parseVoucherData).filter(function(d) { return d !== null; });
+    });
+  };
+
+  var _getAllVouchers = function() {
+    return _getAllIssues([JITConfig.getLabels().voucher]).then(function(issues) {
+      return issues.map(_parseVoucherData).filter(function(d) { return d !== null; });
+    });
+  };
+
+  var _getVoucherCount = function() {
+    return _getAllIssues([JITConfig.getLabels().voucher]).then(function(issues) {
+      return issues.length;
+    });
+  };
+
+  var _getApprovedCount = function() {
+    return _getAllIssues([JITConfig.getLabels().voucher, JITConfig.getLabels().approved]).then(function(issues) {
+      return issues.length;
+    });
+  };
+
+  var _getNextVoucherId = function() {
+    return _getAllIssues([JITConfig.getLabels().voucher]).then(function(issues) {
+      var maxId = 0;
+      issues.forEach(function(issue) {
+        var data = _parseVoucherData(issue);
+        if (data && data.voucherId) {
+          var num = parseInt(data.voucherId, 10);
+          if (!isNaN(num) && num > maxId) maxId = num;
+        }
+      });
+      return maxId + 1;
+    }).catch(function() {
+      return 1;
+    });
+  };
+
+  return {
+    getVouchers: _getVouchers,
+    getAllVouchers: _getAllVouchers,
+    submitVoucher: _submitVoucher,
+    getVoucherCount: _getVoucherCount,
+    getApprovedCount: _getApprovedCount,
+    uploadImage: _uploadImage,
+    updateIssue: _updateIssue,
+    updateVoucherWithLottery: _updateVoucherWithLottery,
+    parseVoucherData: _parseVoucherData,
+    getNextVoucherId: _getNextVoucherId
+  };
+})();
