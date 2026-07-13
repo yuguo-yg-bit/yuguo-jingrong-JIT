@@ -335,7 +335,8 @@ var JITApi = (function() {
   var _submitVoucherWithImages = function(voucherData, shopPhotoFile, orderPhotoFiles) {
     var voucherId = voucherData.voucherId || Date.now();
     var username = voucherData.username || "user";
-    var folderPath = "uploads/" + username + "/" + voucherId;
+    var ts = Date.now();
+    var folderPath = "uploads/" + username + "/" + voucherId + "_" + ts;
     var commitMsg = "上传凭证图片: " + (voucherData.shopName || "") + " #" + voucherId;
 
     var uploadPromises = [];
