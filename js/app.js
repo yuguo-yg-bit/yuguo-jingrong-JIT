@@ -998,6 +998,7 @@ var JITApp = (function() {
       btn.classList.remove("btn-loading");
       btn.textContent = originalText;
     });
+    }
   };
 
   var _saveLotteryResult = function(prize) {
