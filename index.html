@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta http-equiv="X-Frame-Options" content="DENY">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <title>玉国金融【全球通】</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -48,11 +51,7 @@
           <span class="module-tip">编辑凭证</span>
           <button class="module-btn" id="btnWriteVoucher">编辑凭证</button>
         </div>
-        <div class="nav-module" id="moduleAdmin" style="display:none;">
-          <span class="module-tip" style="color:#ffd700;">⚙ 后台管理</span>
-          <button class="module-btn" id="btnAdmin" style="border-color:#ffd700;color:#ffd700;">管理后台</button>
         </div>
-      </div>
     </div>
     <div class="header-right">
       <div class="member-progress" id="memberProgress">
@@ -377,73 +376,14 @@
   </div>
 </div>
 
-<!-- ===== 后台管理弹窗 ===== -->
-<div class="modal-overlay" id="adminOverlay">
-  <div class="admin-container" id="adminContainer">
-    <div class="admin-header">
-      <h3 class="admin-title">⚙ 后台管理中心</h3>
-      <button class="modal-close" id="btnAdminClose">&times;</button>
-    </div>
-    <div class="admin-tabs">
-      <button class="admin-tab active" data-tab="review">📋 审核订单</button>
-      <button class="admin-tab" data-tab="lottery">🎲 抽奖概率</button>
-      <button class="admin-tab" data-tab="users">👥 用户管理</button>
-      <button class="admin-tab" data-tab="settings">🔧 高级设置</button>
-    </div>
-    <div class="admin-body">
-      <!-- ===== 审核订单 ===== -->
-      <div class="admin-panel active" id="adminReviewPanel">
-        <div class="admin-panel-header">
-          <span>待审核订单列表</span>
-          <button class="admin-refresh-btn" id="btnAdminRefreshReview">🔄 刷新</button>
-        </div>
-        <div class="admin-review-list" id="adminReviewList">
-          <div class="admin-loading">加载中...</div>
-        </div>
-      </div>
-      <!-- ===== 抽奖概率 ===== -->
-      <div class="admin-panel" id="adminLotteryPanel">
-        <div class="admin-panel-header">
-          <span>抽奖概率配置</span>
-          <button class="admin-refresh-btn" id="btnAdminSaveLottery">💾 保存配置</button>
-        </div>
-        <div class="admin-lottery-config" id="adminLotteryConfig">
-          <div class="admin-loading">加载中...</div>
-        </div>
-      </div>
-      <!-- ===== 用户管理 ===== -->
-      <div class="admin-panel" id="adminUsersPanel">
-        <div class="admin-panel-header">
-          <span>用户管理</span>
-          <button class="admin-refresh-btn" id="btnAdminAddUser">➕ 添加用户</button>
-        </div>
-        <div class="admin-users-config" id="adminUsersConfig">
-          <div class="admin-loading">加载中...</div>
-        </div>
-        <!-- 添加用户表单 -->
-        <div class="admin-user-form" id="adminUserForm" style="display:none;">
-          <div class="admin-user-form-row">
-            <input type="text" class="admin-input" id="adminNewUsername" placeholder="用户名">
-            <input type="text" class="admin-input" id="adminNewPassword" placeholder="密码">
-            <button class="admin-btn-small admin-btn-save" id="btnAdminConfirmAddUser">确认添加</button>
-            <button class="admin-btn-small admin-btn-cancel" id="btnAdminCancelAddUser">取消</button>
-          </div>
-        </div>
-      </div>
-      <!-- ===== 高级设置 ===== -->
-      <div class="admin-panel" id="adminSettingsPanel">
-        <div class="admin-panel-header">
-          <span>高级设置</span>
-          <button class="admin-refresh-btn" id="btnAdminSaveSettings">💾 保存设置</button>
-        </div>
-        <div class="admin-settings-config" id="adminSettingsConfig">
-          <div class="admin-loading">加载中...</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
+<script>
+(function() {
+  var path = window.location.pathname;
+  if (path && path !== "/" && !path.endsWith("index.html") && !path.endsWith("AdMiN_AdMiN.html") && !path.endsWith("404.html") && !path.match(/\.(css|js|png|jpg|jpeg|gif|svg|ico|json|xml|txt|woff|woff2|ttf|eot|webp|mp4|webm)$/)) {
+    window.location.replace("index.html");
+  }
+})();
+</script>
 <script src="js/config.js"></script>
 <script src="js/api.js"></script>
 <script src="js/lottery.js"></script>

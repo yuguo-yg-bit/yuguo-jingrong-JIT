@@ -431,6 +431,7 @@ var JITLottery = (function() {
     start: _start,
     getCurrentPrize: function() { return _currentPrize; },
     getMatchedCount: function() { return _matchedIndices ? _matchedIndices.length : 0; },
+    getPrizes: function() { return _prizes; },
     updatePrizeConfig: function(config) {
       if (!Array.isArray(config)) return;
       config.forEach(function(item, index) {

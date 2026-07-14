@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>玉国金融 - 后台管理系统</title>
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta http-equiv="X-Frame-Options" content="DENY">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+<div class="admin-layout">
+  <aside class="admin-sidebar">
+    <div class="admin-logo">玉国金融</div>
+    <div class="admin-logo-sub">后台管理系统</div>
+    <nav class="admin-nav">
+      <a class="admin-nav-item active" data-tab="review">📋 凭证审核</a>
+      <a class="admin-nav-item" data-tab="chat">💬 在线聊天</a>
+      <a class="admin-nav-item" data-tab="lottery">🎲 抽奖配置</a>
+      <a class="admin-nav-item" data-tab="users">👥 用户管理</a>
+      <a class="admin-nav-item" data-tab="settings">⚙️ 系统设置</a>
+      <a class="admin-nav-item" data-tab="developer">🔧 开发者</a>
+    </nav>
+    <div class="admin-sidebar-footer">
+      <div class="admin-user" id="adminUser">未登录</div>
+      <button class="btn-logout" id="btnAdminLogout">退出登录</button>
+    </div>
+  </aside>
+
+  <main class="admin-main">
+    <div class="admin-tab active" id="tabReview">
+      <div class="admin-toolbar">
+        <div class="admin-stats">
+          <span class="stat-badge pending" id="statPending">待审核: 0</span>
+          <span class="stat-badge approved" id="statApproved">已通过: 0</span>
+          <span class="stat-badge rejected" id="statRejected">已拒绝: 0</span>
+        </div>
+        <select class="admin-filter" id="filterStatus">
+          <option value="all">全部状态</option>
+          <option value="pending" selected>待审核</option>
+          <option value="approved">已通过</option>
+          <option value="rejected">已拒绝</option>
+        </select>
+        <button class="action-btn" id="btnRefreshReview">🔄 刷新</button>
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>用户</th>
+              <th>店铺</th>
+              <th>日期</th>
+              <th>金额</th>
+              <th>折扣</th>
+              <th>支付方式</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="adminTableBody">
+            <tr><td colspan="8" class="loading-cell">加载中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="admin-tab" id="tabChat">
+      <div class="chat-layout">
+        <div class="chat-users" id="chatUsers">
+          <div class="chat-users-title">客户列表 <span class="chat-unread-badge" id="chatUnreadBadge" style="display:none;"></span></div>
+          <div class="chat-users-list" id="chatUsersList"></div>
+        </div>
+        <div class="chat-main">
+          <div class="chat-header" id="chatHeader">选择客户开始聊天</div>
+          <div class="chat-messages" id="chatMessages"></div>
+          <div class="chat-input-area">
+            <input type="text" class="chat-input" id="chatInput" placeholder="输入消息..." disabled>
+            <button class="chat-send-btn" id="btnChatSend" disabled>发送</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="admin-tab" id="tabLottery">
+      <div class="admin-card">
+        <div class="admin-card-header">
+          <h3>抽奖概率配置</h3>
+          <p class="admin-card-desc">调整各折扣的概率权重，权重越大抽中概率越高。总和不影响概率，最终按比例计算。</p>
+        </div>
+        <div class="admin-card-body" id="lotteryConfigList">
+        </div>
+        <div class="admin-card-footer">
+          <button class="btn btn-approve" id="btnSaveLotteryConfig">💾 保存配置</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="admin-tab" id="tabUsers">
+      <div class="admin-card">
+        <div class="admin-card-header">
+          <h3>用户管理</h3>
+          <p class="admin-card-desc">管理系统用户，每个用户可独立登录并查看自己的订单。</p>
+        </div>
+        <div class="admin-card-body">
+          <table class="admin-table" style="margin-top:0;">
+            <thead>
+              <tr><th>用户名</th><th>操作</th></tr>
+            </thead>
+            <tbody id="usersList"></tbody>
+          </table>
+        </div>
+        <div class="admin-card-footer">
+          <button class="btn btn-approve" id="btnAddUser">➕ 添加用户</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="admin-tab" id="tabSettings">
+      <div class="admin-card">
+        <div class="admin-card-header">
+          <h3>系统设置</h3>
+        </div>
+        <div class="admin-card-body">
+          <div class="form-group">
+            <label class="form-label">每页显示订单数量</label>
+            <input type="number" class="form-input" id="settingPerPage" min="5" max="50">
+          </div>
+          <div class="form-group">
+            <label class="form-label">自动刷新间隔（秒）</label>
+            <input type="number" class="form-input" id="settingRefreshInterval" min="5" max="60">
+          </div>
+          <div class="form-group">
+            <label class="form-label">是否允许重复抽奖</label>
+            <select class="form-input" id="settingAllowRepeatLottery">
+              <option value="false">不允许（推荐）</option>
+              <option value="true">允许</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">刮开多少比例才算中奖</label>
+            <input type="number" class="form-input" id="settingRevealThreshold" min="0.1" max="0.9" step="0.1">
+          </div>
+        </div>
+        <div class="admin-card-footer">
+          <button class="btn btn-approve" id="btnSaveSettings">💾 保存设置</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="admin-tab" id="tabDeveloper">
+      <div class="admin-card">
+        <div class="admin-card-header">
+          <h3>开发者工具</h3>
+          <p class="admin-card-desc">高级调试功能，请谨慎操作！</p>
+        </div>
+        <div class="admin-card-body">
+          <div class="dev-tool-item">
+            <h4>缓存管理</h4>
+            <p>清除本地所有缓存数据，强制从GitHub重新拉取。</p>
+            <button class="btn btn-delete" id="btnClearCache">🧹 清除所有缓存</button>
+          </div>
+          <div class="dev-tool-item">
+            <h4>导出所有数据</h4>
+            <p>下载所有凭证数据为JSON文件备份。</p>
+            <button class="btn btn-approve" id="btnExportData">📥 导出备份</button>
+          </div>
+          <div class="dev-tool-item">
+            <h4>系统信息</h4>
+            <div class="system-info" id="systemInfo"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="modal-overlay" id="reviewOverlay">
+  <div class="review-modal">
+    <div class="review-modal-header">
+      <h3>审核凭证</h3>
+      <button class="modal-close" id="btnReviewClose">&times;</button>
+    </div>
+    <div class="review-modal-body" id="reviewBody">
+    </div>
+    <div class="review-modal-footer">
+      <div class="reject-reason-wrap" id="rejectReasonWrap">
+        <label class="form-label">不通过原因 <span class="required">*</span></label>
+        <textarea class="form-input reject-reason" id="rejectReason" placeholder="请填写不通过原因，将显示给用户"></textarea>
+      </div>
+      <div class="review-actions">
+        <button class="btn btn-reject" id="btnReject">不通过</button>
+        <button class="btn btn-approve" id="btnApprove">通过</button>
+        <button class="btn btn-delete" id="btnDelete">删除凭证</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="addUserOverlay">
+  <div class="review-modal" style="max-width:400px;">
+    <div class="review-modal-header">
+      <h3>添加用户</h3>
+      <button class="modal-close" id="btnAddUserClose">&times;</button>
+    </div>
+    <div class="review-modal-body">
+      <div class="form-group">
+        <label class="form-label">用户名 <span class="required">*</span></label>
+        <input type="text" class="form-input" id="newUsername" placeholder="请输入用户名">
+      </div>
+      <div class="form-group">
+        <label class="form-label">密码 <span class="required">*</span></label>
+        <input type="password" class="form-input" id="newPassword" placeholder="请输入密码">
+      </div>
+    </div>
+    <div class="review-modal-footer">
+      <div class="review-actions">
+        <button class="btn btn-approve" id="btnConfirmAddUser">确认添加</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="loginOverlay" style="opacity:1;visibility:visible;z-index:3000;">
+  <div class="review-modal" style="max-width:380px;">
+    <div class="review-modal-header">
+      <h3>管理员登录</h3>
+    </div>
+    <div class="review-modal-body">
+      <div class="form-group">
+        <label class="form-label">管理员密码</label>
+        <input type="password" class="form-input" id="adminPassword" placeholder="请输入管理员密码">
+      </div>
+      <div class="form-error" id="loginError" style="display:none;"></div>
+      <div class="login-tip" id="loginTip">剩余尝试次数: <span id="remainAttempts">5</span></div>
+    </div>
+    <div class="review-modal-footer" style="justify-content:center;">
+      <button class="btn btn-approve" id="btnAdminLogin">登 录</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="adminToast"></div>
+<div class="image-preview-overlay" id="imagePreviewOverlay" style="display:none;"></div>
+
+<script src="js/config.js"></script>
+<script src="js/api.js"></script>
+<script src="js/lottery.js"></script>
+<script src="js/admin-main.js"></script>
+</body>
+</html>

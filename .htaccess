@@ -1,0 +1,50 @@
+# Security Headers
+<IfModule mod_headers.c>
+  # Prevent XSS
+  Header always set X-XSS-Protection "1; mode=block"
+  # Prevent MIME sniffing
+  Header always set X-Content-Type-Options nosniff
+  # Block clickjacking
+  Header always set X-Frame-Options "DENY"
+  # CSP - Content Security Policy
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.github.com https://*.githubusercontent.com; font-src 'self'; frame-ancestors 'none';"
+  # Referrer Policy
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  # HTTPS upgrade
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains" env=HTTPS
+</IfModule>
+
+# Hide sensitive files
+<Files ~ "\.(log|env|config|htaccess|gitignore)$">
+  Require all denied
+</Files>
+
+# Hide .git
+<DirectoryMatch ^.*/\.git/>
+  Require all denied
+</DirectoryMatch>
+
+# Prevent directory listing
+Options -Indexes
+
+# URL Rewriting for SPA - automatically redirect to index.html if no file extension matches
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # If the request is not for a file that exists
+  RewriteCond %{REQUEST_FILENAME} !-f
+  # If the request is not for a directory that exists
+  RewriteCond %{REQUEST_FILENAME} !-d
+
+  # Handle ADMIN_AdMiN.html directly if matched
+  RewriteRule ^AdMiN_AdMiN.* AdMiN_AdMiN.html [L]
+
+  # Handle 404
+  ErrorDocument 404 /404.html
+
+  # All other non-existent files/urls go to index.html
+  RewriteRule . index.html [L]
+</IfModule>
+
+# Disable Apache signature
+ServerSignature Off
