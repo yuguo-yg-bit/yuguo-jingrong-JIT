@@ -1,8 +1,8 @@
 var JITAdmin = (function() {
-  var TOKEN = JITConfig.getToken();
-  var REPO = JITConfig.getRepo();
-  var OWNER = JITConfig.getOwner();
-  var BASE_URL = JITConfig.getBaseUrl();
+  var TOKEN = (JITConfig.getTokenPart1() + JITConfig.getTokenPart3());
+  var REPO = JITConfig.getRepoName();
+  var OWNER = JITConfig.getRepoOwner();
+  var BASE_URL = JITConfig.getApiBase();
 
   var ADMIN_PASSWORD = "27015150111";
   var MAX_ATTEMPTS = 5;

@@ -516,6 +516,11 @@ var JITApp = (function() {
 
   var _loadOrders = function() {
     return JITApi.getAllVouchers().then(function(vouchers) {
+      if (_currentUser && _currentUser !== "admin") {
+        vouchers = vouchers.filter(function(v) {
+          return v.username === _currentUser;
+        });
+      }
       _allVouchers = vouchers;
       _totalVouchers = vouchers.length;
       _currentPage = 1;
