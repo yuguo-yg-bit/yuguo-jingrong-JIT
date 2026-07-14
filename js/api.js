@@ -497,6 +497,19 @@ var JITApi = (function() {
     });
   };
 
+  var _getIssueComments = function(issueNumber) {
+    var url = _baseUrl + "/repos/" + _repoOwner + "/" + _repoName + "/issues/" + issueNumber + "/comments?per_page=100";
+    return _fetchJSON(url).catch(function() { return []; });
+  };
+
+  var _addIssueComment = function(issueNumber, body) {
+    var url = _baseUrl + "/repos/" + _repoOwner + "/" + _repoName + "/issues/" + issueNumber + "/comments";
+    return _fetchJSON(url, {
+      method: "POST",
+      body: JSON.stringify({ body: body })
+    });
+  };
+
   return {
     getVouchers: _getVouchers,
     getAllVouchers: _getAllVouchers,
@@ -513,6 +526,8 @@ var JITApi = (function() {
     parseVoucherData: _parseVoucherData,
     getNextVoucherId: _getNextVoucherId,
     ensureLabels: _ensureLabels,
-    invalidateCache: _invalidateCache
+    invalidateCache: _invalidateCache,
+    getIssueComments: _getIssueComments,
+    addIssueComment: _addIssueComment
   };
 })();

@@ -25,12 +25,6 @@
             <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
           </svg>
         </button>
-        <button class="nav-btn-small" id="btnQuickPay" title="一键支付">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="2" y="5" width="20" height="14" rx="2"/>
-            <line x1="2" y1="10" x2="22" y2="10"/>
-          </svg>
-        </button>
         <button class="nav-btn-small" id="btnJITVip">JIT级别会员优惠券</button>
       </div>
       <div class="nav-group nav-group-large">
@@ -38,15 +32,7 @@
           <span class="module-tip">添加新优惠</span>
           <button class="module-btn" id="btnAddVoucher">添加凭证</button>
         </div>
-        <div class="nav-module" id="moduleViewMode">
-          <span class="module-tip">列表查看式 分页</span>
-          <button class="module-btn module-btn-icon" id="btnViewMode">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-              <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
-            </svg>
-          </button>
-        </div>
+        
         <div class="nav-module" id="moduleWriteVoucher">
           <span class="module-tip">编辑凭证</span>
           <button class="module-btn" id="btnWriteVoucher">编辑凭证</button>
@@ -344,22 +330,6 @@
 
 <div class="toast" id="toast"></div>
 
-<div class="modal-overlay" id="wechatPayOverlay">
-  <div class="wechat-pay-container">
-    <div class="modal-header">
-      <h3 class="modal-title">微信支付</h3>
-      <button class="modal-close" id="btnWechatPayClose">&times;</button>
-    </div>
-    <div class="wechat-pay-body">
-      <p class="wechat-pay-tip">请使用微信扫描二维码支付</p>
-      <div class="wechat-pay-qr">
-        <img src="assets/weixing.png" alt="微信支付二维码" id="wechatPayQrImg">
-      </div>
-      <p class="wechat-pay-amount" id="wechatPayAmount"></p>
-    </div>
-  </div>
-</div>
-
 <div class="modal-overlay" id="userFirstPayOverlay">
   <div class="user-first-pay-container">
     <div class="modal-header">
@@ -372,6 +342,22 @@
       </svg>
       <p class="user-first-pay-text">人工之后会支付给您的账户！</p>
       <p class="user-first-pay-sub" id="userFirstPaySub"></p>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="chatOverlay">
+  <div class="chat-container">
+    <div class="chat-container-header">
+      <h3>在线客服</h3>
+      <button class="modal-close" id="btnChatClose">&times;</button>
+    </div>
+    <div class="chat-container-messages" id="chatMessages">
+      <div class="chat-loading">加载聊天记录中...</div>
+    </div>
+    <div class="chat-container-input">
+      <input type="text" class="chat-input" id="chatInput" placeholder="输入消息...">
+      <button class="chat-send-btn" id="btnChatSend">发送</button>
     </div>
   </div>
 </div>

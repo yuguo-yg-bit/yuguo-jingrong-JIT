@@ -128,25 +128,9 @@ var JITApp = (function() {
       });
     }
 
-    var btnViewMode = document.getElementById("btnViewMode");
-    if (btnViewMode) {
-      btnViewMode.addEventListener("click", function() {
-        _showToast("已切换至列表查看式 分页模式", "");
-      });
-    }
-
     var btnCustomerService = document.getElementById("btnCustomerService");
     if (btnCustomerService) {
-      btnCustomerService.addEventListener("click", function() {
-        _showToast("客服功能开发中，请稍候", "");
-      });
-    }
-
-    var btnQuickPay = document.getElementById("btnQuickPay");
-    if (btnQuickPay) {
-      btnQuickPay.addEventListener("click", function() {
-        _showToast("一键支付功能开发中", "");
-      });
+      btnCustomerService.addEventListener("click", _openChatModal);
     }
 
     var btnJITVip = document.getElementById("btnJITVip");
@@ -271,19 +255,6 @@ var JITApp = (function() {
             _openEditVoucherModal(v);
           }
           return;
-        }
-      });
-    }
-
-    var btnWechatPayClose = document.getElementById("btnWechatPayClose");
-    if (btnWechatPayClose) {
-      btnWechatPayClose.addEventListener("click", _closeWechatPayModal);
-    }
-    var wechatPayOverlay = document.getElementById("wechatPayOverlay");
-    if (wechatPayOverlay) {
-      wechatPayOverlay.addEventListener("click", function(e) {
-        if (e.target === wechatPayOverlay) {
-          _closeWechatPayModal();
         }
       });
     }
@@ -1047,35 +1018,20 @@ var JITApp = (function() {
 
   var _openPaymentModal = function(voucher) {
     if (!voucher) return;
-    var paymentType = voucher.paymentMethodType || "userFirst";
     var originalAmount = parseFloat(voucher.originalPrice || voucher.amount || 0);
     var discountValue = parseFloat(voucher.discountValue || 1);
     var finalAmount = isNaN(originalAmount) ? 0 : (originalAmount * discountValue);
     var discountAmount = originalAmount - finalAmount;
 
-    if (paymentType === "unionFirst") {
-      var overlay = document.getElementById("wechatPayOverlay");
-      var amountEl = document.getElementById("wechatPayAmount");
-      if (overlay) {
-        if (amountEl) amountEl.textContent = "支付金额：\u00a5" + finalAmount.toFixed(2) + "（原价\u00a5" + originalAmount.toFixed(2) + " \u00d7 " + (voucher.discount || "10折") + "）";
-        overlay.classList.add("active");
+    var overlay2 = document.getElementById("userFirstPayOverlay");
+    var subEl = document.getElementById("userFirstPaySub");
+    if (overlay2) {
+      if (subEl) {
+        var discountStr = discountAmount > 0 ? "\u00a5" + discountAmount.toFixed(2) : (discountAmount < 0 ? "-\u00a5" + Math.abs(discountAmount).toFixed(2) + "\uff08\u5de5\u4f1a\u989d\u5916\u7ed9\u60a8\uff09" : "\u00a50.00");
+        subEl.innerHTML = "\u539f\u4ef7\uff1a\u00a5" + originalAmount.toFixed(2) + "<br>\u6298\u6263\uff1a" + (voucher.discount || "10\u6298") + "<br>\u60a8\u5148\u652f\u4ed8\uff1a\u00a5" + originalAmount.toFixed(2) + "<br>\u5de5\u4f1a\u8fd4\u8fd8\uff1a" + discountStr;
       }
-    } else {
-      var overlay2 = document.getElementById("userFirstPayOverlay");
-      var subEl = document.getElementById("userFirstPaySub");
-      if (overlay2) {
-        if (subEl) {
-          var discountStr = discountAmount > 0 ? "\u00a5" + discountAmount.toFixed(2) : (discountAmount < 0 ? "-\u00a5" + Math.abs(discountAmount).toFixed(2) + "（工会额外给您）" : "\u00a50.00");
-          subEl.innerHTML = "\u539f\u4ef7\uff1a\u00a5" + originalAmount.toFixed(2) + "<br>\u6298\u6263\uff1a" + (voucher.discount || "10\u6298") + "<br>\u60a8\u5148\u652f\u4ed8\uff1a\u00a5" + originalAmount.toFixed(2) + "<br>\u5de5\u4f1a\u8fd4\u8fd8\uff1a" + discountStr;
-        }
-        overlay2.classList.add("active");
-      }
+      overlay2.classList.add("active");
     }
-  };
-
-  var _closeWechatPayModal = function() {
-    var overlay = document.getElementById("wechatPayOverlay");
-    if (overlay) overlay.classList.remove("active");
   };
 
   var _closeUserFirstPayModal = function() {
@@ -1101,6 +1057,126 @@ var JITApp = (function() {
     div.textContent = str;
     return div.innerHTML;
   };
+
+  var _openChatModal = function() {
+    var overlay = document.getElementById("chatOverlay");
+    if (!overlay || !_currentUser) return;
+    overlay.classList.add("active");
+    _loadChatMessages();
+  };
+
+  var _closeChatModal = function() {
+    var overlay = document.getElementById("chatOverlay");
+    if (overlay) overlay.classList.remove("active");
+  };
+
+  var _getUserIssues = function() {
+    var userIssues = [];
+    _allVouchers.forEach(function(v) {
+      if (v.username === _currentUser || v._username === _currentUser) {
+        userIssues.push(v._issueNumber);
+      }
+    });
+    return userIssues;
+  };
+
+  var _loadChatMessages = function() {
+    var container = document.getElementById("chatMessages");
+    if (!container) return;
+    container.innerHTML = '<div class="chat-loading">加载中...</div>';
+    var issues = _getUserIssues();
+    if (issues.length === 0) {
+      container.innerHTML = '<div class="chat-empty">您还没有提交凭证，无法开始聊天。</div>';
+      return;
+    }
+    var promises = issues.map(function(num) {
+      return JITApi.getIssueComments(num);
+    });
+    Promise.all(promises).then(function(results) {
+      var allMsgs = [];
+      results.forEach(function(comments) {
+        comments.forEach(function(c) {
+          if (c.body && c.body.indexOf("｜CHAT｜") === 0) {
+            allMsgs.push({
+              type: c.user.login === JITConfig.getRepoOwner() ? "admin" : "user",
+              body: c.body.replace("｜CHAT｜", ""),
+              time: c.created_at,
+              user: c.user.login
+            });
+          }
+        });
+      });
+      allMsgs.sort(function(a, b) { return new Date(a.time) - new Date(b.time); });
+      if (allMsgs.length === 0) {
+        container.innerHTML = '<div class="chat-empty">暂无消息，给客服发一条吧！</div>';
+      } else {
+        var html = "";
+        allMsgs.forEach(function(msg) {
+          html += '<div class="chat-message ' + msg.type + '">';
+          html += '<div>' + _escapeHtml(msg.body) + '</div>';
+          html += '<div class="chat-time">' + new Date(msg.time).toLocaleString("zh-CN") + '</div>';
+          html += '</div>';
+        });
+        container.innerHTML = html;
+        container.scrollTop = container.scrollHeight;
+      }
+      setTimeout(function() {
+        container.scrollTop = container.scrollHeight;
+      }, 100);
+    }).catch(function(err) {
+      container.innerHTML = '<div class="chat-loading" style="color:#f44336;">加载失败: ' + _escapeHtml(err.message) + '</div>';
+    });
+  };
+
+  var _sendChatMessage = function() {
+    var input = document.getElementById("chatInput");
+    if (!input) return;
+    var msg = input.value.trim();
+    if (!msg) return;
+    var issues = _getUserIssues();
+    if (issues.length === 0) {
+      _showToast("您还没有凭证，无法发送消息", "error");
+      return;
+    }
+    input.value = "";
+    input.disabled = true;
+    document.getElementById("btnChatSend").disabled = true;
+    JITApi.addIssueComment(issues[0], "｜CHAT｜" + msg).then(function() {
+      _loadChatMessages();
+      input.disabled = false;
+      document.getElementById("btnChatSend").disabled = false;
+      input.focus();
+    }).catch(function(err) {
+      _showToast("发送失败: " + err.message, "error");
+      input.disabled = false;
+      document.getElementById("btnChatSend").disabled = false;
+    });
+  };
+
+  var _initChatEvents = function() {
+    var closeBtn = document.getElementById("btnChatClose");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", _closeChatModal);
+    }
+    var overlay = document.getElementById("chatOverlay");
+    if (overlay) {
+      overlay.addEventListener("click", function(e) {
+        if (e.target === overlay) _closeChatModal();
+      });
+    }
+    var sendBtn = document.getElementById("btnChatSend");
+    if (sendBtn) {
+      sendBtn.addEventListener("click", _sendChatMessage);
+    }
+    var input = document.getElementById("chatInput");
+    if (input) {
+      input.addEventListener("keydown", function(e) {
+        if (e.key === "Enter") _sendChatMessage();
+      });
+    }
+  };
+
+  _initChatEvents();
 
   return {
     init: _init
