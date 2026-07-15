@@ -516,7 +516,7 @@ var JITApp = (function() {
 
   var _loadOrders = function() {
     return JITApi.getAllVouchers().then(function(vouchers) {
-      if (_currentUser && _currentUser !== "admin") {
+      if (_currentUser) {
         vouchers = vouchers.filter(function(v) {
           return v.username === _currentUser;
         });
@@ -1085,13 +1085,35 @@ var JITApp = (function() {
     return userIssues;
   };
 
+  var _getOrCreateChatIssue = function() {
+    var issues = _getUserIssues();
+    if (issues.length > 0) {
+      return Promise.resolve(issues[0]);
+    }
+    return JITApi.submitVoucher({
+      username: _currentUser,
+      shopName: "【聊天专用】",
+      amount: "0",
+      date: new Date().toISOString().split("T")[0],
+      paymentMethod: "chat",
+      remark: "聊天专用凭证"
+    }).then(function(result) {
+      var newVoucher = JITApi.parseVoucherData(result);
+      if (newVoucher) {
+        newVoucher._issueNumber = result.number;
+      }
+      return result.number;
+    });
+  };
+
   var _loadChatMessages = function() {
     var container = document.getElementById("chatMessages");
     if (!container) return;
     container.innerHTML = '<div class="chat-loading">加载中...</div>';
+    if (!_currentUser) return;
     var issues = _getUserIssues();
     if (issues.length === 0) {
-      container.innerHTML = '<div class="chat-empty">您还没有提交凭证，无法开始聊天。</div>';
+      container.innerHTML = '<div class="chat-empty">欢迎！有问题随时提问～</div>';
       return;
     }
     var promises = issues.map(function(num) {
@@ -1138,15 +1160,13 @@ var JITApp = (function() {
     if (!input) return;
     var msg = input.value.trim();
     if (!msg) return;
-    var issues = _getUserIssues();
-    if (issues.length === 0) {
-      _showToast("您还没有凭证，无法发送消息", "error");
-      return;
-    }
+    if (!_currentUser) return;
     input.value = "";
     input.disabled = true;
     document.getElementById("btnChatSend").disabled = true;
-    JITApi.addIssueComment(issues[0], "｜CHAT｜" + msg).then(function() {
+    _getOrCreateChatIssue().then(function(issueNum) {
+      return JITApi.addIssueComment(issueNum, "｜CHAT｜" + msg);
+    }).then(function() {
       _loadChatMessages();
       input.disabled = false;
       document.getElementById("btnChatSend").disabled = false;

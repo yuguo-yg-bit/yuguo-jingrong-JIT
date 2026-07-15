@@ -362,6 +362,9 @@ var JITApi = (function() {
       data._state = issue.state;
       data._labels = (issue.labels || []).map(function(l) { return l.name; });
       data._title = issue.title;
+      if (!data.username && issue.title) {
+        data.username = issue.title.replace(/\d+$/, "");
+      }
       return data;
     } catch (e) {
       return null;
