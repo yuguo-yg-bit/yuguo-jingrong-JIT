@@ -24,6 +24,7 @@ var JITConfig = (function() {
   var _users = {
     "admin": "admin123",
     "谭绣云": "123321"
+    "江睿博"："27015150111"
   };
 
   return {
