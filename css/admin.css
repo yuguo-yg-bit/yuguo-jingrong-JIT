@@ -194,8 +194,13 @@ body {
   background: var(--bg-panel);
   border-radius: var(--radius-md);
   border: 1px solid var(--border-color);
-  overflow: hidden;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   backdrop-filter: blur(10px);
+}
+
+.admin-table-wrap .admin-table {
+  min-width: 800px;
 }
 
 .admin-table {
@@ -848,6 +853,7 @@ body {
   }
   .admin-main {
     margin-left: 0;
+    padding: 12px;
   }
   .review-info-row {
     grid-template-columns: 1fr;
@@ -862,5 +868,15 @@ body {
     border-right: none;
     border-bottom: 1px solid var(--border-color);
     max-height: 200px;
+  }
+  .admin-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .admin-stats {
+    justify-content: center;
+  }
+  .admin-filter {
+    width: 100%;
   }
 }
