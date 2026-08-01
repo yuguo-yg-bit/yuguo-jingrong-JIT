@@ -448,57 +448,12 @@ var JITAdmin = (function() {
       var totalEl = document.getElementById("lotteryTotalPercent");
       if (totalEl) totalEl.textContent = total;
     };
-    var _oldValues = [];
-    prizes.forEach(function(p, i) { _oldValues[i] = p.weight; });
     prizes.forEach(function(p, i) {
       var slider = document.getElementById("lotteryWeight" + i);
       var valEl = document.getElementById("lotteryWeightVal" + i);
       if (slider && valEl) {
         slider.addEventListener("input", function() {
-          var newVal = parseInt(this.value, 10) || 0;
-          var oldVal = _oldValues[i];
-          var delta = newVal - oldVal;
-          if (delta === 0) return;
-          _oldValues[i] = newVal;
-          valEl.textContent = newVal;
-          var remaining = Math.abs(delta);
-          if (delta > 0) {
-            // 调大：从其他最大的奖项中减
-            while (remaining > 0) {
-              var maxVal = -1, maxIdx = -1;
-              for (var j = 0; j < n; j++) {
-                if (j === i) continue;
-                var s = document.getElementById("lotteryWeight" + j);
-                var v = parseInt(s.value, 10) || 0;
-                if (v > maxVal) { maxVal = v; maxIdx = j; }
-              }
-              if (maxIdx < 0 || maxVal <= 0) break;
-              var take = Math.min(remaining, maxVal);
-              var newTarget = maxVal - take;
-              document.getElementById("lotteryWeight" + maxIdx).value = newTarget;
-              document.getElementById("lotteryWeightVal" + maxIdx).textContent = newTarget;
-              _oldValues[maxIdx] = newTarget;
-              remaining -= take;
-            }
-          } else {
-            // 调小：从其他最小的奖项中减（负数减=加）
-            while (remaining > 0) {
-              var minVal = 101, minIdx = -1;
-              for (var j = 0; j < n; j++) {
-                if (j === i) continue;
-                var s = document.getElementById("lotteryWeight" + j);
-                var v = parseInt(s.value, 10) || 0;
-                if (v < minVal) { minVal = v; minIdx = j; }
-              }
-              if (minIdx < 0 || minVal >= 10) break;
-              var give = Math.min(remaining, 10 - minVal);
-              var newTarget = minVal + give;
-              document.getElementById("lotteryWeight" + minIdx).value = newTarget;
-              document.getElementById("lotteryWeightVal" + minIdx).textContent = newTarget;
-              _oldValues[minIdx] = newTarget;
-              remaining -= give;
-            }
-          }
+          valEl.textContent = this.value;
           _updateTotal();
         });
       }
