@@ -74,44 +74,36 @@ var JITLottery = (function() {
 
   // 生成号码匹配数据
   var _generateNumbers = function() {
-    // 1. 先根据权重随机决定最终结果
+    // 1. 先根据权重随机决定最终结果（娃娃机后台设定）
     var resultPrize = _getRandomPrize();
 
-    // 2. 生成中奖号码和你的号码
+    // 2. 生成号码（纯视觉效果，走个形式）
     _winningNumbers = _generateUniqueNumbers(5, 1, 30);
     _yourNumbers = _generateUniqueNumbers(10, 1, 30);
     _yourDiscounts = [];
     _matchedIndices = [];
 
-    // 3. 根据结果决定展示逻辑
-    if (resultPrize.value < 1.0) {
-      // 好折扣（低于10折）：让第一个号码匹配，显示中奖视觉效果
-      _yourNumbers[0] = _winningNumbers[0];
-      _matchedIndices = [0];
-
-      for (var i = 0; i < _yourNumbers.length; i++) {
-        if (i === 0) {
-          _yourDiscounts.push({ discount: resultPrize.discount, value: resultPrize.value, label: resultPrize.label });
-        } else {
-          var p = _getRandomPrize();
-          _yourDiscounts.push({ discount: p.discount, value: p.value, label: p.label });
-        }
+    // 3. 找出匹配的号码
+    for (var i = 0; i < _yourNumbers.length; i++) {
+      if (_winningNumbers.indexOf(_yourNumbers[i]) !== -1) {
+        _matchedIndices.push(i);
       }
+    }
 
+    // 4. 所有权重都是随机分配，不论匹配与否
+    for (var i = 0; i < _yourNumbers.length; i++) {
+      var p = _getRandomPrize();
+      _yourDiscounts.push({ discount: p.discount, value: p.value, label: p.label });
+    }
+
+    // 5. 最终结果直接用权重决定的，无视号码匹配
+    if (_matchedIndices.length > 0) {
       _currentPrize = {
         discount: resultPrize.discount,
         value: resultPrize.value,
-        label: "匹配1个号码！" + resultPrize.label
+        label: "匹配" + _matchedIndices.length + "个号码！" + resultPrize.label
       };
     } else {
-      // 不好折扣（10折及以上）：不匹配，直接显示结果
-      _matchedIndices = [];
-
-      for (var i = 0; i < _yourNumbers.length; i++) {
-        var p = _getRandomPrize();
-        _yourDiscounts.push({ discount: p.discount, value: p.value, label: p.label });
-      }
-
       _currentPrize = {
         discount: resultPrize.discount,
         value: resultPrize.value,
