@@ -429,7 +429,7 @@ var JITAdmin = (function() {
     prizes.forEach(function(p, i) {
       html += '<div class="form-group">';
       html += '<label class="form-label">' + _escapeHtml(p.discount) + '（值: ' + p.value + '）权重（%）</label>';
-      html += '<input type="range" class="lottery-weight-slider" min="0" max="100" value="' + p.weight + '" data-index="' + i + '" id="lotteryWeight' + i + '">';
+      html += '<input type="range" class="lottery-weight-slider" min="0" max="10" value="' + p.weight + '" data-index="' + i + '" id="lotteryWeight' + i + '">';
       html += '<span class="lottery-weight-value" id="lotteryWeightVal' + i + '">' + p.weight + '</span>';
       html += '</div>';
     });
@@ -490,8 +490,8 @@ var JITAdmin = (function() {
                 var v = parseInt(s.value, 10) || 0;
                 if (v < minVal) { minVal = v; minIdx = j; }
               }
-              if (minIdx < 0 || minVal >= 100) break;
-              var give = Math.min(remaining, 100 - minVal);
+              if (minIdx < 0 || minVal >= 10) break;
+              var give = Math.min(remaining, 10 - minVal);
               var newTarget = minVal + give;
               document.getElementById("lotteryWeight" + minIdx).value = newTarget;
               document.getElementById("lotteryWeightVal" + minIdx).textContent = newTarget;
