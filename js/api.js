@@ -501,14 +501,18 @@ var JITApi = (function() {
   };
 
   var _getIssueComments = function(issueNumber) {
-    var url = _baseUrl + "/repos/" + _repoOwner + "/" + _repoName + "/issues/" + issueNumber + "/comments?per_page=100";
-    return _fetchJSON(url).catch(function() { return []; });
+    var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber + "/comments?per_page=100";
+    return _safeRequest(url, {
+      method: "GET",
+      headers: _headers()
+    }).catch(function() { return []; });
   };
 
   var _addIssueComment = function(issueNumber, body) {
-    var url = _baseUrl + "/repos/" + _repoOwner + "/" + _repoName + "/issues/" + issueNumber + "/comments";
-    return _fetchJSON(url, {
+    var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber + "/comments";
+    return _safeRequest(url, {
       method: "POST",
+      headers: _headers(),
       body: JSON.stringify({ body: body })
     });
   };
