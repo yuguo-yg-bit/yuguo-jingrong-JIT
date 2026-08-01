@@ -413,16 +413,18 @@ var JITAdmin = (function() {
 
   var loadLotteryConfig = function() {
     var prizes = JITLottery.getPrizes && JITLottery.getPrizes() || [
-      { discount: "7折", value: 0.7, weight: 2 },
-      { discount: "8折", value: 0.8, weight: 3 },
-      { discount: "9折", value: 0.9, weight: 5 },
-      { discount: "9.5折", value: 0.95, weight: 8 },
-      { discount: "10折", value: 1.0, weight: 12 },
-      { discount: "11折", value: 1.1, weight: 20 },
-      { discount: "12折", value: 1.2, weight: 22 },
-      { discount: "13折", value: 1.3, weight: 18 },
-      { discount: "14折", value: 1.4, weight: 10 }
+      { discount: "7折", value: 0.7, weight: 10 },
+      { discount: "8折", value: 0.8, weight: 10 },
+      { discount: "9折", value: 0.9, weight: 10 },
+      { discount: "9.5折", value: 0.95, weight: 10 },
+      { discount: "10折", value: 1.0, weight: 10 },
+      { discount: "11折", value: 1.1, weight: 10 },
+      { discount: "12折", value: 1.2, weight: 10 },
+      { discount: "13折", value: 1.3, weight: 10 },
+      { discount: "14折", value: 1.4, weight: 10 },
+      { discount: "0折", value: 0.0, weight: 10 }
     ];
+    var n = prizes.length;
     var html = "";
     prizes.forEach(function(p, i) {
       html += '<div class="form-group">';
@@ -439,14 +441,13 @@ var JITAdmin = (function() {
     document.getElementById("lotteryConfigList").innerHTML = html;
     var _updateTotal = function() {
       var total = 0;
-      prizes.forEach(function(p, i) {
-        var s = document.getElementById("lotteryWeight" + i);
+      for (var j = 0; j < n; j++) {
+        var s = document.getElementById("lotteryWeight" + j);
         if (s) total += parseInt(s.value, 10) || 0;
-      });
+      }
       var totalEl = document.getElementById("lotteryTotalPercent");
       if (totalEl) totalEl.textContent = total;
     };
-    // 记录每个滑块的旧值，用于联动计算差值
     var _oldValues = [];
     prizes.forEach(function(p, i) { _oldValues[i] = p.weight; });
     prizes.forEach(function(p, i) {
@@ -457,18 +458,46 @@ var JITAdmin = (function() {
           var newVal = parseInt(this.value, 10) || 0;
           var oldVal = _oldValues[i];
           var delta = newVal - oldVal;
+          if (delta === 0) return;
           _oldValues[i] = newVal;
           valEl.textContent = newVal;
-          // 联动调整上一个权值（第一个的上一个是最后一个）
-          var prevIndex = (i - 1 + prizes.length) % prizes.length;
-          var prevSlider = document.getElementById("lotteryWeight" + prevIndex);
-          var prevValEl = document.getElementById("lotteryWeightVal" + prevIndex);
-          if (prevSlider && prevValEl) {
-            var newPrevVal = parseInt(prevSlider.value, 10) - delta;
-            newPrevVal = Math.max(0, Math.min(100, newPrevVal));
-            prevSlider.value = newPrevVal;
-            prevValEl.textContent = newPrevVal;
-            _oldValues[prevIndex] = newPrevVal;
+          var remaining = Math.abs(delta);
+          if (delta > 0) {
+            // 调大：从其他最大的奖项中减
+            while (remaining > 0) {
+              var maxVal = -1, maxIdx = -1;
+              for (var j = 0; j < n; j++) {
+                if (j === i) continue;
+                var s = document.getElementById("lotteryWeight" + j);
+                var v = parseInt(s.value, 10) || 0;
+                if (v > maxVal) { maxVal = v; maxIdx = j; }
+              }
+              if (maxIdx < 0 || maxVal <= 0) break;
+              var take = Math.min(remaining, maxVal);
+              var newTarget = maxVal - take;
+              document.getElementById("lotteryWeight" + maxIdx).value = newTarget;
+              document.getElementById("lotteryWeightVal" + maxIdx).textContent = newTarget;
+              _oldValues[maxIdx] = newTarget;
+              remaining -= take;
+            }
+          } else {
+            // 调小：从其他最小的奖项中减（负数减=加）
+            while (remaining > 0) {
+              var minVal = 101, minIdx = -1;
+              for (var j = 0; j < n; j++) {
+                if (j === i) continue;
+                var s = document.getElementById("lotteryWeight" + j);
+                var v = parseInt(s.value, 10) || 0;
+                if (v < minVal) { minVal = v; minIdx = j; }
+              }
+              if (minIdx < 0 || minVal >= 100) break;
+              var give = Math.min(remaining, 100 - minVal);
+              var newTarget = minVal + give;
+              document.getElementById("lotteryWeight" + minIdx).value = newTarget;
+              document.getElementById("lotteryWeightVal" + minIdx).textContent = newTarget;
+              _oldValues[minIdx] = newTarget;
+              remaining -= give;
+            }
           }
           _updateTotal();
         });
