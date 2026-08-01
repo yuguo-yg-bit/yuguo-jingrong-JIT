@@ -200,7 +200,8 @@ body {
 }
 
 .admin-table {
-  width: 100%;
+  min-width: 800px;
+  width: auto;
   border-collapse: collapse;
 }
 
