@@ -440,16 +440,27 @@ var JITAdmin = (function() {
 
   var saveLotteryConfig = function() {
     var prizes = JITLottery.getPrizes && JITLottery.getPrizes() || [];
+    if (prizes.length === 0) { _showToast("没有可配置的奖项"); return; }
     var config = [];
+    var hasError = false;
     prizes.forEach(function(p, i) {
       var slider = document.getElementById("lotteryWeight" + i);
-      config.push({
-        discount: p.discount,
-        value: p.value,
-        label: p.label || p.discount,
-        weight: parseInt(slider ? slider.value : p.weight, 10)
-      });
+      var weight = parseInt(slider ? slider.value : p.weight, 10);
+      if (isNaN(weight) || weight < 1) {
+        hasError = true;
+      } else {
+        config.push({
+          discount: p.discount,
+          value: p.value,
+          label: p.label || p.discount,
+          weight: weight
+        });
+      }
     });
+    if (hasError) {
+      _showToast("所有权重必须为大于0的正整数！");
+      return;
+    }
     if (JITLottery.updatePrizeConfig) {
       JITLottery.updatePrizeConfig(config);
     }

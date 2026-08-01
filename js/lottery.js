@@ -15,6 +15,22 @@ var JITLottery = (function() {
   var _currentPrize = null;
   var _onRevealed = null;
 
+  // 从 localStorage 加载保存的权重配置
+  var _loadSavedConfig = function() {
+    var saved = localStorage.getItem("jit_lottery_prizes");
+    if (!saved) return;
+    try {
+      var config = JSON.parse(saved);
+      if (!Array.isArray(config)) return;
+      config.forEach(function(item, index) {
+        if (_prizes[index] && item.weight > 0) {
+          _prizes[index].weight = item.weight;
+        }
+      });
+    } catch(e) {}
+  };
+  _loadSavedConfig();
+
   // 号码匹配数据
   var _winningNumbers = [];  // 5个中奖号码
   var _yourNumbers = [];     // 10个你的号码
