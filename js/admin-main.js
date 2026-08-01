@@ -136,6 +136,7 @@ var JITAdmin = (function() {
 
   var hasVoucherData = function(issue) {
     if (!issue.body) return false;
+    if (issue.body.indexOf("【聊天专用】") > -1) return false;
     return issue.body.indexOf("店铺名称") > -1 || issue.body.indexOf("店铺：") > -1 || issue.body.indexOf("中奖打折") > -1;
   };
 

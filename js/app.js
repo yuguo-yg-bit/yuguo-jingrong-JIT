@@ -15,6 +15,7 @@ var JITApp = (function() {
   var _orderPhotoFiles = [];
   var _signatureData = null;
   var _editingVoucher = null;
+  var _chatIssueNumber = null;
 
   var _init = function() {
     _initBackgroundParticles();
@@ -49,6 +50,8 @@ var JITApp = (function() {
     if (savedUser) {
       _currentUser = savedUser;
       _updateLogoutText();
+      var savedChat = localStorage.getItem("jit_chat_issue_" + savedUser);
+      if (savedChat) _chatIssueNumber = parseInt(savedChat, 10);
       return;
     }
     _showLoginPrompt();
@@ -521,6 +524,10 @@ var JITApp = (function() {
           return v.username === _currentUser;
         });
       }
+      // 过滤掉聊天专用凭证，不显示在订单列表中
+      vouchers = vouchers.filter(function(v) {
+        return v.shopName !== "【聊天专用】" && v.paymentMethod !== "chat";
+      });
       _allVouchers = vouchers;
       _totalVouchers = vouchers.length;
       _currentPage = 1;
@@ -1082,13 +1089,19 @@ var JITApp = (function() {
         userIssues.push(v._issueNumber);
       }
     });
+    if (_chatIssueNumber && userIssues.indexOf(_chatIssueNumber) === -1) {
+      userIssues.push(_chatIssueNumber);
+    }
     return userIssues;
   };
 
   var _getOrCreateChatIssue = function() {
+    if (_chatIssueNumber) return Promise.resolve(_chatIssueNumber);
     var issues = _getUserIssues();
     if (issues.length > 0) {
-      return Promise.resolve(issues[0]);
+      _chatIssueNumber = issues[0];
+      localStorage.setItem("jit_chat_issue_" + _currentUser, String(_chatIssueNumber));
+      return Promise.resolve(_chatIssueNumber);
     }
     return JITApi.submitVoucher({
       username: _currentUser,
@@ -1098,11 +1111,9 @@ var JITApp = (function() {
       paymentMethod: "chat",
       remark: "聊天专用凭证"
     }).then(function(result) {
-      var newVoucher = JITApi.parseVoucherData(result);
-      if (newVoucher) {
-        newVoucher._issueNumber = result.number;
-      }
-      return result.number;
+      _chatIssueNumber = result.number;
+      localStorage.setItem("jit_chat_issue_" + _currentUser, String(_chatIssueNumber));
+      return _chatIssueNumber;
     });
   };
 
