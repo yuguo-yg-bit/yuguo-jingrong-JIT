@@ -26,6 +26,11 @@ var JITLottery = (function() {
     try {
       var config = JSON.parse(saved);
       if (!Array.isArray(config)) return;
+      // 奖项数量变了，丢弃旧配置用默认值
+      if (config.length !== _prizes.length) {
+        localStorage.removeItem("jit_lottery_prizes");
+        return;
+      }
       config.forEach(function(item, index) {
         if (_prizes[index] && item.weight > 0) {
           _prizes[index].weight = item.weight;
