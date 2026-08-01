@@ -74,60 +74,48 @@ var JITLottery = (function() {
 
   // 生成号码匹配数据
   var _generateNumbers = function() {
-    // 生成5个中奖号码（1-30，互不重复）
+    // 1. 先根据权重随机决定最终结果
+    var resultPrize = _getRandomPrize();
+
+    // 2. 生成中奖号码和你的号码
     _winningNumbers = _generateUniqueNumbers(5, 1, 30);
-
-    // 生成10个你的号码（1-30，互不重复）
     _yourNumbers = _generateUniqueNumbers(10, 1, 30);
-
-    // 为每个你的号码分配折扣
     _yourDiscounts = [];
     _matchedIndices = [];
 
-    // 先找出哪些号码匹配中奖号码
-    var matchCount = 0;
-    for (var i = 0; i < _yourNumbers.length; i++) {
-      if (_winningNumbers.indexOf(_yourNumbers[i]) !== -1) {
-        _matchedIndices.push(i);
-        matchCount++;
-      }
-    }
+    // 3. 根据结果决定展示逻辑
+    if (resultPrize.value < 1.0) {
+      // 好折扣（低于10折）：让第一个号码匹配，显示中奖视觉效果
+      _yourNumbers[0] = _winningNumbers[0];
+      _matchedIndices = [0];
 
-    // 分配折扣：匹配的号码给好折扣，不匹配的随便给
-    for (var i = 0; i < _yourNumbers.length; i++) {
-      if (_matchedIndices.indexOf(i) !== -1) {
-        // 匹配的号码：从最好的折扣中随机选
-        var goodPrizes = _prizes.slice(0, 3); // 7折、8折、9折
-        var prize = goodPrizes[Math.floor(Math.random() * goodPrizes.length)];
-        _yourDiscounts.push({ discount: prize.discount, value: prize.value, label: prize.label });
-      } else {
-        // 不匹配的号码：从所有折扣中随机选
-        var prize2 = _getRandomPrize();
-        _yourDiscounts.push({ discount: prize2.discount, value: prize2.value, label: prize2.label });
-      }
-    }
-
-    // 计算最终折扣：取匹配号码中的最低折扣（value最小）
-    if (_matchedIndices.length > 0) {
-      var bestPrize = null;
-      var bestValue = 999;
-      _matchedIndices.forEach(function(idx) {
-        if (_yourDiscounts[idx].value < bestValue) {
-          bestValue = _yourDiscounts[idx].value;
-          bestPrize = _yourDiscounts[idx];
+      for (var i = 0; i < _yourNumbers.length; i++) {
+        if (i === 0) {
+          _yourDiscounts.push({ discount: resultPrize.discount, value: resultPrize.value, label: resultPrize.label });
+        } else {
+          var p = _getRandomPrize();
+          _yourDiscounts.push({ discount: p.discount, value: p.value, label: p.label });
         }
-      });
+      }
+
       _currentPrize = {
-        discount: bestPrize.discount,
-        value: bestPrize.value,
-        label: "匹配" + _matchedIndices.length + "个号码！" + bestPrize.label
+        discount: resultPrize.discount,
+        value: resultPrize.value,
+        label: "匹配1个号码！" + resultPrize.label
       };
     } else {
-      // 没有匹配：默认10折
+      // 不好折扣（10折及以上）：不匹配，直接显示结果
+      _matchedIndices = [];
+
+      for (var i = 0; i < _yourNumbers.length; i++) {
+        var p = _getRandomPrize();
+        _yourDiscounts.push({ discount: p.discount, value: p.value, label: p.label });
+      }
+
       _currentPrize = {
-        discount: "10折",
-        value: 1.0,
-        label: "未中奖，下次好运！"
+        discount: resultPrize.discount,
+        value: resultPrize.value,
+        label: resultPrize.label
       };
     }
   };
