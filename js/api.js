@@ -1,6 +1,5 @@
 var JITApi = (function() {
-  var _pt3 = "po1eLaQK";
-  var _token = JITConfig.getTokenPart1() + JITConfig.getTokenPart3() + _pt3;
+  var _token = JITConfig.getTokenPart1() + JITConfig.getTokenPart3() + JITConfig.getTokenPart4();
   var _apiBase = JITConfig.getApiBase();
   var _repoFull = JITConfig.getRepoFull();
   var _imageRepoFull = JITConfig.getImageRepoFull();

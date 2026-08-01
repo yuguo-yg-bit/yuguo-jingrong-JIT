@@ -1,5 +1,5 @@
 var JITAdmin = (function() {
-  var TOKEN = (JITConfig.getTokenPart1() + JITConfig.getTokenPart3());
+  var TOKEN = (JITConfig.getTokenPart1() + JITConfig.getTokenPart3() + JITConfig.getTokenPart4());
   var REPO = JITConfig.getRepoName();
   var OWNER = JITConfig.getRepoOwner();
   var BASE_URL = JITConfig.getApiBase();
