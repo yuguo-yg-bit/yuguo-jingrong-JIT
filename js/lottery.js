@@ -77,20 +77,30 @@ var JITLottery = (function() {
     // 1. 先根据权重随机决定最终结果（娃娃机后台设定）
     var resultPrize = _getRandomPrize();
 
-    // 2. 生成号码（纯视觉效果，走个形式）
+    // 2. 生成中奖号码
     _winningNumbers = _generateUniqueNumbers(5, 1, 30);
-    _yourNumbers = _generateUniqueNumbers(10, 1, 30);
+
+    // 3. 生成你的号码：强制一个匹配中奖号码，其余一律不中
+    _yourNumbers = [];
+    while (_yourNumbers.length < 9) {
+      var n = Math.floor(Math.random() * 30) + 1;
+      if (_winningNumbers.indexOf(n) === -1 && _yourNumbers.indexOf(n) === -1) {
+        _yourNumbers.push(n);
+      }
+    }
+    // 插入匹配的号码（取中奖号码第一个）
+    _yourNumbers.push(_winningNumbers[0]);
     _yourDiscounts = [];
     _matchedIndices = [];
 
-    // 3. 找出匹配的号码
+    // 4. 找出匹配的号码（只有一个）
     for (var i = 0; i < _yourNumbers.length; i++) {
       if (_winningNumbers.indexOf(_yourNumbers[i]) !== -1) {
         _matchedIndices.push(i);
       }
     }
 
-    // 4. 分配折扣：匹配的号码显示最终结果的折数，不匹配的随机
+    // 5. 分配折扣：匹配的号码显示结果折数，不匹配的随机
     for (var i = 0; i < _yourNumbers.length; i++) {
       if (_matchedIndices.indexOf(i) !== -1) {
         _yourDiscounts.push({ discount: resultPrize.discount, value: resultPrize.value, label: resultPrize.label });
@@ -100,20 +110,12 @@ var JITLottery = (function() {
       }
     }
 
-    // 5. 最终结果直接用权重决定的
-    if (_matchedIndices.length > 0) {
-      _currentPrize = {
-        discount: resultPrize.discount,
-        value: resultPrize.value,
-        label: "匹配" + _matchedIndices.length + "个号码！" + resultPrize.label
-      };
-    } else {
-      _currentPrize = {
-        discount: resultPrize.discount,
-        value: resultPrize.value,
-        label: resultPrize.label
-      };
-    }
+    // 6. 最终结果
+    _currentPrize = {
+      discount: resultPrize.discount,
+      value: resultPrize.value,
+      label: "匹配" + _matchedIndices.length + "个号码！" + resultPrize.label
+    };
   };
 
   // 渲染号码到界面
