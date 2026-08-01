@@ -413,29 +413,68 @@ var JITAdmin = (function() {
 
   var loadLotteryConfig = function() {
     var prizes = JITLottery.getPrizes && JITLottery.getPrizes() || [
-      { discount: "7折", value: 0.7, weight: 5 },
-      { discount: "8折", value: 0.8, weight: 15 },
-      { discount: "9折", value: 0.9, weight: 30 },
-      { discount: "9.5折", value: 0.95, weight: 25 },
-      { discount: "10折", value: 1.0, weight: 20 },
-      { discount: "11折", value: 1.1, weight: 5 }
+      { discount: "7折", value: 0.7, weight: 2 },
+      { discount: "8折", value: 0.8, weight: 3 },
+      { discount: "9折", value: 0.9, weight: 5 },
+      { discount: "9.5折", value: 0.95, weight: 8 },
+      { discount: "10折", value: 1.0, weight: 12 },
+      { discount: "11折", value: 1.1, weight: 20 },
+      { discount: "12折", value: 1.2, weight: 22 },
+      { discount: "13折", value: 1.3, weight: 18 },
+      { discount: "14折", value: 1.4, weight: 10 }
     ];
     var html = "";
     prizes.forEach(function(p, i) {
       html += '<div class="form-group">';
-      html += '<label class="form-label">' + _escapeHtml(p.discount) + '（值: ' + p.value + '）权重</label>';
-      html += '<input type="range" class="lottery-weight-slider" min="1" max="50" value="' + p.weight + '" data-index="' + i + '" id="lotteryWeight' + i + '">';
+      html += '<label class="form-label">' + _escapeHtml(p.discount) + '（值: ' + p.value + '）权重（%）</label>';
+      html += '<input type="range" class="lottery-weight-slider" min="0" max="100" value="' + p.weight + '" data-index="' + i + '" id="lotteryWeight' + i + '">';
       html += '<span class="lottery-weight-value" id="lotteryWeightVal' + i + '">' + p.weight + '</span>';
       html += '</div>';
     });
+    html += '<div class="form-group" style="border-top:1px solid var(--border-color);padding-top:12px;margin-top:12px;">';
+    html += '<label class="form-label">总百分比</label>';
+    html += '<span class="lottery-weight-value" id="lotteryTotalPercent" style="font-size:18px;font-weight:bold;color:var(--accent);">100</span>';
+    html += '<span style="color:var(--text-secondary);margin-left:4px;">%</span>';
+    html += '</div>';
     document.getElementById("lotteryConfigList").innerHTML = html;
+    var _updateTotal = function() {
+      var total = 0;
+      prizes.forEach(function(p, i) {
+        var s = document.getElementById("lotteryWeight" + i);
+        if (s) total += parseInt(s.value, 10) || 0;
+      });
+      var totalEl = document.getElementById("lotteryTotalPercent");
+      if (totalEl) totalEl.textContent = total;
+    };
+    // 记录每个滑块的旧值，用于联动计算差值
+    var _oldValues = [];
+    prizes.forEach(function(p, i) { _oldValues[i] = p.weight; });
     prizes.forEach(function(p, i) {
       var slider = document.getElementById("lotteryWeight" + i);
       var valEl = document.getElementById("lotteryWeightVal" + i);
       if (slider && valEl) {
-        slider.addEventListener("input", function() { valEl.textContent = this.value; });
+        slider.addEventListener("input", function() {
+          var newVal = parseInt(this.value, 10) || 0;
+          var oldVal = _oldValues[i];
+          var delta = newVal - oldVal;
+          _oldValues[i] = newVal;
+          valEl.textContent = newVal;
+          // 联动调整上一个权值（第一个的上一个是最后一个）
+          var prevIndex = (i - 1 + prizes.length) % prizes.length;
+          var prevSlider = document.getElementById("lotteryWeight" + prevIndex);
+          var prevValEl = document.getElementById("lotteryWeightVal" + prevIndex);
+          if (prevSlider && prevValEl) {
+            var newPrevVal = parseInt(prevSlider.value, 10) - delta;
+            newPrevVal = Math.max(0, Math.min(100, newPrevVal));
+            prevSlider.value = newPrevVal;
+            prevValEl.textContent = newPrevVal;
+            _oldValues[prevIndex] = newPrevVal;
+          }
+          _updateTotal();
+        });
       }
     });
+    _updateTotal();
   };
 
   var saveLotteryConfig = function() {
@@ -446,7 +485,7 @@ var JITAdmin = (function() {
     prizes.forEach(function(p, i) {
       var slider = document.getElementById("lotteryWeight" + i);
       var weight = parseInt(slider ? slider.value : p.weight, 10);
-      if (isNaN(weight) || weight < 1) {
+      if (isNaN(weight) || weight < 0) {
         hasError = true;
       } else {
         config.push({
@@ -458,7 +497,7 @@ var JITAdmin = (function() {
       }
     });
     if (hasError) {
-      _showToast("所有权重必须为大于0的正整数！");
+      _showToast("权重必须为大于等于0的整数！");
       return;
     }
     if (JITLottery.updatePrizeConfig) {

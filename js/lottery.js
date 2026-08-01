@@ -1,11 +1,14 @@
 var JITLottery = (function() {
   var _prizes = [
-    { discount: "7折", value: 0.7, label: "恭喜！", weight: 10 },
-    { discount: "8折", value: 0.8, label: "手气不错！", weight: 20 },
-    { discount: "9折", value: 0.9, label: "好运连连！", weight: 30 },
-    { discount: "9.5折", value: 0.95, label: "小有收获！", weight: 20 },
-    { discount: "10折", value: 1.0, label: "保本！", weight: 15 },
-    { discount: "11折", value: 1.1, label: "超级幸运！反向给钱！", weight: 5 }
+    { discount: "7折", value: 0.7, label: "恭喜！", weight: 2 },
+    { discount: "8折", value: 0.8, label: "手气不错！", weight: 3 },
+    { discount: "9折", value: 0.9, label: "好运连连！", weight: 5 },
+    { discount: "9.5折", value: 0.95, label: "小有收获！", weight: 8 },
+    { discount: "10折", value: 1.0, label: "保本！", weight: 12 },
+    { discount: "11折", value: 1.1, label: "小赚！", weight: 20 },
+    { discount: "12折", value: 1.2, label: "公司请客！", weight: 22 },
+    { discount: "13折", value: 1.3, label: "老板大气！", weight: 18 },
+    { discount: "14折", value: 1.4, label: "超级福利！", weight: 10 }
   ];
 
   var _canvas = null;
