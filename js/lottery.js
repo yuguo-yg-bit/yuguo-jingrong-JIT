@@ -90,13 +90,17 @@ var JITLottery = (function() {
       }
     }
 
-    // 4. 所有权重都是随机分配，不论匹配与否
+    // 4. 分配折扣：匹配的号码显示最终结果的折数，不匹配的随机
     for (var i = 0; i < _yourNumbers.length; i++) {
-      var p = _getRandomPrize();
-      _yourDiscounts.push({ discount: p.discount, value: p.value, label: p.label });
+      if (_matchedIndices.indexOf(i) !== -1) {
+        _yourDiscounts.push({ discount: resultPrize.discount, value: resultPrize.value, label: resultPrize.label });
+      } else {
+        var p = _getRandomPrize();
+        _yourDiscounts.push({ discount: p.discount, value: p.value, label: p.label });
+      }
     }
 
-    // 5. 最终结果直接用权重决定的，无视号码匹配
+    // 5. 最终结果直接用权重决定的
     if (_matchedIndices.length > 0) {
       _currentPrize = {
         discount: resultPrize.discount,
