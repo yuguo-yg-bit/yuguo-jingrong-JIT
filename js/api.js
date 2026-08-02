@@ -325,8 +325,11 @@ var JITApi = (function() {
 
   var _parseVoucherData = function(issue) {
     var parsed = _parseIssueBody(issue.body);
+    var labels = (issue.labels || []).map(function(l) { return l.name; });
+    var hasVoucherLabel = labels.indexOf("voucher") > -1;
+    var hasCompletedLabel = labels.indexOf("completed") > -1;
+
     if (parsed.shopName || parsed.amount || parsed.paymentMethod || parsed.status || parsed.date) {
-      var labels = (issue.labels || []).map(function(l) { return l.name; });
       var amountValue = parseFloat(parsed.amount || 0);
       var discountValue = 0;
       if (parsed.discount && parsed.discount.indexOf("折") > -1) {
@@ -340,6 +343,7 @@ var JITApi = (function() {
       if (parsed.paymentMethod && parsed.paymentMethod.indexOf("工会先代替") > -1) {
         paymentMethodType = "unionFirst";
       }
+      var statusText = parsed.status || (hasCompletedLabel ? "已完成交易" : (issue.state === "closed" ? "已关闭" : "待审核"));
       return {
         shopName: parsed.shopName || "",
         date: parsed.date || (issue.created_at ? issue.created_at.split("T")[0] : ""),
@@ -351,7 +355,7 @@ var JITApi = (function() {
         originalPrice: parsed.amount ? (parsed.amount + (parsed.amount.indexOf("元") > -1 ? "" : "元")) : "",
         finalPrice: finalAmount ? (finalAmount + (String(finalAmount).indexOf("元") > -1 ? "" : "元")) : "",
         amount: parsed.amount || "",
-        status: parsed.status || (issue.state === "closed" ? "已关闭" : "待审核"),
+        status: statusText,
         statusType: labels.indexOf("completed") > -1 ? "completed" : (labels.indexOf("approved") > -1 ? "approved" : (labels.indexOf("paid") > -1 ? "paid" : (labels.indexOf("rejected") > -1 ? "rejected" : "pending"))),
         shopPhoto: parsed.shopPhoto || "",
         orderPhotos: parsed.orderPhotos || "",
@@ -362,6 +366,42 @@ var JITApi = (function() {
         rejectReason: parsed.rejectReason || "",
         username: parsed.title ? parsed.title.replace(/\d+$/, "") : "",
         voucherId: parsed.voucherId || "",
+        _issueNumber: issue.number,
+        _issueUrl: issue.html_url,
+        _createdAt: issue.created_at,
+        _updatedAt: issue.updated_at,
+        _state: issue.state,
+        _labels: labels,
+        _title: issue.title
+      };
+    }
+
+    // 兜底：body 为空/损坏，但有 voucher label 时，用标题+标签重建最小数据
+    if (hasVoucherLabel && issue.title) {
+      var title = issue.title;
+      var uname = title.replace(/\d+$/, "").trim();
+      return {
+        shopName: "(数据异常)",
+        date: issue.created_at ? issue.created_at.split("T")[0] : "",
+        discount: "",
+        discountValue: 0,
+        paymentNote: "",
+        paymentMethod: "",
+        paymentMethodType: "userFirst",
+        originalPrice: "",
+        finalPrice: "",
+        amount: "",
+        status: hasCompletedLabel ? "已完成交易" : "数据异常",
+        statusType: hasCompletedLabel ? "completed" : "pending",
+        shopPhoto: "",
+        orderPhotos: "",
+        latitude: "",
+        longitude: "",
+        signature: "",
+        remark: "",
+        rejectReason: "",
+        username: uname,
+        voucherId: "",
         _issueNumber: issue.number,
         _issueUrl: issue.html_url,
         _createdAt: issue.created_at,
@@ -454,16 +494,21 @@ var JITApi = (function() {
     return _updateIssue(issueNumber, { body: body });
   };
 
-  // 标记凭证为已完成交易：加 completed label、更新状态文本
-  var _markVoucherCompleted = function(issueNumber, currentBody) {
-    var newBody = String(currentBody || "").replace(/｜\s*状态：.*/, "｜     状态：已完成交易");
-    if (newBody === currentBody) {
-      newBody = (currentBody || "") + "\n｜     状态：已完成交易";
-    }
-    return _safeRequest(_apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber + "/labels", {
-      method: "POST",
-      headers: _headers(),
-      body: JSON.stringify({ labels: ["completed"] })
+  // 标记凭证为已完成交易：自动获取 body → 更新状态文本 → 加 completed label
+  var _markVoucherCompleted = function(issueNumber) {
+    var newBody;
+    // 先拿当前 Issue body，避免清空数据
+    return _getIssue(issueNumber).then(function(issue) {
+      var currentBody = issue.body || "";
+      newBody = currentBody.replace(/｜\s*状态：.*/, "｜     状态：已完成交易");
+      if (newBody === currentBody) {
+        newBody = currentBody + "\n｜     状态：已完成交易";
+      }
+      return _safeRequest(_apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber + "/labels", {
+        method: "POST",
+        headers: _headers(),
+        body: JSON.stringify({ labels: ["completed"] })
+      });
     }).then(function() {
       return _updateIssue(issueNumber, { body: newBody });
     });
