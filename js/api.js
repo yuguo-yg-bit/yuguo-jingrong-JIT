@@ -92,7 +92,7 @@ var JITApi = (function() {
       branch: "main"
     };
     // 乐观策略：直接 PUT（不带 sha），文件不存在时一次成功
-    // 失败（文件已存在需要 sha）→ GET sha → 带 sha 重试
+    // 失败（文件已存在需要 sha）→ GET sha → 递归重试
     return _safeRequest(url, {
       method: "PUT",
       headers: _headers(),
@@ -101,7 +101,7 @@ var JITApi = (function() {
       return result && result.content ? result.content.download_url : "";
     }).catch(function(err) {
       var msg = String(err.message || "");
-      // 文件已存在（需要 sha）或 sha 不匹配：重新 GET sha 再重试
+      // 递归重试：先 GET sha 再带 sha PUT，最多 3 次
       if (retryCount < 3 && (msg.indexOf("sha") > -1 || msg.indexOf("expected") > -1 || msg.indexOf("422") > -1 || msg.indexOf("409") > -1)) {
         return new Promise(function(resolve) {
           setTimeout(resolve, 400 * (retryCount + 1));
@@ -109,15 +109,11 @@ var JITApi = (function() {
           return _getFileSha(path);
         }).then(function(sha) {
           if (sha) body.sha = sha;
-          return _safeRequest(url, {
-            method: "PUT",
-            headers: _headers(),
-            body: JSON.stringify(body)
-          });
-        }).then(function(result) {
-          return result && result.content ? result.content.download_url : "";
+          // 递归调用自身重试（retryCount+1），确保每次失败都能继续重试
+          return _uploadFileToRepo(path, base64Content, commitMsg, retryCount + 1);
         });
       }
+      // 非 SHA 错误或已达最大重试次数，直接抛出
       throw err;
     });
   };
@@ -443,34 +439,35 @@ var JITApi = (function() {
     var folderPath = "uploads/" + username + "/" + voucherId + "_" + ts;
     var commitMsg = "上传凭证图片: " + (voucherData.shopName || "") + " #" + voucherId;
 
-    var uploadPromises = [];
+    // 串行执行所有上传，避免并发 PUT 导致 SHA 冲突
+    var uploadChain = Promise.resolve();
 
     if (shopPhotoFile && isNewShopPhoto) {
-      uploadPromises.push(
-        _uploadImageToRepo(shopPhotoFile, folderPath, "shop.png", commitMsg).then(function(url) {
+      uploadChain = uploadChain.then(function() {
+        return _uploadImageToRepo(shopPhotoFile, folderPath, "shop.png", commitMsg).then(function(url) {
           voucherData.shopPhoto = url;
-        })
-      );
+        });
+      });
     }
 
     if (orderPhotoFiles && orderPhotoFiles.length > 0 && anyNewOrderPhotos) {
-      uploadPromises.push(
-        _uploadImagesToRepo(orderPhotoFiles, folderPath, commitMsg).then(function(urls) {
+      uploadChain = uploadChain.then(function() {
+        return _uploadImagesToRepo(orderPhotoFiles, folderPath, commitMsg).then(function(urls) {
           voucherData.orderPhotos = (voucherData.orderPhotos || []).concat(urls);
-        })
-      );
+        });
+      });
     }
 
     if (voucherData.signature && voucherData.signature.indexOf("base64,") > -1) {
       var sigBase64 = voucherData.signature.split(",")[1];
-      uploadPromises.push(
-        _uploadFileToRepo(folderPath + "/signature.png", sigBase64, commitMsg).then(function(url) {
+      uploadChain = uploadChain.then(function() {
+        return _uploadFileToRepo(folderPath + "/signature.png", sigBase64, commitMsg).then(function(url) {
           voucherData.signature = url;
-        })
-      );
+        });
+      });
     }
 
-    return Promise.all(uploadPromises).then(function() {
+    return uploadChain.then(function() {
       if (voucherData._issueNumber) {
         return _updateVoucherIssueBody(voucherData);
       } else {
