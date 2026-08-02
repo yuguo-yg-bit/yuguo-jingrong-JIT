@@ -558,6 +558,183 @@ var JITAdmin = (function() {
     document.getElementById("addUserOverlay").classList.remove("active");
   };
 
+  // ========= 积分管理 =========
+  var _pointsListData = {};   // { username: { points, frozen, ... } }
+  var _pointsOpTarget = null; // { username, op: 'add'|'reduce'|'clear'|'freeze'|'unfreeze' }
+
+  var loadPointsList = function() {
+    var tbody = document.getElementById("pointsList");
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">加载中...请稍候</td></tr>';
+    if (typeof JITPoints === "undefined" || !JITPoints.getAllUsersPoints) {
+      tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">积分模块未加载</td></tr>';
+      return;
+    }
+    JITPoints.ensureLabel().catch(function() {});
+    JITPoints.getAllUsersPoints().then(function(data) {
+      _pointsListData = data || {};
+      _renderPointsTable(data);
+    }).catch(function(err) {
+      tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">加载失败: ' + _escapeHtml(err.message || "") + '</td></tr>';
+    });
+  };
+
+  var _renderPointsTable = function(data) {
+    var tbody = document.getElementById("pointsList");
+    if (!tbody) return;
+    var usernames = Object.keys(data || {});
+    if (usernames.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">暂无积分记录（用户添加凭证后自动生成）</td></tr>';
+      return;
+    }
+    // 同时把 config 中的用户也列出来（即使还没积分记录）
+    var configUsers = JITConfig.getUsers();
+    Object.keys(configUsers).forEach(function(u) {
+      if (u !== "admin" && !data[u]) data[u] = { points: 0, frozen: false, streakDays: 0 };
+    });
+    usernames = Object.keys(data);
+    var html = "";
+    usernames.forEach(function(username) {
+      if (username === "admin") return;
+      var d = data[username];
+      var pts = d.points || 0;
+      var frozen = !!d.frozen;
+      var streak = d.streakDays || 0;
+      var statusHtml = frozen
+        ? '<span class="status-badge rejected" style="background:rgba(33,150,243,0.2);color:#2196f3;border:1px solid rgba(33,150,243,0.4);">🧊 已冻结</span>'
+        : '<span class="status-badge approved">正常</span>';
+      html += '<tr>';
+      html += '<td style="font-weight:600;">' + _escapeHtml(username) + '</td>';
+      html += '<td><span style="font-size:16px;font-weight:700;color:#ffd54f;">' + pts + '</span></td>';
+      html += '<td>' + statusHtml + '</td>';
+      html += '<td>' + (streak > 0 ? streak + ' 天' : '—') + '</td>';
+      html += '<td style="white-space:nowrap;">';
+      html += '<button class="action-btn pts-btn-add" data-user="' + _escapeHtml(username) + '" style="margin:2px;">➕ 增加</button>';
+      html += '<button class="action-btn pts-btn-reduce" data-user="' + _escapeHtml(username) + '" style="margin:2px;">➖ 减少</button>';
+      html += '<button class="action-btn pts-btn-clear" data-user="' + _escapeHtml(username) + '" style="margin:2px;border-color:#ff9800;color:#ff9800;background:rgba(255,152,0,0.15);">🗑 清零</button>';
+      if (frozen) {
+        html += '<button class="action-btn pts-btn-unfreeze" data-user="' + _escapeHtml(username) + '" style="margin:2px;border-color:#4caf50;color:#4caf50;background:rgba(76,175,80,0.15);">🔓 解冻</button>';
+      } else {
+        html += '<button class="action-btn pts-btn-freeze" data-user="' + _escapeHtml(username) + '" style="margin:2px;border-color:#2196f3;color:#2196f3;background:rgba(33,150,243,0.15);">🧊 冻结</button>';
+      }
+      html += '</td>';
+      html += '</tr>';
+    });
+    tbody.innerHTML = html;
+    // 绑定按钮
+    tbody.querySelectorAll(".pts-btn-add").forEach(function(b) {
+      b.addEventListener("click", function() { _openPointsOp(this.getAttribute("data-user"), "add"); });
+    });
+    tbody.querySelectorAll(".pts-btn-reduce").forEach(function(b) {
+      b.addEventListener("click", function() { _openPointsOp(this.getAttribute("data-user"), "reduce"); });
+    });
+    tbody.querySelectorAll(".pts-btn-clear").forEach(function(b) {
+      b.addEventListener("click", function() { _openPointsOp(this.getAttribute("data-user"), "clear"); });
+    });
+    tbody.querySelectorAll(".pts-btn-freeze").forEach(function(b) {
+      b.addEventListener("click", function() { _openPointsOp(this.getAttribute("data-user"), "freeze"); });
+    });
+    tbody.querySelectorAll(".pts-btn-unfreeze").forEach(function(b) {
+      b.addEventListener("click", function() { _openPointsOp(this.getAttribute("data-user"), "unfreeze"); });
+    });
+  };
+
+  var _openPointsOp = function(username, op) {
+    _pointsOpTarget = { username: username, op: op };
+    var overlay = document.getElementById("pointsOpOverlay");
+    var titleEl = document.getElementById("pointsOpTitle");
+    var infoEl = document.getElementById("pointsOpInfo");
+    var valueGroup = document.getElementById("pointsOpValueGroup");
+    var reasonGroup = document.getElementById("pointsOpReasonGroup");
+    var valueInput = document.getElementById("pointsOpValue");
+    var reasonInput = document.getElementById("pointsOpReason");
+    if (!overlay) return;
+
+    var d = _pointsListData[username] || { points: 0, frozen: false };
+    var infoHtml = "用户：<b>" + _escapeHtml(username) + "</b>　当前积分：<b style='color:#ffd54f;'>" + (d.points || 0) + "</b>";
+    if (d.frozen) infoHtml += '　<span style="color:#2196f3;">（已冻结）</span>';
+    infoEl.innerHTML = infoHtml;
+    reasonInput.value = "";
+
+    var titles = {
+      add: "➕ 增加积分",
+      reduce: "➖ 减少积分",
+      clear: "🗑 清零积分",
+      freeze: "🧊 冻结积分",
+      unfreeze: "🔓 解冻积分"
+    };
+    titleEl.textContent = titles[op] || "调整积分";
+
+    if (op === "add" || op === "reduce") {
+      valueGroup.style.display = "";
+      reasonGroup.style.display = "";
+      valueInput.value = "";
+      valueInput.placeholder = op === "add" ? "要增加的积分数" : "要减少的积分数";
+    } else if (op === "clear") {
+      valueGroup.style.display = "none";
+      reasonGroup.style.display = "";
+      reasonInput.placeholder = "清零原因（选填）";
+    } else {
+      // freeze / unfreeze
+      valueGroup.style.display = "none";
+      reasonGroup.style.display = "none";
+    }
+    overlay.classList.add("active");
+  };
+
+  var _closePointsOp = function() {
+    var overlay = document.getElementById("pointsOpOverlay");
+    if (overlay) overlay.classList.remove("active");
+    _pointsOpTarget = null;
+  };
+
+  var _confirmPointsOp = function() {
+    if (!_pointsOpTarget) return;
+    var username = _pointsOpTarget.username;
+    var op = _pointsOpTarget.op;
+    var reasonInput = document.getElementById("pointsOpReason");
+    var reason = reasonInput ? reasonInput.value.trim() : "";
+    var btn = document.getElementById("btnPointsOpConfirm");
+    if (btn) btn.disabled = true;
+
+    var promise;
+    if (op === "add") {
+      var val = parseInt(document.getElementById("pointsOpValue").value, 10);
+      if (!val || val <= 0) { _showToast("请输入正整数"); if (btn) btn.disabled = false; return; }
+      promise = JITPoints.adminAdjust(username, val, reason || "管理员增加积分");
+    } else if (op === "reduce") {
+      var valR = parseInt(document.getElementById("pointsOpValue").value, 10);
+      if (!valR || valR <= 0) { _showToast("请输入正整数"); if (btn) btn.disabled = false; return; }
+      promise = JITPoints.adminAdjust(username, -valR, reason || "管理员减少积分");
+    } else if (op === "clear") {
+      promise = JITPoints.resetPoints(username);
+    } else if (op === "freeze") {
+      promise = JITPoints.setFrozen(username, true);
+    } else if (op === "unfreeze") {
+      promise = JITPoints.setFrozen(username, false);
+    } else {
+      if (btn) btn.disabled = false;
+      return;
+    }
+
+    promise.then(function() {
+      var msg = {
+        add: "积分增加成功",
+        reduce: "积分减少成功",
+        clear: "积分已清零",
+        freeze: "已冻结 " + username + " 的积分账户",
+        unfreeze: "已解冻 " + username + " 的积分账户"
+      }[op];
+      _showToast(msg);
+      _closePointsOp();
+      loadPointsList();  // 刷新列表
+    }).catch(function(err) {
+      _showToast("操作失败: " + (err.message || ""));
+    }).finally(function() {
+      if (btn) btn.disabled = false;
+    });
+  };
+
   var loadSettings = function() {
     document.getElementById("settingPerPage").value = localStorage.getItem("jit_per_page") || "10";
     document.getElementById("settingRefreshInterval").value = localStorage.getItem("jit_refresh_interval") || "10";
@@ -746,6 +923,7 @@ var JITAdmin = (function() {
         else { stopChatPoll(); }
         if (tab === "lottery") loadLotteryConfig();
         if (tab === "users") loadUsers();
+        if (tab === "points") loadPointsList();
         if (tab === "settings") loadSettings();
         if (tab === "developer") loadSystemInfo();
       });
@@ -795,6 +973,20 @@ var JITAdmin = (function() {
       if (e.target === this) this.classList.remove("active");
     });
     document.getElementById("btnConfirmAddUser").addEventListener("click", addUser);
+
+    // 积分管理事件
+    var btnRefreshPoints = document.getElementById("btnRefreshPoints");
+    if (btnRefreshPoints) btnRefreshPoints.addEventListener("click", loadPointsList);
+    var btnPointsOpClose = document.getElementById("btnPointsOpClose");
+    if (btnPointsOpClose) btnPointsOpClose.addEventListener("click", _closePointsOp);
+    var btnPointsOpConfirm = document.getElementById("btnPointsOpConfirm");
+    if (btnPointsOpConfirm) btnPointsOpConfirm.addEventListener("click", _confirmPointsOp);
+    var pointsOpOverlay = document.getElementById("pointsOpOverlay");
+    if (pointsOpOverlay) {
+      pointsOpOverlay.addEventListener("click", function(e) {
+        if (e.target === this) _closePointsOp();
+      });
+    }
 
     document.getElementById("btnSaveSettings").addEventListener("click", saveSettings);
     document.getElementById("btnClearCache").addEventListener("click", clearCache);

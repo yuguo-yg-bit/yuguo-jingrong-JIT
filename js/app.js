@@ -40,13 +40,19 @@ var JITApp = (function() {
   var _pendingPaymentVoucher = null;  // 当前打开支付弹窗的凭证
   var _pointsOffsetUsed = false;      // 该笔是否已用积分抵消
 
+  var _currentFrozen = false;
+
   var _refreshPointsDisplay = function(forceCloud) {
     if (!_currentUser) return;
     var el = document.getElementById("pointsTotal");
     if (!el) return;
     return JITPoints.getUserPoints(_currentUser, !!forceCloud).then(function(d) {
       _currentPoints = d ? (d.points || 0) : 0;
+      _currentFrozen = !!(d && d.frozen);
       el.textContent = _currentPoints;
+      // 冻结状态提示
+      el.style.color = _currentFrozen ? "#2196f3" : "";
+      el.title = _currentFrozen ? "积分账户已冻结" : "";
       // 同步更新幸运抽奖条上的积分显示
       var luckyEl = document.getElementById("luckyCurrentPoints");
       if (luckyEl) luckyEl.textContent = String(_currentPoints);

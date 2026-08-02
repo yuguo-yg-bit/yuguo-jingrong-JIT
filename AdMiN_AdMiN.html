@@ -19,6 +19,7 @@
       <a class="admin-nav-item" data-tab="chat">💬 在线聊天</a>
       <a class="admin-nav-item" data-tab="lottery">🎲 抽奖配置</a>
       <a class="admin-nav-item" data-tab="users">👥 用户管理</a>
+      <a class="admin-nav-item" data-tab="points">🏆 积分管理</a>
       <a class="admin-nav-item" data-tab="settings">⚙️ 系统设置</a>
       <a class="admin-nav-item" data-tab="developer">🔧 开发者</a>
     </nav>
@@ -116,6 +117,28 @@
         </div>
         <div class="admin-card-footer">
           <button class="btn btn-approve" id="btnAddUser">➕ 添加用户</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="admin-tab" id="tabPoints">
+      <div class="admin-card">
+        <div class="admin-card-header">
+          <h3>🏆 积分管理</h3>
+          <p class="admin-card-desc">管理每个用户的积分。冻结后用户<b>不可赚取也不可消耗</b>积分（管理员调整除外）。</p>
+        </div>
+        <div class="admin-card-body">
+          <table class="admin-table" style="margin-top:0;">
+            <thead>
+              <tr><th>用户</th><th>积分</th><th>状态</th><th>连续签到</th><th>操作</th></tr>
+            </thead>
+            <tbody id="pointsList">
+              <tr><td colspan="5" class="loading-cell">点击「刷新积分」加载...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="admin-card-footer">
+          <button class="btn btn-approve" id="btnRefreshPoints">🔄 刷新积分列表</button>
         </div>
       </div>
     </div>
@@ -220,6 +243,31 @@
     <div class="review-modal-footer">
       <div class="review-actions">
         <button class="btn btn-approve" id="btnConfirmAddUser">确认添加</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="pointsOpOverlay">
+  <div class="review-modal" style="max-width:420px;">
+    <div class="review-modal-header">
+      <h3 id="pointsOpTitle">调整积分</h3>
+      <button class="modal-close" id="btnPointsOpClose">&times;</button>
+    </div>
+    <div class="review-modal-body">
+      <div id="pointsOpInfo" style="margin-bottom:14px;padding:10px 12px;background:rgba(255,213,79,0.08);border-radius:8px;font-size:13px;"></div>
+      <div class="form-group" id="pointsOpValueGroup">
+        <label class="form-label">积分数量</label>
+        <input type="number" class="form-input" id="pointsOpValue" min="1" placeholder="请输入积分数">
+      </div>
+      <div class="form-group" id="pointsOpReasonGroup">
+        <label class="form-label">操作原因 <span style="color:var(--text-muted);font-size:12px;">（选填，记录到流水）</span></label>
+        <input type="text" class="form-input" id="pointsOpReason" placeholder="如：活动赠送 / 违规扣除">
+      </div>
+    </div>
+    <div class="review-modal-footer">
+      <div class="review-actions">
+        <button class="btn btn-approve" id="btnPointsOpConfirm">确认操作</button>
       </div>
     </div>
   </div>

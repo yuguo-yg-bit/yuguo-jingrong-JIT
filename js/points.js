@@ -57,13 +57,15 @@ var JITPoints = (function() {
   // ｜签到记录：yyyy-mm-dd,yyyy-mm-dd
   // ｜最后签到：yyyy-mm-dd
   // ｜连续天数：x
+  // ｜冻结状态：是/否
   var _formatPointsBody = function(data) {
     return [
       "｜用户名：" + (data.username || ""),
       "｜当前积分：" + (data.points || 0),
       "｜签到记录：" + ((data.signIns || []).join(",")),
       "｜最后签到：" + (data.lastSignIn || ""),
-      "｜连续天数：" + (data.streakDays || 0)
+      "｜连续天数：" + (data.streakDays || 0),
+      "｜冻结状态：" + (data.frozen ? "是" : "否")
     ].join("\n");
   };
 
@@ -73,7 +75,8 @@ var JITPoints = (function() {
       points: 0,
       signIns: [],
       lastSignIn: "",
-      streakDays: 0
+      streakDays: 0,
+      frozen: false
     };
     var lines = String(body || "").split(/\r?\n/);
     lines.forEach(function(line) {
@@ -87,6 +90,7 @@ var JITPoints = (function() {
       }
       else if ((match = trimmed.match(/^｜?\s*最后签到：(.+)$/))) data.lastSignIn = match[1].trim();
       else if ((match = trimmed.match(/^｜?\s*连续天数：(.+)$/))) data.streakDays = parseInt(match[1].trim(), 10) || 0;
+      else if ((match = trimmed.match(/^｜?\s*冻结状态：(.+)$/))) data.frozen = (match[1].trim() === "是");
     });
     return data;
   };
@@ -236,7 +240,8 @@ var JITPoints = (function() {
           lastSignIn: bodyData.lastSignIn || "",
           signIns: bodyData.signIns || [],
           logs: parsed.logs,
-          issueNumber: issue.number
+          issueNumber: issue.number,
+          frozen: !!bodyData.frozen
         };
         _saveLocal(username, result);
         return result;
@@ -245,10 +250,18 @@ var JITPoints = (function() {
   };
 
   // ------- 对外：修改积分（+/-）-------
-  // options: { silent: false } silent = true 时不刷新缓存/UI
-  var _changePoints = function(username, delta, reason) {
+  // options: { forceAdmin: false }  forceAdmin = true 时绕过冻结限制（管理员操作）
+  var _changePoints = function(username, delta, reason, opts) {
     if (delta === 0) return Promise.resolve(0);
+    opts = opts || {};
     return _getOrCreatePointsIssue(username).then(function(issue) {
+      // 冻结检查：冻结用户不可赚不可花（管理员操作除外）
+      if (!opts.forceAdmin) {
+        var checkData = _parsePointsBody(issue.body);
+        if (checkData.frozen) {
+          throw new Error("积分账户已冻结，暂不可赚取或消耗积分");
+        }
+      }
       return _addPointsComment(issue.number, delta, reason).then(function() {
         // 更新 Issue body 中的积分总计 + 刷新本地缓存
         var bodyData = _parsePointsBody(issue.body);
@@ -396,12 +409,61 @@ var JITPoints = (function() {
             lastSignIn: bodyData.lastSignIn || "",
             issueNumber: issue.number,
             signIns: bodyData.signIns || [],
-            logs: parsed.logs.slice(0, 20)
+            logs: parsed.logs.slice(0, 20),
+            frozen: !!bodyData.frozen
           };
         });
       });
       return Promise.all(promises).then(function() { return result; });
     });
+  };
+
+  // ------- 管理员：冻结/解冻 -------
+  var _setFrozen = function(username, frozen) {
+    return _getOrCreatePointsIssue(username).then(function(issue) {
+      var data = _parsePointsBody(issue.body);
+      data.frozen = !!frozen;
+      return _updatePointsIssueBody(issue.number, data).then(function() {
+        var cached = _loadLocal(username);
+        if (cached) {
+          cached.frozen = !!frozen;
+          _saveLocal(username, cached);
+        }
+        return !!frozen;
+      });
+    });
+  };
+
+  // ------- 管理员：清零积分 -------
+  var _resetPoints = function(username) {
+    return _getOrCreatePointsIssue(username).then(function(issue) {
+      var data = _parsePointsBody(issue.body);
+      var currentPts = data.points || 0;
+      if (currentPts === 0) return 0;
+      return _addPointsComment(issue.number, -currentPts, "管理员清零积分").then(function() {
+        data.points = 0;
+        return _updatePointsIssueBody(issue.number, data).then(function() {
+          var cached = _loadLocal(username);
+          if (cached) {
+            cached.points = 0;
+            cached.logs = cached.logs || [];
+            cached.logs.unshift({
+              delta: -currentPts,
+              reason: "管理员清零积分",
+              time: new Date().toISOString().replace("T", " ").slice(0, 16),
+              createdAt: new Date().toISOString()
+            });
+            _saveLocal(username, cached);
+          }
+          return 0;
+        });
+      });
+    });
+  };
+
+  // ------- 管理员：调整积分（绕过冻结） -------
+  var _adminAdjust = function(username, delta, reason) {
+    return _changePoints(username, delta, reason, { forceAdmin: true });
   };
 
   // ------- 初始化：确保 points label 存在 -------
@@ -427,9 +489,12 @@ var JITPoints = (function() {
     usePointsForOffset: _usePointsForOffset,
     useLuckyLottery: _useLuckyLottery,
     getAllUsersPoints: _getAllUsersPoints,
-    // 给管理员发审核通过奖励用（无需登录）
+    // 管理员操作（绕过冻结）
     adminAddPoints: function(username, delta, reason) {
-      return _changePoints(username, delta, reason);
-    }
+      return _changePoints(username, delta, reason, { forceAdmin: true });
+    },
+    setFrozen: _setFrozen,
+    resetPoints: _resetPoints,
+    adminAdjust: _adminAdjust
   };
 })();
