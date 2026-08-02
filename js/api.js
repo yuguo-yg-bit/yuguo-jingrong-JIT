@@ -241,6 +241,7 @@ var JITApi = (function() {
 
     return [
       "｜标题：" + (voucherData.username || "user") + (voucherData.voucherId || ""),
+      "｜用户ID：" + (voucherData.username || "user"),
       "｜内容：店铺：" + (voucherData.shopName || ""),
       "｜     店铺照片：" + (voucherData.shopPhoto || ""),
       "｜     商品订单照片：" + orderPhotos,
@@ -266,6 +267,8 @@ var JITApi = (function() {
 
       if ((match = trimmed.match(/^｜?标题：(.+)$/))) {
         data.title = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*用户ID：(.+)$/))) {
+        data.userId = match[1].trim();
       } else if ((match = trimmed.match(/^｜?内容：店铺：(.+)$/))) {
         data.shopName = match[1].trim();
       } else if ((match = trimmed.match(/^｜?\s*店铺照片：(.+)$/))) {
@@ -519,6 +522,20 @@ var JITApi = (function() {
     });
   };
 
+  var _getIssue = function(issueNumber) {
+    var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber;
+    return _safeRequest(url, {
+      method: "GET",
+      headers: _headers()
+    });
+  };
+
+  var _uploadChatImage = function(file, username) {
+    var ts = Date.now();
+    var folderPath = "chat/" + (username || "user") + "/" + ts;
+    return _uploadImageToRepo(file, folderPath, "chat_img.png", "聊天图片: " + (username || ""));
+  };
+
   return {
     getVouchers: _getVouchers,
     getAllVouchers: _getAllVouchers,
@@ -537,6 +554,8 @@ var JITApi = (function() {
     ensureLabels: _ensureLabels,
     invalidateCache: _invalidateCache,
     getIssueComments: _getIssueComments,
-    addIssueComment: _addIssueComment
+    addIssueComment: _addIssueComment,
+    uploadChatImage: _uploadChatImage,
+    getIssue: _getIssue
   };
 })();

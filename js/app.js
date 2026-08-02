@@ -1155,7 +1155,14 @@ var JITApp = (function() {
         var html = "";
         allMsgs.forEach(function(msg) {
           html += '<div class="chat-message ' + msg.type + '">';
-          html += '<div>' + _escapeHtml(msg.body) + '</div>';
+          if (msg.body.indexOf("[IMG]") === 0) {
+            html += '<div><img src="' + _escapeHtml(encodeURI(msg.body.replace("[IMG]", ""))) + '" style="max-width:200px;max-height:200px;border-radius:8px;cursor:pointer;" onclick="window.open(this.src)"></div>';
+          } else if (msg.body.indexOf("[VOUCHER]") === 0) {
+            var vNum = msg.body.replace("[VOUCHER]", "").trim();
+            html += '<div><a href="javascript:void(0)" onclick="JITApp._openVoucherDetail(' + vNum + ')" style="color:#0366d6;text-decoration:underline;">📋 查看凭证 #' + vNum + '</a></div>';
+          } else {
+            html += '<div>' + _escapeHtml(msg.body) + '</div>';
+          }
           html += '<div class="chat-time">' + new Date(msg.time).toLocaleString("zh-CN") + '</div>';
           html += '</div>';
         });
@@ -1193,6 +1200,110 @@ var JITApp = (function() {
     });
   };
 
+  var _sendChatImage = function(file) {
+    if (!file || !_currentUser) return;
+    _showToast("上传图片中...", "");
+    var sendBtn = document.getElementById("btnChatSend");
+    if (sendBtn) sendBtn.disabled = true;
+    _getOrCreateChatIssue().then(function(issueNum) {
+      return JITApi.uploadChatImage(file, _currentUser);
+    }).then(function(url) {
+      if (!url) { _showToast("图片上传失败", "error"); return; }
+      return _getOrCreateChatIssue().then(function(issueNum) {
+        return JITApi.addIssueComment(issueNum, "｜CHAT｜[IMG]" + url);
+      });
+    }).then(function() {
+      _loadChatMessages();
+    }).catch(function(err) {
+      _showToast("发送图片失败: " + err.message, "error");
+    }).finally(function() {
+      if (sendBtn) sendBtn.disabled = false;
+    });
+  };
+
+  var _attachVoucher = function() {
+    if (!_currentUser) return;
+    var vouchers = _allVouchers.filter(function(v) {
+      return v.username === _currentUser && v.shopName !== "【聊天专用】";
+    });
+    if (vouchers.length === 0) {
+      _showToast("您还没有凭证可指定", "error");
+      return;
+    }
+    var html = "";
+    vouchers.forEach(function(v) {
+      html += '<div class="chat-voucher-pick" data-issue="' + v._issueNumber + '" style="padding:10px;border:1px solid var(--border-color);border-radius:8px;margin-bottom:8px;cursor:pointer;">';
+      html += '<div style="font-weight:bold;">' + _escapeHtml(v.shopName || "未知") + '</div>';
+      html += '<div style="font-size:12px;color:var(--text-secondary);">日期: ' + _escapeHtml(v.date || "-") + ' · 金额: ' + _escapeHtml(v.originalPrice || "-") + ' · 折扣: ' + _escapeHtml(v.discount || "未抽奖") + '</div>';
+      html += '</div>';
+    });
+    var overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;";
+    var box = document.createElement("div");
+    box.style.cssText = "background:var(--bg-panel);border-radius:12px;padding:20px;max-width:400px;width:90%;max-height:60vh;overflow-y:auto;";
+    box.innerHTML = '<h3 style="margin:0 0 12px;">选择要发送的凭证</h3>' + html + '<button id="btnCloseVoucherPick" style="margin-top:8px;width:100%;padding:8px;border:none;border-radius:8px;background:var(--bg-card);color:var(--text-primary);cursor:pointer;">取消</button>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    overlay.querySelectorAll(".chat-voucher-pick").forEach(function(item) {
+      item.addEventListener("click", function() {
+        var issueNum = this.getAttribute("data-issue");
+        document.body.removeChild(overlay);
+        _getOrCreateChatIssue().then(function(chatIssueNum) {
+          return JITApi.addIssueComment(chatIssueNum, "｜CHAT｜[VOUCHER]" + issueNum);
+        }).then(function() {
+          _showToast("凭证已发送", "success");
+          _loadChatMessages();
+        }).catch(function(err) {
+          _showToast("发送失败: " + err.message, "error");
+        });
+      });
+    });
+    document.getElementById("btnCloseVoucherPick").addEventListener("click", function() {
+      document.body.removeChild(overlay);
+    });
+  };
+
+  var _openVoucherDetail = function(issueNum) {
+    JITApi.getIssue(issueNum).then(function(issue) {
+      var v = JITApi.parseVoucherData(issue);
+      if (!v) { _showToast("无法加载凭证", "error"); return; }
+      var overlay = document.createElement("div");
+      overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;";
+      var box = document.createElement("div");
+      box.style.cssText = "background:var(--bg-panel);border-radius:12px;padding:20px;max-width:400px;width:90%;max-height:70vh;overflow-y:auto;";
+      var html = '<h3 style="margin:0 0 12px;">凭证详情 #' + issueNum + '</h3>';
+      html += '<div style="margin-bottom:6px;"><strong>店铺：</strong>' + _escapeHtml(v.shopName || "-") + '</div>';
+      html += '<div style="margin-bottom:6px;"><strong>日期：</strong>' + _escapeHtml(v.date || "-") + '</div>';
+      html += '<div style="margin-bottom:6px;"><strong>金额：</strong>' + _escapeHtml(v.originalPrice || "-") + '</div>';
+      html += '<div style="margin-bottom:6px;"><strong>折扣：</strong>' + _escapeHtml(v.discount || "未抽奖") + '</div>';
+      html += '<div style="margin-bottom:6px;"><strong>状态：</strong>' + _escapeHtml(v.status || "-") + '</div>';
+      if (v.remark) html += '<div style="margin-bottom:6px;"><strong>备注：</strong>' + _escapeHtml(v.remark) + '</div>';
+      if (v.rejectReason) html += '<div style="margin-bottom:6px;color:#f44336;"><strong>拒绝原因：</strong>' + _escapeHtml(v.rejectReason) + '</div>';
+      if (v.shopPhoto) html += '<div style="margin:8px 0;"><strong>店铺照片</strong><br><img src="' + encodeURI(v.shopPhoto) + '" style="max-width:100%;border-radius:8px;margin-top:4px;"></div>';
+      if (v.orderPhotos) {
+        var urls = v.orderPhotos.split("|").map(function(s) { return s.trim(); }).filter(Boolean);
+        if (urls.length > 0) {
+          html += '<div style="margin:8px 0;"><strong>订单照片</strong><br>';
+          urls.forEach(function(u) { html += '<img src="' + encodeURI(u) + '" style="max-width:100%;border-radius:8px;margin-top:4px;">'; });
+          html += '</div>';
+        }
+      }
+      if (v.signature) html += '<div style="margin:8px 0;"><strong>签名</strong><br><img src="' + encodeURI(v.signature) + '" style="max-width:200px;border-radius:8px;margin-top:4px;"></div>';
+      html += '<button id="btnCloseVoucherDetail" style="margin-top:12px;width:100%;padding:8px;border:none;border-radius:8px;background:var(--bg-card);color:var(--text-primary);cursor:pointer;">关闭</button>';
+      box.innerHTML = html;
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+      document.getElementById("btnCloseVoucherDetail").addEventListener("click", function() {
+        document.body.removeChild(overlay);
+      });
+      overlay.addEventListener("click", function(e) {
+        if (e.target === overlay) document.body.removeChild(overlay);
+      });
+    }).catch(function(err) {
+      _showToast("加载凭证失败: " + err.message, "error");
+    });
+  };
+
   var _initChatEvents = function() {
     var closeBtn = document.getElementById("btnChatClose");
     if (closeBtn) {
@@ -1214,12 +1325,36 @@ var JITApp = (function() {
         if (e.key === "Enter") _sendChatMessage();
       });
     }
+    var plusBtn = document.getElementById("btnChatPlus");
+    var extraMenu = document.getElementById("chatExtraMenu");
+    if (plusBtn && extraMenu) {
+      plusBtn.addEventListener("click", function() {
+        extraMenu.style.display = extraMenu.style.display === "none" ? "block" : "none";
+      });
+    }
+    var attachVoucherBtn = document.getElementById("btnChatAttachVoucher");
+    if (attachVoucherBtn) {
+      attachVoucherBtn.addEventListener("click", function() {
+        if (extraMenu) extraMenu.style.display = "none";
+        _attachVoucher();
+      });
+    }
+    var chatImgInput = document.getElementById("chatImageInput");
+    if (chatImgInput) {
+      chatImgInput.addEventListener("change", function() {
+        var file = this.files[0];
+        if (!file) return;
+        this.value = "";
+        _sendChatImage(file);
+      });
+    }
   };
 
   _initChatEvents();
 
   return {
-    init: _init
+    init: _init,
+    _openVoucherDetail: _openVoucherDetail
   };
 })();
 

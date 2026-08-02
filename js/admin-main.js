@@ -136,8 +136,7 @@ var JITAdmin = (function() {
 
   var hasVoucherData = function(issue) {
     if (!issue.body) return false;
-    if (issue.body.indexOf("【聊天专用】") > -1) return false;
-    return issue.body.indexOf("店铺名称") > -1 || issue.body.indexOf("店铺：") > -1 || issue.body.indexOf("中奖打折") > -1;
+    return issue.body.indexOf("店铺名称") > -1 || issue.body.indexOf("店铺：") > -1 || issue.body.indexOf("中奖打折") > -1 || issue.body.indexOf("【聊天专用】") > -1;
   };
 
   var renderTable = function() {
@@ -146,6 +145,7 @@ var JITAdmin = (function() {
     var pendingCount = 0, approvedCount = 0, rejectedCount = 0;
 
     var filtered = allIssues.filter(function(issue) {
+      if (issue.body && issue.body.indexOf("【聊天专用】") > -1) return false;
       var status = _getIssueStatus(issue);
       if (status === "pending") pendingCount++;
       if (status === "approved") approvedCount++;
@@ -252,6 +252,14 @@ var JITAdmin = (function() {
     overlay.onclick = function() { overlay.style.display = "none"; };
   };
 
+  var _openVoucherFromChat = function(issueNum) {
+    _apiGet(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues/" + issueNum).then(function(issue) {
+      openReview(issue);
+    }).catch(function() {
+      _showToast("无法加载凭证 #" + issueNum);
+    });
+  };
+
   var _updateIssueStatus = function(issue, action, reason) {
     var labels = (issue.labels || []).map(function(l) { return l.name; });
     labels = labels.filter(function(l) { return l !== "pending" && l !== "approved" && l !== "rejected"; });
@@ -285,7 +293,11 @@ var JITAdmin = (function() {
     var users = {};
     allIssues.forEach(function(issue) {
       var data = _parseIssueBody(issue.body);
-      var userId = data.userId || data.title || (issue.user ? issue.user.login : "");
+      var userId = data.userId;
+      if (!userId && data.title) {
+        userId = data.title.replace(/\d+$/, "");
+      }
+      if (!userId) userId = issue.user ? issue.user.login : "";
       if (userId && !users[userId]) {
         users[userId] = { userId: userId, issues: [] };
       }
@@ -324,6 +336,8 @@ var JITAdmin = (function() {
     document.getElementById("chatHeader").textContent = "与 " + userId + " 聊天中";
     document.getElementById("chatInput").disabled = false;
     document.getElementById("btnChatSend").disabled = false;
+    var imgBtn = document.getElementById("btnChatImage");
+    if (imgBtn) imgBtn.style.display = "inline-block";
     loadChatMessages();
     loadChatUsers();
   };
@@ -333,7 +347,9 @@ var JITAdmin = (function() {
     var userIssues = [];
     allIssues.forEach(function(issue) {
       var data = _parseIssueBody(issue.body);
-      var userId = data.userId || data.title || (issue.user ? issue.user.login : "");
+      var userId = data.userId;
+      if (!userId && data.title) userId = data.title.replace(/\d+$/, "");
+      if (!userId) userId = issue.user ? issue.user.login : "";
       if (userId === currentChatUser.userId) {
         userIssues.push(issue.number);
       }
@@ -362,7 +378,14 @@ var JITAdmin = (function() {
       var html = "";
       allComments.forEach(function(c) {
         html += '<div class="chat-message ' + c.type + '">';
-        html += '<div>' + _escapeHtml(c.body) + '</div>';
+        if (c.body.indexOf("[IMG]") === 0) {
+          html += '<div><img src="' + _escapeHtml(encodeURI(c.body.replace("[IMG]", ""))) + '" style="max-width:200px;max-height:200px;border-radius:8px;cursor:pointer;" onclick="JITAdmin._previewImage(this.src)"></div>';
+        } else if (c.body.indexOf("[VOUCHER]") === 0) {
+          var vNum = c.body.replace("[VOUCHER]", "").trim();
+          html += '<div><a href="javascript:void(0)" onclick="JITAdmin._openVoucherFromChat(\'' + vNum + '\')" style="color:#0366d6;text-decoration:underline;">📋 查看凭证 #' + vNum + '</a></div>';
+        } else {
+          html += '<div>' + _escapeHtml(c.body) + '</div>';
+        }
         html += '<div class="chat-time">' + _escapeHtml(c.user) + ' · ' + new Date(c.time).toLocaleString("zh-CN") + '</div>';
         html += '</div>';
       });
@@ -380,7 +403,9 @@ var JITAdmin = (function() {
     var userIssues = [];
     allIssues.forEach(function(issue) {
       var data = _parseIssueBody(issue.body);
-      var userId = data.userId || data.title || (issue.user ? issue.user.login : "");
+      var userId = data.userId;
+      if (!userId && data.title) userId = data.title.replace(/\d+$/, "");
+      if (!userId) userId = issue.user ? issue.user.login : "";
       if (userId === currentChatUser.userId) userIssues.push(issue.number);
     });
     if (userIssues.length === 0) { _showToast("该用户没有凭证"); return; }
@@ -713,6 +738,32 @@ var JITAdmin = (function() {
     document.getElementById("chatInput").addEventListener("keydown", function(e) {
       if (e.key === "Enter") sendChatMessage();
     });
+    var chatImgInput = document.getElementById("chatImageInput");
+    if (chatImgInput) {
+      chatImgInput.addEventListener("change", function() {
+        var file = this.files[0];
+        if (!file || !currentChatUser) return;
+        this.value = "";
+        _showToast("上传图片中...");
+        JITApi.uploadChatImage(file, "admin").then(function(url) {
+          if (!url) { _showToast("图片上传失败"); return; }
+          var userIssues = [];
+          allIssues.forEach(function(issue) {
+            var data = _parseIssueBody(issue.body);
+            var uid = data.userId;
+            if (!uid && data.title) uid = data.title.replace(/\d+$/, "");
+            if (!uid) uid = issue.user ? issue.user.login : "";
+            if (uid === currentChatUser.userId) userIssues.push(issue.number);
+          });
+          if (userIssues.length === 0) { _showToast("该用户没有凭证"); return; }
+          return _addIssueComment(userIssues[0], "｜CHAT｜[IMG]" + url).then(function() {
+            loadChatMessages();
+          });
+        }).catch(function(e) {
+          _showToast("发送图片失败: " + e.message);
+        });
+      });
+    }
 
     document.getElementById("btnSaveLotteryConfig").addEventListener("click", saveLotteryConfig);
     document.getElementById("btnAddUser").addEventListener("click", function() {
@@ -737,6 +788,7 @@ var JITAdmin = (function() {
 
   return {
     _previewImage: _previewImage,
+    _openVoucherFromChat: _openVoucherFromChat,
     loadIssues: loadIssues
   };
 })();

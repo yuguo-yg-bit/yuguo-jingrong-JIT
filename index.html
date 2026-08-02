@@ -356,8 +356,16 @@
       <div class="chat-loading">加载聊天记录中...</div>
     </div>
     <div class="chat-container-input">
+      <button class="chat-upload-btn" id="btnChatPlus" title="更多">+</button>
       <input type="text" class="chat-input" id="chatInput" placeholder="输入消息...">
+      <label class="chat-upload-btn" id="btnChatImage" title="发送图片">
+        <input type="file" accept="image/*" id="chatImageInput" style="display:none;">
+        📷
+      </label>
       <button class="chat-send-btn" id="btnChatSend">发送</button>
+    </div>
+    <div class="chat-extra-menu" id="chatExtraMenu" style="display:none;">
+      <button class="chat-extra-item" id="btnChatAttachVoucher">📋 指定凭证</button>
     </div>
   </div>
 </div>
