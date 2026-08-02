@@ -211,7 +211,7 @@ var JITAdmin = (function() {
     html += '<div class="review-images-section">';
     if (data.shopPhoto) {
       html += '<div class="review-images-title">店铺照片</div>';
-      html += '<div class="review-image-grid"><div class="review-image-wrap"><img src="' + _escapeHtml(data.shopPhoto) + '" onclick="JITAdmin._previewImage(this.src)" loading="lazy"><div class="review-image-label">店铺照片</div></div></div>';
+      html += '<div class="review-image-grid"><div class="review-image-wrap"><img src="' + _escapeHtml(encodeURI(data.shopPhoto)) + '" onclick="JITAdmin._previewImage(this.src)" loading="lazy"><div class="review-image-label">店铺照片</div></div></div>';
     }
     var orderPhotoStr = data.orderPhotos || "";
     if (orderPhotoStr) {
@@ -219,14 +219,14 @@ var JITAdmin = (function() {
       if (orderUrls.length > 0) {
         html += '<div class="review-images-title">订单照片</div><div class="review-image-grid">';
         orderUrls.forEach(function(url, idx) {
-          html += '<div class="review-image-wrap"><img src="' + _escapeHtml(url) + '" onclick="JITAdmin._previewImage(this.src)" loading="lazy"><div class="review-image-label">订单照片 ' + (idx + 1) + '</div></div>';
+          html += '<div class="review-image-wrap"><img src="' + _escapeHtml(encodeURI(url)) + '" onclick="JITAdmin._previewImage(this.src)" loading="lazy"><div class="review-image-label">订单照片 ' + (idx + 1) + '</div></div>';
         });
         html += '</div>';
       }
     }
     if (data.signature) {
       html += '<div class="review-images-title">用户签字</div>';
-      html += '<div class="signature-wrap"><img src="' + _escapeHtml(data.signature) + '" onclick="JITAdmin._previewImage(this.src)" loading="lazy"></div>';
+      html += '<div class="signature-wrap"><img src="' + _escapeHtml(encodeURI(data.signature)) + '" onclick="JITAdmin._previewImage(this.src)" loading="lazy"></div>';
     }
     html += '</div>';
 

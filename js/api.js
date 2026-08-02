@@ -291,6 +291,8 @@ var JITApi = (function() {
         data.discount = match[1].trim();
       } else if ((match = trimmed.match(/^｜?\s*支付方式：(.+)$/))) {
         data.paymentMethod = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*不通过原因：(.+)$/))) {
+        data.rejectReason = match[1].trim();
       }
     });
 
@@ -340,6 +342,7 @@ var JITApi = (function() {
         longitude: parsed.longitude || "",
         signature: parsed.signature || "",
         remark: parsed.remark || "",
+        rejectReason: parsed.rejectReason || "",
         username: parsed.title ? parsed.title.replace(/\d+$/, "") : "",
         voucherId: parsed.voucherId || "",
         _issueNumber: issue.number,

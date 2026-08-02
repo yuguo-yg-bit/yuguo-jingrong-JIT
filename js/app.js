@@ -575,7 +575,11 @@ var JITApp = (function() {
       html += "<td>" + _escapeHtml(paymentNote) + "</td>";
       html += "<td>" + _escapeHtml(originalPrice) + "</td>";
       html += "<td>" + _escapeHtml(finalPrice) + "</td>";
-      html += "<td><span class=\"status-badge " + statusClass + "\">" + _escapeHtml(statusText) + "</span></td>";
+      html += "<td><span class=\"status-badge " + statusClass + "\">" + _escapeHtml(statusText) + "</span>";
+      if (v.statusType === "rejected" && v.rejectReason) {
+        html += "<div style=\"color:#f44336;font-size:12px;margin-top:4px;\">" + _escapeHtml(v.rejectReason) + "</div>";
+      }
+      html += "</td>";
       var actions = "";
       if (v.statusType === "pending") {
         actions += "<button class=\"edit-order-btn\" data-issue-number=\"" + _escapeHtml(v._issueNumber || "") + "\">编辑</button>";
@@ -966,7 +970,7 @@ var JITApp = (function() {
         voucherData.voucherId = nextId;
         return JITApi.ensureLabels();
       }).then(function() {
-        return JITApi.submitVoucherWithImages(voucherData, shopPhotoFile, _orderPhotoFiles, false, false);
+        return JITApi.submitVoucherWithImages(voucherData, shopPhotoFile, _orderPhotoFiles, !!shopPhotoFile, _orderPhotoFiles && _orderPhotoFiles.length > 0);
       }).then(function(result) {
         _showToast("凭证提交成功！", "success");
         _closeAddVoucherModal();
