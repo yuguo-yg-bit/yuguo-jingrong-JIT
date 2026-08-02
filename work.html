@@ -382,6 +382,26 @@
   </div>
 </div>
 
+<!-- 工会先支付弹窗（二维码 + 我已付款） -->
+<div class="modal-overlay" id="unionFirstPayOverlay" style="z-index:2000;">
+  <div class="modal-container" style="max-width:380px;">
+    <div class="modal-header">
+      <h3 class="modal-title">工会代付 · 请向工会付款</h3>
+      <button class="modal-close" id="btnUnionFirstPayClose">&times;</button>
+    </div>
+    <div class="modal-body" style="text-align:center;padding:20px;">
+      <p id="unionPaySub" style="font-size:14px;color:var(--text-secondary);margin-bottom:14px;line-height:1.8;"></p>
+      <div style="background:#fff;padding:14px;border-radius:12px;display:inline-block;margin-bottom:14px;">
+        <img id="unionPayQrCode" src="" alt="二维码" style="width:200px;height:200px;display:block;" onerror="this.parentElement.innerHTML='<div style=\\'width:200px;height:200px;display:flex;align-items:center;justify-content:center;color:#999;font-size:12px;\\'>二维码加载失败</div>'"/>
+      </div>
+      <p style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">请扫码支付对应金额</p>
+      <p id="unionPayAmount" style="font-size:22px;font-weight:bold;color:var(--red);margin-bottom:16px;">¥0.00</p>
+      <button id="btnUnionPaid" class="btn-submit" style="width:100%;padding:12px;font-size:15px;">我已付款</button>
+      <p style="font-size:12px;color:var(--text-secondary);margin-top:10px;">点击「我已付款」后，等待管理员确认即可完成交易</p>
+    </div>
+  </div>
+</div>
+
 <!-- 积分流水弹窗 -->
 <div class="modal-overlay" id="pointsHistoryOverlay" style="z-index:2000;">
   <div class="modal-container" style="max-width:460px;max-height:75vh;display:flex;flex-direction:column;">

@@ -356,7 +356,7 @@ var JITApi = (function() {
         finalPrice: finalAmount ? (finalAmount + (String(finalAmount).indexOf("元") > -1 ? "" : "元")) : "",
         amount: parsed.amount || "",
         status: statusText,
-        statusType: labels.indexOf("completed") > -1 ? "completed" : (labels.indexOf("approved") > -1 ? "approved" : (labels.indexOf("paid") > -1 ? "paid" : (labels.indexOf("rejected") > -1 ? "rejected" : "pending"))),
+        statusType: labels.indexOf("completed") > -1 ? "completed" : (labels.indexOf("paid") > -1 ? "paid" : (labels.indexOf("approved") > -1 ? "approved" : (labels.indexOf("rejected") > -1 ? "rejected" : "pending"))),
         shopPhoto: parsed.shopPhoto || "",
         orderPhotos: parsed.orderPhotos || "",
         latitude: parsed.latitude || "",
@@ -514,6 +514,25 @@ var JITApi = (function() {
     });
   };
 
+  // 工会先支付：用户点击「我已付款」后，更新状态为「已付款·待确认」并加 paid label（保留 approved）
+  var _markVoucherPaid = function(issueNumber) {
+    var newBody;
+    return _getIssue(issueNumber).then(function(issue) {
+      var currentBody = issue.body || "";
+      newBody = currentBody.replace(/｜\s*状态：.*/, "｜     状态：已付款·待确认");
+      if (newBody === currentBody) {
+        newBody = currentBody + "\n｜     状态：已付款·待确认";
+      }
+      return _safeRequest(_apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber + "/labels", {
+        method: "POST",
+        headers: _headers(),
+        body: JSON.stringify({ labels: ["paid"] })
+      });
+    }).then(function() {
+      return _updateIssue(issueNumber, { body: newBody });
+    });
+  };
+
   var _cache = {};
   var _CACHE_TTL = 30000;
 
@@ -631,6 +650,7 @@ var JITApi = (function() {
     addIssueComment: _addIssueComment,
     uploadChatImage: _uploadChatImage,
     getIssue: _getIssue,
-    markVoucherCompleted: _markVoucherCompleted
+    markVoucherCompleted: _markVoucherCompleted,
+    markVoucherPaid: _markVoucherPaid
   };
 })();

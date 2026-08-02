@@ -373,6 +373,24 @@ var JITApp = (function() {
         }
       });
     }
+
+    // 工会先支付弹窗事件
+    var btnUnionFirstPayClose = document.getElementById("btnUnionFirstPayClose");
+    if (btnUnionFirstPayClose) {
+      btnUnionFirstPayClose.addEventListener("click", _closeUnionFirstPayModal);
+    }
+    var unionFirstPayOverlay = document.getElementById("unionFirstPayOverlay");
+    if (unionFirstPayOverlay) {
+      unionFirstPayOverlay.addEventListener("click", function(e) {
+        if (e.target === unionFirstPayOverlay) {
+          _closeUnionFirstPayModal();
+        }
+      });
+    }
+    var btnUnionPaid = document.getElementById("btnUnionPaid");
+    if (btnUnionPaid) {
+      btnUnionPaid.addEventListener("click", _submitUnionPaid);
+    }
   };
 
   var _initUploadListeners = function() {
@@ -663,6 +681,7 @@ var JITApp = (function() {
       var statusClass = v.statusType || "pending";
       var statusText = v.status || "待审核";
       if (v.statusType === "completed") statusText = "已完成交易";
+      if (v.statusType === "paid") statusText = "已付款·待确认";
       var discount = v.discount || "-";
       var paymentNote = v.paymentNote || v.paymentMethod || "-";
       var originalPrice = v.originalPrice || "-";
@@ -1206,6 +1225,76 @@ var JITApp = (function() {
 
   var _openPaymentModal = function(voucher) {
     if (!voucher) return;
+    // 根据支付方式分流：工会先支付 → 二维码弹窗；用户先支付 → 原返还弹窗
+    if (voucher.paymentMethodType === "unionFirst") {
+      _openUnionFirstPayModal(voucher);
+    } else {
+      _openUserFirstPayModal(voucher);
+    }
+  };
+
+  // 工会先支付弹窗：展示二维码 + 金额 + 「我已付款」按钮
+  var _openUnionFirstPayModal = function(voucher) {
+    var originalAmount = parseFloat(voucher.originalPrice || voucher.amount || 0);
+    var discountValue = parseFloat(voucher.discountValue || 1);
+    var finalAmount = isNaN(originalAmount) ? 0 : (originalAmount * discountValue);
+    // 工会先支付：用户需向工会支付「优惠后金额」
+    var payAmount = finalAmount;
+
+    _pendingPaymentVoucher = voucher;
+    _pointsOffsetUsed = false;
+
+    var overlay = document.getElementById("unionFirstPayOverlay");
+    if (!overlay) return;
+    var subEl = document.getElementById("unionPaySub");
+    var amountEl = document.getElementById("unionPayAmount");
+    var qrEl = document.getElementById("unionPayQrCode");
+
+    if (subEl) {
+      subEl.innerHTML = "原价：¥" + originalAmount.toFixed(2) + "<br>折扣：" + (voucher.discount || "10折") + "<br>工会已代付：¥" + originalAmount.toFixed(2) + "<br>您需向工会支付：¥" + payAmount.toFixed(2);
+    }
+    if (amountEl) amountEl.textContent = "¥" + payAmount.toFixed(2);
+    if (qrEl && JITConfig.getUnionPayQrUrl) qrEl.src = JITConfig.getUnionPayQrUrl();
+
+    overlay.classList.add("active");
+  };
+
+  var _closeUnionFirstPayModal = function() {
+    var overlay = document.getElementById("unionFirstPayOverlay");
+    if (overlay) overlay.classList.remove("active");
+    _pendingPaymentVoucher = null;
+    _pointsOffsetUsed = false;
+  };
+
+  // 工会先支付：用户点击「我已付款」→ 提交审核（更新状态为「已付款·待确认」，加 paid label）
+  var _submitUnionPaid = function() {
+    if (!_pendingPaymentVoucher) return;
+    var issueNum = _pendingPaymentVoucher._issueNumber;
+    if (!issueNum) {
+      _showToast("凭证信息缺失，无法提交", "error");
+      return;
+    }
+    var btn = document.getElementById("btnUnionPaid");
+    if (btn) { btn.disabled = true; btn.textContent = "提交中..."; }
+    if (JITApi.markVoucherPaid) {
+      JITApi.markVoucherPaid(issueNum).then(function() {
+        _showToast("已提交，等待管理员确认付款", "success");
+        _closeUnionFirstPayModal();
+        JITApi.invalidateCache("allVouchers");
+        JITApi.invalidateCache("allVouchersForId");
+        _loadData();
+      }).catch(function(err) {
+        if (btn) { btn.disabled = false; btn.textContent = "我已付款"; }
+        _showToast("提交失败: " + (err.message || ""), "error");
+      });
+    } else {
+      if (btn) { btn.disabled = false; btn.textContent = "我已付款"; }
+      _showToast("提交失败: 接口缺失", "error");
+    }
+  };
+
+  // 用户先支付弹窗：展示返还/补差信息 + 积分抵消入口
+  var _openUserFirstPayModal = function(voucher) {
     var originalAmount = parseFloat(voucher.originalPrice || voucher.amount || 0);
     var discountValue = parseFloat(voucher.discountValue || 1);
     var finalAmount = isNaN(originalAmount) ? 0 : (originalAmount * discountValue);

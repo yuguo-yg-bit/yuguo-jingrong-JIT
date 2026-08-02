@@ -99,6 +99,7 @@ var JITAdmin = (function() {
   var _getIssueStatus = function(issue) {
     var labels = (issue.labels || []).map(function(l) { return l.name; });
     if (labels.indexOf("completed") > -1) return "completed";
+    if (labels.indexOf("paid") > -1) return "paid";
     if (labels.indexOf("approved") > -1) return "approved";
     if (labels.indexOf("rejected") > -1) return "rejected";
     return "pending";
@@ -109,6 +110,7 @@ var JITAdmin = (function() {
       { name: "pending", color: "ff9800" },
       { name: "approved", color: "4caf50" },
       { name: "rejected", color: "f44336" },
+      { name: "paid", color: "00bcd4" },
       { name: "completed", color: "2196f3" },
       { name: "points", color: "ffd54f" },
       { name: "lottery", color: "9c27b0" }
@@ -177,6 +179,7 @@ var JITAdmin = (function() {
       pending: "待审核",
       approved: "已通过",
       rejected: "已拒绝",
+      paid: "已付款·待确认",
       completed: "已完成交易"
     };
 
@@ -280,7 +283,7 @@ var JITAdmin = (function() {
 
   var _updateIssueStatus = function(issue, action, reason) {
     var labels = (issue.labels || []).map(function(l) { return l.name; });
-    labels = labels.filter(function(l) { return l !== "pending" && l !== "approved" && l !== "rejected" && l !== "completed"; });
+    labels = labels.filter(function(l) { return l !== "pending" && l !== "approved" && l !== "rejected" && l !== "paid" && l !== "completed"; });
     labels.push(action);
     var newBody = issue.body;
     if (action === "rejected" && reason) {
