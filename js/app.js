@@ -1227,8 +1227,21 @@ var JITApp = (function() {
 
     if (overlay2) {
       if (subEl) {
-        var discountStr = discountAmount > 0 ? "\u00a5" + discountAmount.toFixed(2) : (discountAmount < 0 ? "-\u00a5" + Math.abs(discountAmount).toFixed(2) + "\uff08\u5de5\u4f1a\u989d\u5916\u7ed9\u60a8\uff09" : "\u00a50.00");
-        subEl.innerHTML = "\u539f\u4ef7\uff1a\u00a5" + originalAmount.toFixed(2) + "<br>\u6298\u6263\uff1a" + (voucher.discount || "10\u6298") + "<br>\u60a8\u5148\u652f\u4ed8\uff1a\u00a5" + originalAmount.toFixed(2) + "<br>\u5de5\u4f1a\u8fd4\u8fd8\uff1a" + discountStr;
+        var amountLabel, amountText;
+        if (discountAmount > 0) {
+          // 低折扣（7/8/9折）：用户省钱，工会返钱
+          amountLabel = "工会返还";
+          amountText = "¥" + discountAmount.toFixed(2) + "（工会额外给您）";
+        } else if (discountAmount < 0) {
+          // 高折扣（11/12/13/14折）：用户需补差额
+          amountLabel = "您需补差额";
+          amountText = "¥" + Math.abs(discountAmount).toFixed(2) + "（需额外支付）";
+        } else {
+          // 10折：持平
+          amountLabel = "工会返还";
+          amountText = "¥0.00";
+        }
+        subEl.innerHTML = "原价：¥" + originalAmount.toFixed(2) + "<br>折扣：" + (voucher.discount || "10折") + "<br>您先支付：¥" + originalAmount.toFixed(2) + "<br>" + amountLabel + "：" + amountText;
       }
 
       // 当 discountValue > 1（10 折以上）时，用户需要补钱，显示积分抵消入口
