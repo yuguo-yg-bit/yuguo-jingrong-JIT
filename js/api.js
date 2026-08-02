@@ -330,7 +330,7 @@ var JITApi = (function() {
         finalPrice: finalAmount ? (finalAmount + (String(finalAmount).indexOf("元") > -1 ? "" : "元")) : "",
         amount: parsed.amount || "",
         status: parsed.status || (issue.state === "closed" ? "已关闭" : "待审核"),
-        statusType: labels.indexOf("approved") > -1 ? "approved" : (labels.indexOf("paid") > -1 ? "paid" : (labels.indexOf("rejected") > -1 ? "rejected" : "pending")),
+        statusType: labels.indexOf("completed") > -1 ? "completed" : (labels.indexOf("approved") > -1 ? "approved" : (labels.indexOf("paid") > -1 ? "paid" : (labels.indexOf("rejected") > -1 ? "rejected" : "pending"))),
         shopPhoto: parsed.shopPhoto || "",
         orderPhotos: parsed.orderPhotos || "",
         latitude: parsed.latitude || "",
@@ -430,6 +430,21 @@ var JITApi = (function() {
   var _updateVoucherWithLottery = function(issueNumber, voucherData) {
     var body = _formatIssueBody(voucherData);
     return _updateIssue(issueNumber, { body: body });
+  };
+
+  // 标记凭证为已完成交易：加 completed label、更新状态文本
+  var _markVoucherCompleted = function(issueNumber, currentBody) {
+    var newBody = String(currentBody || "").replace(/｜\s*状态：.*/, "｜     状态：已完成交易");
+    if (newBody === currentBody) {
+      newBody = (currentBody || "") + "\n｜     状态：已完成交易";
+    }
+    return _safeRequest(_apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber + "/labels", {
+      method: "POST",
+      headers: _headers(),
+      body: JSON.stringify({ labels: ["completed"] })
+    }).then(function() {
+      return _updateIssue(issueNumber, { body: newBody });
+    });
   };
 
   var _cache = {};
@@ -548,6 +563,7 @@ var JITApi = (function() {
     getIssueComments: _getIssueComments,
     addIssueComment: _addIssueComment,
     uploadChatImage: _uploadChatImage,
-    getIssue: _getIssue
+    getIssue: _getIssue,
+    markVoucherCompleted: _markVoucherCompleted
   };
 })();

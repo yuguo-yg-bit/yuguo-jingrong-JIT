@@ -98,6 +98,7 @@ var JITAdmin = (function() {
 
   var _getIssueStatus = function(issue) {
     var labels = (issue.labels || []).map(function(l) { return l.name; });
+    if (labels.indexOf("completed") > -1) return "completed";
     if (labels.indexOf("approved") > -1) return "approved";
     if (labels.indexOf("rejected") > -1) return "rejected";
     return "pending";
@@ -108,8 +109,9 @@ var JITAdmin = (function() {
       { name: "pending", color: "ff9800" },
       { name: "approved", color: "4caf50" },
       { name: "rejected", color: "f44336" },
+      { name: "completed", color: "2196f3" },
       { name: "points", color: "ffd54f" },
-      { name: "lottery", color: "2196f3" }
+      { name: "lottery", color: "9c27b0" }
     ];
     var promises = [];
     labels.forEach(function(lb) {
@@ -148,7 +150,7 @@ var JITAdmin = (function() {
   var renderTable = function() {
     var filter = document.getElementById("filterStatus").value;
     var tbody = document.getElementById("adminTableBody");
-    var pendingCount = 0, approvedCount = 0, rejectedCount = 0;
+    var pendingCount = 0, approvedCount = 0, rejectedCount = 0, completedCount = 0;
 
     var filtered = allIssues.filter(function(issue) {
       if (issue.body && issue.body.indexOf("【聊天专用】") > -1) return false;
@@ -156,23 +158,33 @@ var JITAdmin = (function() {
       if (status === "pending") pendingCount++;
       if (status === "approved") approvedCount++;
       if (status === "rejected") rejectedCount++;
+      if (status === "completed") completedCount++;
       return filter === "all" || status === filter;
     });
 
     document.getElementById("statPending").textContent = "待审核: " + pendingCount;
     document.getElementById("statApproved").textContent = "已通过: " + approvedCount;
     document.getElementById("statRejected").textContent = "已拒绝: " + rejectedCount;
+    var statCompleted = document.getElementById("statCompleted");
+    if (statCompleted) statCompleted.textContent = "已完成: " + completedCount;
 
     if (filtered.length === 0) {
       tbody.innerHTML = '<tr><td colspan="8" class="loading-cell">暂无数据</td></tr>';
       return;
     }
 
+    var statusTextMap = {
+      pending: "待审核",
+      approved: "已通过",
+      rejected: "已拒绝",
+      completed: "已完成交易"
+    };
+
     var html = "";
     filtered.forEach(function(issue) {
       var data = _parseIssueBody(issue.body);
       var status = _getIssueStatus(issue);
-      var statusText = status === "approved" ? "已通过" : (status === "rejected" ? "已拒绝" : "待审核");
+      var statusText = statusTextMap[status] || "待审核";
       html += '<tr>';
       html += '<td>' + _escapeHtml((data.userId || data.title || issue.user.login || "—").substring(0, 15)) + '</td>';
       html += '<td>' + _escapeHtml((data.shopName || "—").substring(0, 12)) + '</td>';
@@ -268,7 +280,7 @@ var JITAdmin = (function() {
 
   var _updateIssueStatus = function(issue, action, reason) {
     var labels = (issue.labels || []).map(function(l) { return l.name; });
-    labels = labels.filter(function(l) { return l !== "pending" && l !== "approved" && l !== "rejected"; });
+    labels = labels.filter(function(l) { return l !== "pending" && l !== "approved" && l !== "rejected" && l !== "completed"; });
     labels.push(action);
     var newBody = issue.body;
     if (action === "rejected" && reason) {
@@ -276,7 +288,8 @@ var JITAdmin = (function() {
         newBody += "\n｜     不通过原因：" + reason;
       }
     }
-    newBody = newBody.replace(/｜\s*状态：.*/, "｜     状态：" + (action === "approved" ? "已通过" : "已拒绝"));
+    var statusText = action === "approved" ? "已通过" : (action === "rejected" ? "已拒绝" : (action === "completed" ? "已完成交易" : "待审核"));
+    newBody = newBody.replace(/｜\s*状态：.*/, "｜     状态：" + statusText);
     return _apiPatch(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues/" + issue.number, {
       labels: labels,
       body: newBody
@@ -905,6 +918,19 @@ var JITAdmin = (function() {
         loadIssues();
       }).catch(function(e) { _showToast("删除失败: " + e.message); });
     });
+
+    var btnComplete = document.getElementById("btnComplete");
+    if (btnComplete) {
+      btnComplete.addEventListener("click", function() {
+        if (!currentIssue) return;
+        if (!confirm("确认标记此凭证为「已完成交易」？\n（用户已付款给工会 / 工会已返款给用户）")) return;
+        _updateIssueStatus(currentIssue, "completed").then(function() {
+          _showToast("已标记为已完成交易");
+          document.getElementById("reviewOverlay").classList.remove("active");
+          loadIssues();
+        }).catch(function(e) { _showToast("操作失败: " + e.message); });
+      });
+    }
 
     document.getElementById("btnAdminLogout").addEventListener("click", function() {
       _isLoggedIn = false;

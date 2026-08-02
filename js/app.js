@@ -662,6 +662,7 @@ var JITApp = (function() {
     pageVouchers.forEach(function(v) {
       var statusClass = v.statusType || "pending";
       var statusText = v.status || "待审核";
+      if (v.statusType === "completed") statusText = "已完成交易";
       var discount = v.discount || "-";
       var paymentNote = v.paymentNote || v.paymentMethod || "-";
       var originalPrice = v.originalPrice || "-";
@@ -687,7 +688,10 @@ var JITApp = (function() {
       if (!v.discount) {
         actions += "<button class=\"lottery-order-btn\" data-issue-number=\"" + _escapeHtml(v._issueNumber || "") + "\">🎰 抽奖</button>";
       }
-      actions += "<button class=\"pay-order-btn\" data-issue-number=\"" + _escapeHtml(v._issueNumber || "") + "\">去支付</button>";
+      // 审核通过且未完成交易时显示去支付
+      if (v.statusType === "approved") {
+        actions += "<button class=\"pay-order-btn\" data-issue-number=\"" + _escapeHtml(v._issueNumber || "") + "\">去支付</button>";
+      }
       html += "<td>" + actions + "</td>";
       html += "</tr>";
     });
@@ -1218,6 +1222,9 @@ var JITApp = (function() {
     var btn = document.getElementById("btnUsePointsOffset");
     if (btn) btn.disabled = false;
 
+    // 积分抵消需审核通过后才能用
+    var isApproved = (voucher.statusType === "approved" || voucher.statusType === "completed");
+
     if (overlay2) {
       if (subEl) {
         var discountStr = discountAmount > 0 ? "\u00a5" + discountAmount.toFixed(2) : (discountAmount < 0 ? "-\u00a5" + Math.abs(discountAmount).toFixed(2) + "\uff08\u5de5\u4f1a\u989d\u5916\u7ed9\u60a8\uff09" : "\u00a50.00");
@@ -1227,8 +1234,8 @@ var JITApp = (function() {
       // 当 discountValue > 1（10 折以上）时，用户需要补钱，显示积分抵消入口
       var needPayYuan = Math.max(0, -discountAmount);  // 用户需要补的金额（元）
       if (offsetBox) {
-        if (needPayYuan > 0.001) {
-          // 显示 UI
+        if (needPayYuan > 0.001 && isApproved) {
+          // 审核通过 + 需补差额：显示积分抵消
           offsetBox.style.display = "block";
           var needPayEl = document.getElementById("offsetNeedPay");
           if (needPayEl) needPayEl.textContent = "¥" + needPayYuan.toFixed(2);
@@ -1237,6 +1244,10 @@ var JITApp = (function() {
           if (canPayEl) canPayEl.textContent = "¥" + (Math.min(canPayYuan, needPayYuan)).toFixed(2);
           var curPtsEl = document.getElementById("offsetCurrentPoints");
           if (curPtsEl) curPtsEl.textContent = String(_currentPoints);
+        } else if (needPayYuan > 0.001 && !isApproved) {
+          // 未审核通过：提示需先等审核
+          offsetBox.style.display = "block";
+          offsetBox.innerHTML = '<div style="font-size:13px;color:var(--orange);text-align:center;padding:8px;">⏳ 凭证审核通过后即可使用积分抵消差额</div>';
         } else {
           offsetBox.style.display = "none";
         }
@@ -1246,11 +1257,17 @@ var JITApp = (function() {
     }
   };
 
-  // 使用积分抵消差额
+  // 使用积分抵消差额（审核通过后可用，抵消完自动标记已完成交易）
   var _doUsePointsOffset = function() {
     if (!_pendingPaymentVoucher) return;
     if (_pointsOffsetUsed) {
       _showToast("本笔已使用积分抵消", "");
+      return;
+    }
+    // 必须审核通过后才能抵消
+    var st = _pendingPaymentVoucher.statusType;
+    if (st !== "approved" && st !== "completed") {
+      _showToast("凭证审核通过后才能使用积分抵消", "error");
       return;
     }
     var originalAmount = parseFloat(_pendingPaymentVoucher.originalPrice || _pendingPaymentVoucher.amount || 0);
@@ -1273,10 +1290,22 @@ var JITApp = (function() {
     var offsetResultEl = document.getElementById("offsetResult");
     if (offsetResultEl) offsetResultEl.textContent = "抵消中...";
     var actualOffsetYuan = usePoints / 10;
+    var issueNum = _pendingPaymentVoucher._issueNumber;
     JITPoints.changePoints(_currentUser, -usePoints, "用积分抵消 ¥" + actualOffsetYuan.toFixed(2) + " 支付差额").then(function() {
       _pointsOffsetUsed = true;
       if (offsetResultEl) offsetResultEl.textContent = "✅ 已抵消 ¥" + actualOffsetYuan.toFixed(2);
       _showToast("成功使用 " + usePoints + " 积分抵消 ¥" + actualOffsetYuan.toFixed(2), "success");
+      // 抵消完毕 → 自动标记为已完成交易
+      if (issueNum && JITApi.markVoucherCompleted) {
+        return JITApi.markVoucherCompleted(issueNum).then(function() {
+          _showToast("交易已完成", "success");
+          JITApi.invalidateCache("allVouchers");
+          JITApi.invalidateCache("allVouchersForId");
+          _loadData();
+        });
+      }
+      return _refreshPointsDisplay(true);
+    }).then(function() {
       return _refreshPointsDisplay(true);
     }).catch(function(err) {
       if (offsetResultEl) offsetResultEl.textContent = "";

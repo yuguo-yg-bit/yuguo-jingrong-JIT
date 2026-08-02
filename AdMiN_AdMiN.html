@@ -36,12 +36,14 @@
           <span class="stat-badge pending" id="statPending">待审核: 0</span>
           <span class="stat-badge approved" id="statApproved">已通过: 0</span>
           <span class="stat-badge rejected" id="statRejected">已拒绝: 0</span>
+          <span class="stat-badge completed" id="statCompleted" style="background:rgba(33,150,243,0.15);color:#2196f3;border:1px solid rgba(33,150,243,0.3);">已完成: 0</span>
         </div>
         <select class="admin-filter" id="filterStatus">
           <option value="all">全部状态</option>
           <option value="pending" selected>待审核</option>
           <option value="approved">已通过</option>
           <option value="rejected">已拒绝</option>
+          <option value="completed">已完成交易</option>
         </select>
         <button class="action-btn" id="btnRefreshReview">🔄 刷新</button>
       </div>
@@ -219,6 +221,7 @@
         <button class="btn btn-reject" id="btnReject">不通过</button>
         <button class="btn btn-approve" id="btnApprove">通过</button>
         <button class="btn btn-delete" id="btnDelete">删除凭证</button>
+        <button class="btn" id="btnComplete" style="background:rgba(33,150,243,0.15);color:#2196f3;border:1px solid rgba(33,150,243,0.4);">✅ 标记已完成</button>
       </div>
     </div>
   </div>

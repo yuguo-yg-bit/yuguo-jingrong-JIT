@@ -19,6 +19,7 @@ var JITConfig = (function() {
     pending: "pending",
     rejected: "rejected",
     paid: "paid",
+    completed: "completed",
     lottery: "lottery",
     points: "points"
   };
