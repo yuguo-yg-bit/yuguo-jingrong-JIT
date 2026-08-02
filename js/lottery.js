@@ -32,7 +32,7 @@ var JITLottery = (function() {
         return;
       }
       config.forEach(function(item, index) {
-        if (_prizes[index] && item.weight > 0) {
+        if (_prizes[index] && typeof item.weight === "number" && item.weight >= 0) {
           _prizes[index].weight = item.weight;
         }
       });
