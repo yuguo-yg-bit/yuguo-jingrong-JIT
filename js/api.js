@@ -83,7 +83,8 @@ var JITApi = (function() {
     });
   };
 
-  var _uploadFileToRepo = function(path, base64Content, commitMsg) {
+  var _uploadFileToRepo = function(path, base64Content, commitMsg, retryCount) {
+    retryCount = retryCount || 0;
     var url = _apiBase + "/repos/" + _imageRepoFull + "/contents/" + _encodePath(path);
     var baseBody = {
       message: commitMsg || "upload image",
@@ -103,6 +104,17 @@ var JITApi = (function() {
       });
     }).then(function(result) {
       return result && result.content ? result.content.download_url : "";
+    }).catch(function(err) {
+      // SHA 不匹配或冲突时，重试最多 3 次：重新 GET SHA 再 PUT
+      var msg = String(err.message || "");
+      if (retryCount < 3 && (msg.indexOf("sha") > -1 || msg.indexOf("expected") > -1 || msg.indexOf("409") > -1 || msg.indexOf("422") > -1)) {
+        return new Promise(function(resolve) {
+          setTimeout(resolve, 500 * (retryCount + 1));  // 递增延迟
+        }).then(function() {
+          return _uploadFileToRepo(path, base64Content, commitMsg, retryCount + 1);
+        });
+      }
+      throw err;
     });
   };
 
@@ -113,14 +125,20 @@ var JITApi = (function() {
   };
 
   var _uploadImagesToRepo = function(files, folderPath, commitMsg) {
-    var uploads = [];
+    // 串行上传，避免并发 PUT 同一目录导致 SHA 冲突
+    var results = [];
+    var chain = Promise.resolve();
     for (var i = 0; i < files.length; i++) {
       (function(file, index) {
-        var fileName = "order_" + (index + 1) + ".png";
-        uploads.push(_uploadImageToRepo(file, folderPath, fileName, commitMsg));
+        var fileName = "order_" + (index + 1) + "_" + Date.now() + ".png";
+        chain = chain.then(function() {
+          return _uploadImageToRepo(file, folderPath, fileName, commitMsg).then(function(url) {
+            results.push(url);
+          });
+        });
       })(files[i], i);
     }
-    return Promise.all(uploads);
+    return chain.then(function() { return results; });
   };
 
   var _ensureLabels = function() {
