@@ -30,10 +30,9 @@ var JITConfig = (function() {
     "江睿博": "27015150111"
   };
 
-  // 工会代付时展示的微信支付二维码：可替换为工会收款码图片地址或微信收款链接
-  // 留空则使用二维码生成 API 根据下方链接动态生成
-  var _unionPayQrImage = ""; // 如有静态收款码图片 URL，填这里
-  var _unionPayLink = "https://wx.tenpay.com/tmp/yuguo-union-collect"; // 微信收款链接（可改为工会真实收款链接）
+  // 工会代付时展示的微信支付收款码（仓库根目录 IMG_3106.jpeg）
+  var _unionPayQrImage = "https://raw.githubusercontent.com/yuguo-yg-bit/yuguo-jingrong-JIT/main/IMG_3106.jpeg";
+  var _unionPayLink = "https://wx.tenpay.com/tmp/yuguo-union-collect"; // 备用：如改为收款链接则动态生成二维码
 
   var _getUnionPayQrUrl = function() {
     if (_unionPayQrImage) return _unionPayQrImage;
