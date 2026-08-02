@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>玉国金融【全球通】 — 工会凭证优惠管理平台</title>
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg-primary: #0a0e17; --bg-card: #0d1322; --bg-card-hover: #111a2e;
+  --bg-deep: #101a33; --accent: #42a5f5; --accent-light: #64b5f6;
+  --accent-dim: #1a3a5c; --accent-glow: rgba(66,165,245,0.15);
+  --text-primary: #e0e7ff; --text-secondary: #8ea2c0; --text-muted: #5a6a85;
+  --border: rgba(66,165,245,0.12); --border-strong: rgba(66,165,245,0.25);
+  --gold: #ffd54f; --green: #66bb6a; --orange: #ff9800; --red: #ef5350;
+}
+body { font-family: 'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif; background: var(--bg-primary); color: var(--text-primary); line-height: 1.7; overflow-x: hidden; }
+.bg-grid { position: fixed; top:0; left:0; width:100%; height:100%; background-image: linear-gradient(rgba(66,165,245,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(66,165,245,0.03) 1px,transparent 1px); background-size: 50px 50px; pointer-events: none; z-index: 0; }
+.bg-glow { position: fixed; top:-20%; left:50%; transform: translateX(-50%); width:800px; height:600px; border-radius:50%; background: radial-gradient(circle,rgba(66,165,245,0.06) 0%,transparent 70%); pointer-events:none; z-index:0; }
+
+.navbar { position: fixed; top:0; left:0; width:100%; z-index:100; background: rgba(10,14,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); transition: all 0.3s ease; }
+.navbar-inner { max-width:1200px; margin:0 auto; padding:0 24px; height:64px; display:flex; align-items:center; justify-content:space-between; }
+.navbar-logo { display:flex; align-items:center; gap:10px; text-decoration:none; }
+.navbar-logo-icon { width:36px; height:36px; border-radius:8px; background: linear-gradient(135deg,var(--accent),#1565c0); display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:700; color:#fff; box-shadow:0 0 12px rgba(66,165,245,0.3); }
+.navbar-logo-text { font-size:18px; font-weight:700; color:var(--accent); text-shadow:0 0 10px rgba(66,165,245,0.3); }
+.navbar-links { display:flex; gap:8px; align-items:center; }
+.navbar-link { color:var(--text-secondary); text-decoration:none; font-size:14px; padding:8px 16px; border-radius:6px; transition: all 0.2s; }
+.navbar-link:hover { color:var(--accent); background:var(--accent-glow); }
+.navbar-cta { background:linear-gradient(135deg,var(--accent),#1565c0); color:#fff; text-decoration:none; font-size:14px; font-weight:600; padding:8px 20px; border-radius:6px; transition:all 0.2s; box-shadow:0 0 12px rgba(66,165,245,0.2); }
+.navbar-cta:hover { box-shadow:0 0 20px rgba(66,165,245,0.4); transform:translateY(-1px); }
+
+.hero { position:relative; z-index:1; min-height:100vh; display:flex; align-items:center; justify-content:center; text-align:center; padding:100px 24px 60px; }
+.hero-badge { display:inline-flex; align-items:center; gap:8px; background:var(--accent-glow); border:1px solid var(--border-strong); padding:6px 16px; border-radius:20px; font-size:13px; color:var(--accent-light); margin-bottom:28px; }
+.hero-badge-dot { width:8px; height:8px; border-radius:50%; background:var(--green); animation:pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+.hero-title { font-size:clamp(36px,6vw,64px); font-weight:800; line-height:1.2; background:linear-gradient(135deg,#fff 0%,var(--accent-light) 50%,var(--accent) 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom:20px; }
+.hero-subtitle { font-size:clamp(16px,2vw,20px); color:var(--text-secondary); max-width:640px; margin:0 auto 40px; line-height:1.8; }
+.hero-actions { display:flex; gap:16px; justify-content:center; flex-wrap:wrap; }
+.btn-primary { background:linear-gradient(135deg,var(--accent),#1565c0); color:#fff; text-decoration:none; font-size:15px; font-weight:600; padding:14px 36px; border-radius:8px; transition:all 0.3s; box-shadow:0 4px 20px rgba(66,165,245,0.25); display:inline-flex; align-items:center; gap:8px; }
+.btn-primary:hover { box-shadow:0 4px 30px rgba(66,165,245,0.4); transform:translateY(-2px); }
+.btn-secondary { background:transparent; color:var(--accent); text-decoration:none; font-size:15px; font-weight:600; padding:14px 36px; border-radius:8px; border:1px solid var(--border-strong); transition:all 0.3s; display:inline-flex; align-items:center; gap:8px; }
+.btn-secondary:hover { background:var(--accent-glow); border-color:var(--accent); }
+.hero-stats { display:flex; gap:48px; justify-content:center; margin-top:60px; flex-wrap:wrap; }
+.hero-stat { text-align:center; }
+.hero-stat-num { font-size:36px; font-weight:800; color:var(--accent); text-shadow:0 0 20px rgba(66,165,245,0.3); }
+.hero-stat-label { font-size:13px; color:var(--text-muted); margin-top:4px; }
+
+.section { position:relative; z-index:1; padding:80px 24px; }
+.section-inner { max-width:1100px; margin:0 auto; }
+.section-header { text-align:center; margin-bottom:56px; }
+.section-tag { display:inline-block; font-size:13px; color:var(--accent); background:var(--accent-glow); padding:4px 14px; border-radius:12px; margin-bottom:16px; border:1px solid var(--border-strong); }
+.section-title { font-size:clamp(28px,4vw,40px); font-weight:700; color:#fff; margin-bottom:16px; }
+.section-desc { font-size:16px; color:var(--text-secondary); max-width:600px; margin:0 auto; }
+
+.features-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:24px; }
+.feature-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:32px 28px; transition:all 0.3s; position:relative; overflow:hidden; }
+.feature-card::before { content:''; position:absolute; top:0; left:0; width:100%; height:2px; background:linear-gradient(90deg,transparent,var(--accent),transparent); opacity:0; transition:opacity 0.3s; }
+.feature-card:hover { background:var(--bg-card-hover); border-color:var(--border-strong); transform:translateY(-4px); box-shadow:0 8px 30px rgba(66,165,245,0.1); }
+.feature-card:hover::before { opacity:1; }
+.feature-icon { width:52px; height:52px; border-radius:12px; background:var(--accent-glow); display:flex; align-items:center; justify-content:center; margin-bottom:20px; font-size:24px; }
+.feature-card h3 { font-size:18px; font-weight:600; color:#fff; margin-bottom:10px; }
+.feature-card p { font-size:14px; color:var(--text-secondary); line-height:1.7; }
+
+.welfare-section { background:linear-gradient(180deg,transparent,rgba(66,165,245,0.02),transparent); }
+.welfare-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:20px; }
+.welfare-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:28px; position:relative; overflow:hidden; transition:all 0.3s; }
+.welfare-card:hover { border-color:var(--accent); transform:translateY(-2px); }
+.welfare-card-tag { position:absolute; top:16px; right:16px; font-size:11px; padding:3px 10px; border-radius:10px; font-weight:600; }
+.tag-hot { background:rgba(239,83,80,0.15); color:var(--red); }
+.tag-new { background:rgba(102,187,106,0.15); color:var(--green); }
+.tag-vip { background:rgba(255,213,79,0.15); color:var(--gold); }
+.tag-limited { background:rgba(255,152,0,0.15); color:var(--orange); }
+.welfare-icon { font-size:28px; margin-bottom:16px; }
+.welfare-card h3 { font-size:17px; font-weight:600; color:#fff; margin-bottom:8px; }
+.welfare-card p { font-size:14px; color:var(--text-secondary); }
+.welfare-detail { margin-top:14px; padding-top:14px; border-top:1px solid var(--border); font-size:13px; color:var(--accent-light); }
+
+.discount-table { background:var(--bg-card); border:1px solid var(--border-strong); border-radius:14px; overflow:hidden; max-width:800px; margin:0 auto; }
+.discount-row { display:flex; align-items:center; padding:20px 28px; border-bottom:1px solid var(--border); transition:all 0.2s; }
+.discount-row:last-child { border-bottom:none; }
+.discount-row:hover { background:var(--bg-card-hover); }
+.discount-badge { width:60px; height:60px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:800; margin-right:20px; flex-shrink:0; }
+.badge-7 { background:rgba(239,83,80,0.12); color:#ef5350; border:1px solid rgba(239,83,80,0.3); }
+.badge-8 { background:rgba(255,152,0,0.12); color:#ff9800; border:1px solid rgba(255,152,0,0.3); }
+.badge-9 { background:rgba(255,213,79,0.12); color:#ffd54f; border:1px solid rgba(255,213,79,0.3); }
+.badge-95 { background:rgba(102,187,106,0.12); color:#66bb6a; border:1px solid rgba(102,187,106,0.3); }
+.badge-10 { background:rgba(66,165,245,0.12); color:#42a5f5; border:1px solid rgba(66,165,245,0.3); }
+.badge-11 { background:rgba(186,104,200,0.12); color:#ba68c8; border:1px solid rgba(186,104,200,0.3); }
+.discount-info { flex:1; }
+.discount-info h4 { font-size:16px; color:#fff; font-weight:600; }
+.discount-info p { font-size:13px; color:var(--text-secondary); margin-top:2px; }
+.discount-example { font-size:14px; color:var(--accent-light); font-weight:600; white-space:nowrap; }
+
+.membership-track { display:flex; align-items:center; justify-content:center; gap:0; flex-wrap:wrap; margin-top:40px; }
+.member-node { display:flex; flex-direction:column; align-items:center; gap:12px; padding:0 20px; }
+.member-circle { width:64px; height:64px; border-radius:50%; background:var(--bg-deep); border:2px solid var(--border-strong); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; color:var(--accent); transition:all 0.3s; }
+.member-node:hover .member-circle { border-color:var(--accent); box-shadow:0 0 20px rgba(66,165,245,0.3); }
+.member-label { font-size:13px; color:var(--text-secondary); }
+.member-line { width:40px; height:2px; background:var(--border-strong); }
+
+.steps-container { display:flex; gap:0; justify-content:center; flex-wrap:wrap; margin-top:40px; }
+.step-item { flex:1; min-width:180px; max-width:220px; text-align:center; padding:0 16px; }
+.step-num { width:48px; height:48px; border-radius:50%; margin:0 auto 16px; background:linear-gradient(135deg,var(--accent),#1565c0); display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:700; color:#fff; box-shadow:0 0 16px rgba(66,165,245,0.2); }
+.step-item h4 { font-size:15px; color:#fff; font-weight:600; margin-bottom:8px; }
+.step-item p { font-size:13px; color:var(--text-secondary); }
+.step-arrow { display:flex; align-items:center; color:var(--text-muted); font-size:20px; padding-top:14px; }
+
+.about-card { background:var(--bg-card); border:1px solid var(--border-strong); border-radius:14px; padding:40px; max-width:800px; margin:0 auto; text-align:center; }
+.about-card h3 { font-size:20px; color:#fff; margin-bottom:16px; }
+.about-card p { font-size:15px; color:var(--text-secondary); line-height:1.9; margin-bottom:12px; }
+.about-highlight { display:inline-block; background:var(--accent-glow); color:var(--accent-light); padding:2px 10px; border-radius:4px; font-size:14px; }
+
+.footer { position:relative; z-index:1; background:var(--bg-card); border-top:1px solid var(--border); padding:48px 24px 24px; margin-top:40px; }
+.footer-inner { max-width:1100px; margin:0 auto; }
+.footer-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:32px; margin-bottom:32px; }
+.footer-col h4 { font-size:14px; color:var(--accent); margin-bottom:14px; font-weight:600; }
+.footer-col p, .footer-col a { font-size:13px; color:var(--text-secondary); text-decoration:none; line-height:2; display:block; transition:color 0.2s; }
+.footer-col a:hover { color:var(--accent); }
+.footer-bottom { border-top:1px solid var(--border); padding-top:20px; text-align:center; }
+.footer-bottom p { font-size:12px; color:var(--text-muted); }
+.footer-disclaimer { background:rgba(239,83,80,0.05); border:1px solid rgba(239,83,80,0.15); border-radius:8px; padding:14px 20px; margin:20px auto; max-width:700px; text-align:center; }
+.footer-disclaimer p { font-size:12px; color:var(--text-secondary); line-height:1.8; }
+
+@keyframes fadeInUp { from{opacity:0;transform:translateY(30px);} to{opacity:1;transform:translateY(0);} }
+.fade-in { animation:fadeInUp 0.8s ease forwards; }
+.fade-in-delay-1 { animation:fadeInUp 0.8s ease 0.15s forwards; opacity:0; }
+.fade-in-delay-2 { animation:fadeInUp 0.8s ease 0.3s forwards; opacity:0; }
+.fade-in-delay-3 { animation:fadeInUp 0.8s ease 0.45s forwards; opacity:0; }
+
+@media (max-width:768px) {
+  .navbar-links{display:none;} .hero-stats{gap:28px;} .hero-stat-num{font-size:28px;}
+  .steps-container{flex-direction:column;gap:24px;} .step-arrow{display:none;}
+  .membership-track{gap:8px;} .member-line{width:20px;}
+}
+</style>
+</head>
+<body>
+<div class="bg-grid"></div>
+<div class="bg-glow"></div>
+
+<nav class="navbar">
+  <div class="navbar-inner">
+    <a href="#" class="navbar-logo">
+      <div class="navbar-logo-icon">玉</div>
+      <span class="navbar-logo-text">玉国金融【全球通】</span>
+    </a>
+    <div class="navbar-links">
+      <a href="#features" class="navbar-link">核心功能</a>
+      <a href="#welfare" class="navbar-link">会员福利</a>
+      <a href="#discount" class="navbar-link">折扣等级</a>
+      <a href="#about" class="navbar-link">关于平台</a>
+    </div>
+    <a href="index.html" class="navbar-cta">进入工作台 →</a>
+  </div>
+</nav>
+
+<section class="hero">
+  <div>
+    <div class="hero-badge fade-in">
+      <span class="hero-badge-dot"></span>
+      <span>JIT 金融活动 · 工会凭证优惠管理平台</span>
+    </div>
+    <h1 class="hero-title fade-in-delay-1">玉国金融【全球通】</h1>
+    <p class="hero-subtitle fade-in-delay-2">
+      随时随地提交消费凭证，人工审核通过即可参与抽奖，<br>
+      赢取 7 折至 11 折优惠折扣，让每一笔消费都有惊喜。
+    </p>
+    <div class="hero-actions fade-in-delay-3">
+      <a href="work.html" class="btn-primary">进入工作台</a>
+      <a href="#welfare" class="btn-secondary">查看福利</a>
+    </div>
+    <div class="hero-stats fade-in-delay-3">
+      <div class="hero-stat"><div class="hero-stat-num">6</div><div class="hero-stat-label">折扣等级</div></div>
+      <div class="hero-stat"><div class="hero-stat-num">5</div><div class="hero-stat-label">会员阶段</div></div>
+      <div class="hero-stat"><div class="hero-stat-num">2</div><div class="hero-stat-label">支付方式</div></div>
+      <div class="hero-stat"><div class="hero-stat-num">24h</div><div class="hero-stat-label">客服在线</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="features">
+  <div class="section-inner">
+    <div class="section-header">
+      <span class="section-tag">核心功能</span>
+      <h2 class="section-title">全流程凭证管理</h2>
+      <p class="section-desc">从凭证提交到抽奖领奖，一站式完成全部操作</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card"><div class="feature-icon">📸</div><h3>凭证上传</h3><p>支持拍照上传店铺照片、商品订单截图，同步获取手机定位信息，手写签名确认，一键提交审核。</p></div>
+      <div class="feature-card"><div class="feature-icon">✅</div><h3>人工审核</h3><p>每一份凭证由管理员人工审核，确保信息真实有效。审核通过后自动获得抽奖资格。</p></div>
+      <div class="feature-card"><div class="feature-icon">🎰</div><h3>刮刮乐抽奖</h3><p>仿实体彩票刮刮乐交互体验，刮开涂层匹配号码，赢取 7 折至 11 折不等的优惠折扣。</p></div>
+      <div class="feature-card"><div class="feature-icon">💳</div><h3>灵活支付</h3><p>两种支付方式自由选择：工会先代付再补差价，或用户先付全额再获返利，满足不同场景需求。</p></div>
+      <div class="feature-card"><div class="feature-icon">📊</div><h3>订单管理</h3><p>分页查看全部凭证订单，实时跟踪审核状态、中奖折扣、支付进度，历史单据分类清晰可查。</p></div>
+      <div class="feature-card"><div class="feature-icon">📈</div><h3>会员成长</h3><p>从一阶到 4 级会员，凭证申请越多等级越高，实时进度条可视化展示成长轨迹。</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="section welfare-section" id="welfare">
+  <div class="section-inner">
+    <div class="section-header">
+      <span class="section-tag">会员福利</span>
+      <h2 class="section-title">专享福利待遇</h2>
+      <p class="section-desc">提交凭证、参与抽奖，享受多重会员权益</p>
+    </div>
+    <div class="welfare-grid">
+      <div class="welfare-card">
+        <span class="welfare-card-tag tag-hot">热门</span>
+        <div class="welfare-icon">🎁</div>
+        <h3>消费凭证抽奖</h3>
+        <p>每次提交凭证审核通过后，即可参与一次刮刮乐抽奖，最高可享 7 折优惠。</p>
+        <div class="welfare-detail">→ 面值免费，人人可参与</div>
+      </div>
+      <div class="welfare-card">
+        <span class="welfare-card-tag tag-new">特色</span>
+        <div class="welfare-icon">💸</div>
+        <h3>11 折反向返现</h3>
+        <p>抽中 11 折"反向给钱"特别奖项，工会按差价比例直接返现到您的账户。</p>
+        <div class="welfare-detail">→ 消费 10 元，返现 1 元</div>
+      </div>
+      <div class="welfare-card">
+        <span class="welfare-card-tag tag-vip">尊享</span>
+        <div class="welfare-icon">🏆</div>
+        <h3>会员等级特权</h3>
+        <p>凭证申请累计越多，会员等级越高，高等级会员享有优先审核与专属客服通道。</p>
+        <div class="welfare-detail">→ 一阶 → 1级IT会员 → 2级 → 3级 → 4级</div>
+      </div>
+      <div class="welfare-card">
+        <span class="welfare-card-tag tag-limited">灵活</span>
+        <div class="welfare-icon">🔄</div>
+        <h3>双支付模式</h3>
+        <p>工会先代付再补差价，或用户先付全额再返利，两种方式任选，支付无压力。</p>
+        <div class="welfare-detail">→ 微信支付 / 人工返现</div>
+      </div>
+      <div class="welfare-card">
+        <div class="welfare-icon">📍</div>
+        <h3>定位凭证保障</h3>
+        <p>提交凭证时自动获取 GPS 定位信息，确保消费场景真实可追溯，保障双方权益。</p>
+        <div class="welfare-detail">→ 设备定位 API 自动获取</div>
+      </div>
+      <div class="welfare-card">
+        <div class="welfare-icon">✍️</div>
+        <h3>手写签名确认</h3>
+        <p>凭证提交时支持触屏手写签名，签名图片同步上传存档，确保凭证法律效力。</p>
+        <div class="welfare-detail">→ 签名图片永久存档</div>
+      </div>
+      <div class="welfare-card">
+        <div class="welfare-icon">🛡️</div>
+        <h3>人工审核保障</h3>
+        <p>每份凭证均由管理员逐条人工审核，杜绝虚假凭证，保障平台公平公正。</p>
+        <div class="welfare-detail">→ 审核状态实时通知</div>
+      </div>
+      <div class="welfare-card">
+        <div class="welfare-icon">💬</div>
+        <h3>在线客服支持</h3>
+        <p>平台内置在线聊天系统，管理员实时响应，凭证问题、支付疑问快速解决。</p>
+        <div class="welfare-detail">→ 工作台内一键联系客服</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="discount">
+  <div class="section-inner">
+    <div class="section-header">
+      <span class="section-tag">折扣等级</span>
+      <h2 class="section-title">六大折扣等级</h2>
+      <p class="section-desc">抽奖结果对应不同折扣力度，11 折更有反向返现惊喜</p>
+    </div>
+    <div class="discount-table">
+      <div class="discount-row"><div class="discount-badge badge-7">7折</div><div class="discount-info"><h4>超值折扣</h4><p>消费金额直接打 7 折，省下 30%</p></div><div class="discount-example">10元 → 7元</div></div>
+      <div class="discount-row"><div class="discount-badge badge-8">8折</div><div class="discount-info"><h4>优惠折扣</h4><p>消费金额打 8 折，省下 20%</p></div><div class="discount-example">10元 → 8元</div></div>
+      <div class="discount-row"><div class="discount-badge badge-9">9折</div><div class="discount-info"><h4>基础折扣</h4><p>消费金额打 9 折，省下 10%</p></div><div class="discount-example">10元 → 9元</div></div>
+      <div class="discount-row"><div class="discount-badge badge-95">9.5</div><div class="discount-info"><h4>微额折扣</h4><p>消费金额打 9.5 折，省下 5%</p></div><div class="discount-example">10元 → 9.5元</div></div>
+      <div class="discount-row"><div class="discount-badge badge-10">10折</div><div class="discount-info"><h4>原价持平</h4><p>无折扣，消费金额不变</p></div><div class="discount-example">10元 → 10元</div></div>
+      <div class="discount-row"><div class="discount-badge badge-11">11折</div><div class="discount-info"><h4>反向返现 ⭐</h4><p>超出原价 10%，工会反向给钱</p></div><div class="discount-example">10元 → 返1元</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-inner">
+    <div class="section-header">
+      <span class="section-tag">会员体系</span>
+      <h2 class="section-title">五阶成长体系</h2>
+      <p class="section-desc">凭证申请越多，等级越高，权益越丰富</p>
+    </div>
+    <div class="membership-track">
+      <div class="member-node"><div class="member-circle">一阶</div><span class="member-label">初始会员</span></div>
+      <div class="member-line"></div>
+      <div class="member-node"><div class="member-circle">1级</div><span class="member-label">IT会员</span></div>
+      <div class="member-line"></div>
+      <div class="member-node"><div class="member-circle">2级</div><span class="member-label">进阶会员</span></div>
+      <div class="member-line"></div>
+      <div class="member-node"><div class="member-circle">3级</div><span class="member-label">资深会员</span></div>
+      <div class="member-line"></div>
+      <div class="member-node"><div class="member-circle">4级</div><span class="member-label">荣誉会员</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-inner">
+    <div class="section-header">
+      <span class="section-tag">使用流程</span>
+      <h2 class="section-title">四步轻松参与</h2>
+      <p class="section-desc">简单几步即可完成凭证提交与抽奖</p>
+    </div>
+    <div class="steps-container">
+      <div class="step-item"><div class="step-num">1</div><h4>选择支付方式</h4><p>工会代付或用户先付，自由选择</p></div>
+      <div class="step-arrow">→</div>
+      <div class="step-item"><div class="step-num">2</div><h4>提交凭证</h4><p>上传店铺照片、订单截图、定位、签名</p></div>
+      <div class="step-arrow">→</div>
+      <div class="step-item"><div class="step-num">3</div><h4>等待审核</h4><p>管理员人工审核凭证信息</p></div>
+      <div class="step-arrow">→</div>
+      <div class="step-item"><div class="step-num">4</div><h4>抽奖领奖</h4><p>刮刮乐抽奖，赢取折扣优惠</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="about">
+  <div class="section-inner">
+    <div class="section-header">
+      <span class="section-tag">关于平台</span>
+      <h2 class="section-title">关于玉国金融【全球通】</h2>
+    </div>
+    <div class="about-card">
+      <h3>平台简介</h3>
+      <p>玉国金融【全球通】是一个 <span class="about-highlight">JIT 金融活动</span> 工会凭证优惠管理平台，为工会会员提供消费凭证提交、人工审核、抽奖领奖、灵活支付的一站式服务。</p>
+      <p>平台采用深蓝科技视觉风格，基于 <span class="about-highlight">HTML + CSS + JavaScript</span> 原生开发，部署于 GitHub Pages，数据通过 GitHub API 进行云端存储与管理，无需安装任何客户端，手机浏览器即可使用全部功能。</p>
+      <p>会员可在任意地点登录平台，拍照上传消费凭证，经管理员审核后参与刮刮乐抽奖，赢取 7 折至 11 折（反向给钱）的优惠折扣，让日常消费转化为实实在在的福利。</p>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-grid">
+      <div class="footer-col"><h4>玉国金融【全球通】</h4><p>JIT 金融活动 · 工会凭证优惠管理平台</p><p>深蓝科技风格 · 全原生开发</p></div>
+      <div class="footer-col"><h4>快速导航</h4><a href="#features">核心功能</a><a href="#welfare">会员福利</a><a href="#discount">折扣等级</a><a href="#about">关于平台</a></div>
+      <div class="footer-col"><h4>技术栈</h4><p>HTML5 + CSS3 + JavaScript</p><p>GitHub Pages 托管</p><p>GitHub API 数据交互</p></div>
+      <div class="footer-col"><h4>联系方式</h4><p>工作台内置客服系统</p><p>支持手机端浏览器访问</p><p>响应式适配</p></div>
+    </div>
+    <div class="footer-disclaimer">
+      <p></p>
+    </div>
+    <div class="footer-bottom"><p>© 2026 玉国</p></div>
+  </div>
+</footer>
+
+<script>
+window.addEventListener('scroll', function() {
+  var navbar = document.querySelector('.navbar');
+  navbar.style.background = window.scrollY > 50 ? 'rgba(10,14,23,0.95)' : 'rgba(10,14,23,0.85)';
+});
+document.querySelectorAll('a[href^="#"]').forEach(function(anchor) {
+  anchor.addEventListener('click', function(e) {
+    var target = document.querySelector(this.getAttribute('href'));
+    if (target) { e.preventDefault(); target.scrollIntoView({ behavior:'smooth', block:'start' }); }
+  });
+});
+var observer = new IntersectionObserver(function(entries) {
+  entries.forEach(function(entry) {
+    if (entry.isIntersecting) { entry.target.style.opacity = '1'; entry.target.style.transform = 'translateY(0)'; }
+  });
+}, { threshold: 0.1 });
+document.querySelectorAll('.feature-card, .welfare-card, .discount-row, .step-item').forEach(function(el) {
+  el.style.opacity = '0'; el.style.transform = 'translateY(30px)'; el.style.transition = 'all 0.6s ease';
+  observer.observe(el);
+});
+</script>
+</body>
+</html>
