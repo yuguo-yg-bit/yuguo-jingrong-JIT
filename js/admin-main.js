@@ -104,17 +104,23 @@ var JITAdmin = (function() {
   };
 
   var _ensureLabels = function() {
-    var labels = ["pending", "approved", "rejected"];
+    var labels = [
+      { name: "pending", color: "ff9800" },
+      { name: "approved", color: "4caf50" },
+      { name: "rejected", color: "f44336" },
+      { name: "points", color: "ffd54f" },
+      { name: "lottery", color: "2196f3" }
+    ];
     var promises = [];
-    labels.forEach(function(label) {
+    labels.forEach(function(lb) {
       promises.push(
-        fetch(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/labels/" + label, {
+        fetch(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/labels/" + lb.name, {
           headers: { Authorization: "token " + TOKEN, Accept: "application/vnd.github.v3+json" }
         }).then(function(r) {
           if (r.status === 404) {
             return _apiPost(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/labels", {
-              name: label,
-              color: label === "approved" ? "4caf50" : (label === "rejected" ? "f44336" : "ff9800")
+              name: lb.name,
+              color: lb.color
             });
           }
         }).catch(function() {})
@@ -695,6 +701,17 @@ var JITAdmin = (function() {
       if (!currentIssue) return;
       _updateIssueStatus(currentIssue, "approved").then(function() {
         _showToast("已通过该凭证");
+        // 审核通过后给该用户 +25 积分
+        var data = _parseIssueBody(currentIssue.body);
+        var uid = data.userId || data.title || (currentIssue.user && currentIssue.user.login);
+        if (uid && typeof JITPoints !== "undefined" && JITPoints.changePoints) {
+          JITPoints.ensureLabel().catch(function() {});
+          JITPoints.changePoints(uid, 25, "凭证审核通过").then(function() {
+            _showToast("已发放审核通过奖励 +25 积分给 " + uid);
+          }).catch(function(err) {
+            console.warn("发放积分失败", err);
+          });
+        }
         document.getElementById("reviewOverlay").classList.remove("active");
         document.getElementById("rejectReasonWrap").style.display = "none";
         loadIssues();

@@ -21,11 +21,86 @@ var JITApp = (function() {
     _initBackgroundParticles();
     _initLogin();
     _bindEvents();
+    // 确保积分 label 存在
+    if (JITPoints && JITPoints.ensureLabel) JITPoints.ensureLabel().catch(function() {});
     _loadData();
+    _refreshPointsDisplay();
     // 每10秒自动刷新
     setInterval(function() {
       _loadData();
     }, 10000);
+    // 每 30 秒刷新一下积分显示（防止管理员审核通过后用户端不同步）
+    setInterval(function() {
+      if (_currentUser) _refreshPointsDisplay(true);
+    }, 30000);
+  };
+
+  // ========= 积分相关 =========
+  var _currentPoints = 0;
+  var _pendingPaymentVoucher = null;  // 当前打开支付弹窗的凭证
+  var _pointsOffsetUsed = false;      // 该笔是否已用积分抵消
+
+  var _refreshPointsDisplay = function(forceCloud) {
+    if (!_currentUser) return;
+    var el = document.getElementById("pointsTotal");
+    if (!el) return;
+    return JITPoints.getUserPoints(_currentUser, !!forceCloud).then(function(d) {
+      _currentPoints = d ? (d.points || 0) : 0;
+      el.textContent = _currentPoints;
+      // 同步更新幸运抽奖条上的积分显示
+      var luckyEl = document.getElementById("luckyCurrentPoints");
+      if (luckyEl) luckyEl.textContent = String(_currentPoints);
+      var offsetEl = document.getElementById("offsetCurrentPoints");
+      if (offsetEl) offsetEl.textContent = String(_currentPoints);
+      return d;
+    }).catch(function() {
+      return null;
+    });
+  };
+
+  var _openPointsHistory = function() {
+    if (!_currentUser) return;
+    var overlay = document.getElementById("pointsHistoryOverlay");
+    if (!overlay) return;
+    overlay.classList.add("active");
+    var listEl = document.getElementById("pointsHistoryList");
+    var totalEl = document.getElementById("historyTotalPoints");
+    if (listEl) listEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);">加载中...</div>';
+    JITPoints.getUserPoints(_currentUser, true).then(function(d) {
+      var total = d ? (d.points || 0) : 0;
+      _currentPoints = total;
+      if (totalEl) totalEl.textContent = String(total);
+      var ptsEl = document.getElementById("pointsTotal");
+      if (ptsEl) ptsEl.textContent = String(total);
+      var logs = (d && d.logs) ? d.logs : [];
+      if (!listEl) return;
+      if (logs.length === 0) {
+        listEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);">暂无积分记录<br><br>添加一个凭证即可获得 <b style="color:var(--gold);">15 积分</b>！</div>';
+        return;
+      }
+      var html = "";
+      logs.forEach(function(log) {
+        var cls = log.delta >= 0 ? "points-plus" : "points-minus";
+        var sign = log.delta >= 0 ? "+" : "";
+        var color = log.delta >= 0 ? "var(--green)" : "var(--red)";
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px dashed rgba(255,255,255,0.05);'
+                + 'gap:8px;">';
+        html += '<div style="flex:1;min-width:0;">';
+        html += '<div style="color:var(--text-primary);font-weight:500;">' + _escapeHtml(log.reason || "—") + '</div>';
+        html += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + _escapeHtml(log.time || "") + '</div>';
+        html += '</div>';
+        html += '<div style="font-weight:700;color:' + color + ';font-size:15px;flex-shrink:0;">' + sign + log.delta + '</div>';
+        html += '</div>';
+      });
+      listEl.innerHTML = html;
+    }).catch(function(err) {
+      if (listEl) listEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--red);">加载失败: ' + _escapeHtml(err.message || "") + '</div>';
+    });
+  };
+
+  var _closePointsHistory = function() {
+    var overlay = document.getElementById("pointsHistoryOverlay");
+    if (overlay) overlay.classList.remove("active");
   };
 
   var _initBackgroundParticles = function() {
@@ -52,6 +127,7 @@ var JITApp = (function() {
       _updateLogoutText();
       var savedChat = localStorage.getItem("jit_chat_issue_" + savedUser);
       if (savedChat) _chatIssueNumber = parseInt(savedChat, 10);
+      _refreshPointsDisplay();
       return;
     }
     _showLoginPrompt();
@@ -94,6 +170,7 @@ var JITApp = (function() {
         overlay.remove();
         _showToast("登录成功，欢迎 " + username, "success");
         _loadData();
+        _refreshPointsDisplay();
       } else {
         errorEl.style.display = "block";
         errorEl.textContent = "用户名或密码错误";
@@ -154,6 +231,22 @@ var JITApp = (function() {
         }, 500);
       });
     }
+
+    // ===== 积分相关按钮事件 =====
+    var btnPointsHistory = document.getElementById("btnPointsHistory");
+    if (btnPointsHistory) btnPointsHistory.addEventListener("click", _openPointsHistory);
+    var btnPointsHistoryClose = document.getElementById("btnPointsHistoryClose");
+    if (btnPointsHistoryClose) btnPointsHistoryClose.addEventListener("click", _closePointsHistory);
+    var pointsHistoryOverlay = document.getElementById("pointsHistoryOverlay");
+    if (pointsHistoryOverlay) {
+      pointsHistoryOverlay.addEventListener("click", function(e) {
+        if (e.target === pointsHistoryOverlay) _closePointsHistory();
+      });
+    }
+    var btnEnableLucky = document.getElementById("btnEnableLucky");
+    if (btnEnableLucky) btnEnableLucky.addEventListener("click", _doEnableLucky);
+    var btnUsePointsOffset = document.getElementById("btnUsePointsOffset");
+    if (btnUsePointsOffset) btnUsePointsOffset.addEventListener("click", _doUsePointsOffset);
 
     var btnLotteryClose = document.getElementById("btnLotteryClose");
     if (btnLotteryClose) {
@@ -714,6 +807,17 @@ var JITApp = (function() {
     }
     var overlay = document.getElementById("lotteryOverlay");
     if (overlay) {
+      // 初始化幸运抽奖 UI：若已开启则显示已开启，否则显示兑换入口
+      JITLottery.disableLuckyMode(); // 新一轮开始时重置幸运模式，避免上次残留
+      var bar = document.getElementById("luckyLotteryBar");
+      var hint = document.getElementById("luckyModeHint");
+      var luckyBtn = document.getElementById("btnEnableLucky");
+      var luckyPts = document.getElementById("luckyCurrentPoints");
+      if (bar) bar.style.display = "flex";
+      if (hint) hint.style.display = "none";
+      if (luckyBtn) luckyBtn.disabled = false;
+      if (luckyPts) luckyPts.textContent = String(_currentPoints);
+
       overlay.classList.add("active");
       var targetVoucher = voucher;
       setTimeout(function() {
@@ -725,6 +829,8 @@ var JITApp = (function() {
           } else {
             _showToast("😅 未中奖，下次好运！", "");
           }
+          // 抽奖结果确定后，本轮幸运模式自动失效
+          JITLottery.disableLuckyMode();
         });
         // 随机后立刻保存折数，不等用户刮！
         var prize = JITLottery.getCurrentPrize();
@@ -740,6 +846,8 @@ var JITApp = (function() {
     if (overlay) {
       overlay.classList.remove("active");
     }
+    // 关闭弹窗时也清理幸运模式状态
+    JITLottery.disableLuckyMode();
   };
 
   var _resetForm = function() {
@@ -978,6 +1086,34 @@ var JITApp = (function() {
         JITApi.invalidateCache("allVouchersForId");
         var newIssueNumber = result.number;
         var newVoucher = JITApi.parseVoucherData(result);
+
+        // ===== 积分：添加凭证 +15，签到，连续 3 天再 +30 =====
+        var bonusMsg = [];
+        var awardPromises = [];
+        try {
+          if (JITPoints && JITPoints.changePoints) {
+            awardPromises.push(
+              JITPoints.changePoints(_currentUser, 15, "添加凭证").then(function() {
+                bonusMsg.push("+15 积分");
+              }).catch(function() {})
+            );
+          }
+          if (JITPoints && JITPoints.signIn) {
+            awardPromises.push(
+              JITPoints.signIn(_currentUser).then(function(signResult) {
+                if (signResult && signResult.bonusEarned) {
+                  bonusMsg.push("连续3天添加凭证 +30 积分！");
+                }
+              }).catch(function() {})
+            );
+          }
+        } catch(e) {}
+        // 积分逻辑走完再刷新显示，不阻塞主流程
+        Promise.all(awardPromises).then(function() {
+          if (bonusMsg.length > 0) _showToast("获得奖励：" + bonusMsg.join("，"), "success");
+          _refreshPointsDisplay(true);
+        });
+
         if (newVoucher) {
           newVoucher._issueNumber = newIssueNumber;
           _allVouchers.unshift(newVoucher);
@@ -1011,6 +1147,26 @@ var JITApp = (function() {
     });
     localStorage.setItem("jit_lottery_results", JSON.stringify(lotteryResults));
 
+    // ===== 积分：根据折扣发放 =====
+    var lowDiscountIds = ["0折", "7折", "8折", "9折", "9.5折"];
+    var highDiscountIds = ["10折", "11折", "12折", "13折", "14折"];
+    var delta = 0;
+    var reason = "";
+    if (lowDiscountIds.indexOf(prize.discount) !== -1) {
+      delta = 50;
+      reason = "抽到 " + prize.discount + "（免单/7-9.5折）奖励";
+    } else if (highDiscountIds.indexOf(prize.discount) !== -1) {
+      delta = 60;
+      reason = "抽到 " + prize.discount + "（10折及以上）奖励";
+    }
+    var ptsPromise = Promise.resolve();
+    if (delta > 0 && JITPoints && JITPoints.changePoints) {
+      ptsPromise = JITPoints.changePoints(_currentUser, delta, reason).then(function() {
+        _refreshPointsDisplay(true);
+        _showToast("抽奖积分奖励 +" + delta + " 分", "success");
+      }).catch(function() {});
+    }
+
     if (targetVoucher && targetVoucher._issueNumber) {
       var updatedVoucher = Object.assign({}, targetVoucher);
       updatedVoucher.discount = prize.discount;
@@ -1024,10 +1180,16 @@ var JITApp = (function() {
         JITApi.invalidateCache("allVouchers");
         JITApi.invalidateCache("allVouchersForId");
         _loadData();
+        return ptsPromise;
+      }).then(function() {
         _showToast("保存成功！", "success");
       }).catch(function(err) {
         console.error("更新抽奖结果失败:", err);
         _showToast("抽奖结果保存失败，请重试", "error");
+      });
+    } else {
+      ptsPromise.then(function() {
+        _showToast("保存成功！", "success");
       });
     }
   };
@@ -1039,20 +1201,123 @@ var JITApp = (function() {
     var finalAmount = isNaN(originalAmount) ? 0 : (originalAmount * discountValue);
     var discountAmount = originalAmount - finalAmount;
 
+    _pendingPaymentVoucher = voucher;
+    _pointsOffsetUsed = false;
+
     var overlay2 = document.getElementById("userFirstPayOverlay");
     var subEl = document.getElementById("userFirstPaySub");
+    var offsetBox = document.getElementById("pointsOffsetBox");
+    var offsetResultEl = document.getElementById("offsetResult");
+    if (offsetResultEl) offsetResultEl.textContent = "";
+    var btn = document.getElementById("btnUsePointsOffset");
+    if (btn) btn.disabled = false;
+
     if (overlay2) {
       if (subEl) {
         var discountStr = discountAmount > 0 ? "\u00a5" + discountAmount.toFixed(2) : (discountAmount < 0 ? "-\u00a5" + Math.abs(discountAmount).toFixed(2) + "\uff08\u5de5\u4f1a\u989d\u5916\u7ed9\u60a8\uff09" : "\u00a50.00");
         subEl.innerHTML = "\u539f\u4ef7\uff1a\u00a5" + originalAmount.toFixed(2) + "<br>\u6298\u6263\uff1a" + (voucher.discount || "10\u6298") + "<br>\u60a8\u5148\u652f\u4ed8\uff1a\u00a5" + originalAmount.toFixed(2) + "<br>\u5de5\u4f1a\u8fd4\u8fd8\uff1a" + discountStr;
       }
+
+      // 当 discountValue > 1（10 折以上）时，用户需要补钱，显示积分抵消入口
+      var needPayYuan = Math.max(0, -discountAmount);  // 用户需要补的金额（元）
+      if (offsetBox) {
+        if (needPayYuan > 0.001) {
+          // 显示 UI
+          offsetBox.style.display = "block";
+          var needPayEl = document.getElementById("offsetNeedPay");
+          if (needPayEl) needPayEl.textContent = "¥" + needPayYuan.toFixed(2);
+          var canPayEl = document.getElementById("offsetCanPay");
+          var canPayYuan = Math.floor(_currentPoints / 10) * 1.0;
+          if (canPayEl) canPayEl.textContent = "¥" + (Math.min(canPayYuan, needPayYuan)).toFixed(2);
+          var curPtsEl = document.getElementById("offsetCurrentPoints");
+          if (curPtsEl) curPtsEl.textContent = String(_currentPoints);
+        } else {
+          offsetBox.style.display = "none";
+        }
+      }
+
       overlay2.classList.add("active");
     }
+  };
+
+  // 使用积分抵消差额
+  var _doUsePointsOffset = function() {
+    if (!_pendingPaymentVoucher) return;
+    if (_pointsOffsetUsed) {
+      _showToast("本笔已使用积分抵消", "");
+      return;
+    }
+    var originalAmount = parseFloat(_pendingPaymentVoucher.originalPrice || _pendingPaymentVoucher.amount || 0);
+    var discountValue = parseFloat(_pendingPaymentVoucher.discountValue || 1);
+    var finalAmount = isNaN(originalAmount) ? 0 : (originalAmount * discountValue);
+    var discountAmount = originalAmount - finalAmount;
+    var needPayYuan = Math.max(0, -discountAmount);
+    if (needPayYuan < 0.001) {
+      _showToast("本笔无需抵消（抽奖结果是您赚钱）", "");
+      return;
+    }
+    var needPoints = Math.ceil(needPayYuan * 10);  // 10 积分=1元，向上取整
+    var usePoints = Math.min(needPoints, _currentPoints);
+    if (usePoints <= 0) {
+      _showToast("积分不足（10 积分 = 1 元），请先赚取积分", "error");
+      return;
+    }
+    var btn = document.getElementById("btnUsePointsOffset");
+    if (btn) { btn.disabled = true; }
+    var offsetResultEl = document.getElementById("offsetResult");
+    if (offsetResultEl) offsetResultEl.textContent = "抵消中...";
+    var actualOffsetYuan = usePoints / 10;
+    JITPoints.changePoints(_currentUser, -usePoints, "用积分抵消 ¥" + actualOffsetYuan.toFixed(2) + " 支付差额").then(function() {
+      _pointsOffsetUsed = true;
+      if (offsetResultEl) offsetResultEl.textContent = "✅ 已抵消 ¥" + actualOffsetYuan.toFixed(2);
+      _showToast("成功使用 " + usePoints + " 积分抵消 ¥" + actualOffsetYuan.toFixed(2), "success");
+      return _refreshPointsDisplay(true);
+    }).catch(function(err) {
+      if (offsetResultEl) offsetResultEl.textContent = "";
+      if (btn) btn.disabled = false;
+      _showToast("抵消失败: " + (err.message || ""), "error");
+    });
+  };
+
+  // 兑换幸运抽奖
+  var _doEnableLucky = function() {
+    if (!_currentUser) return;
+    // 先检查积分够不够
+    var cost = 45;
+    if (_currentPoints < cost) {
+      _showToast("积分不足！需要 " + cost + " 积分，当前 " + _currentPoints + " 分。添加凭证可赚积分~", "error");
+      return;
+    }
+    // 如果已经启用，无需重复
+    if (JITLottery.isLuckyMode()) {
+      _showToast("本轮幸运抽奖模式已开启", "");
+      return;
+    }
+    var btn = document.getElementById("btnEnableLucky");
+    if (btn) btn.disabled = true;
+    JITPoints.changePoints(_currentUser, -cost, "兑换幸运抽奖 1 次").then(function() {
+      var ok = JITLottery.enableLuckyMode();
+      if (ok) {
+        var hint = document.getElementById("luckyModeHint");
+        if (hint) hint.style.display = "block";
+        var bar = document.getElementById("luckyLotteryBar");
+        if (bar) bar.style.display = "none"; // 已开启就隐藏入口
+        _showToast("🍀 已兑换幸运抽奖！9.5折及以下概率提高", "success");
+      } else {
+        _showToast("幸运抽奖启用失败", "error");
+      }
+      return _refreshPointsDisplay(true);
+    }).catch(function(err) {
+      if (btn) btn.disabled = false;
+      _showToast("兑换失败: " + (err.message || ""), "error");
+    });
   };
 
   var _closeUserFirstPayModal = function() {
     var overlay = document.getElementById("userFirstPayOverlay");
     if (overlay) overlay.classList.remove("active");
+    _pendingPaymentVoucher = null;
+    _pointsOffsetUsed = false;
   };
 
   var _showToast = function(msg, type) {

@@ -19,7 +19,8 @@ var JITConfig = (function() {
     pending: "pending",
     rejected: "rejected",
     paid: "paid",
-    lottery: "lottery"
+    lottery: "lottery",
+    points: "points"
   };
 
   var _users = {

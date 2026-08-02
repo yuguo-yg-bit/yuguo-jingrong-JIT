@@ -18,6 +18,8 @@ var JITLottery = (function() {
   var _revealThreshold = 0.4;
   var _currentPrize = null;
   var _onRevealed = null;
+  var _luckyMode = false;      // 幸运抽奖模式
+  var _savedWeights = null;    // 保存默认权重用于恢复
 
   // 从 localStorage 加载保存的权重配置
   var _loadSavedConfig = function() {
@@ -58,6 +60,32 @@ var JITLottery = (function() {
       }
     }
     return _prizes[_prizes.length - 1];
+  };
+
+  // 启用幸运抽奖模式：9.5折及以下权重 x3，10折及以上权重 x0.2
+  var _lowDiscountIds = ["0折", "7折", "8折", "9折", "9.5折"];
+  var _enableLuckyMode = function() {
+    if (_luckyMode) return true;
+    _savedWeights = _prizes.map(function(p) { return p.weight; });
+    _prizes.forEach(function(p, idx) {
+      if (_lowDiscountIds.indexOf(p.discount) !== -1) {
+        p.weight = Math.max(1, Math.round(p.weight * 3));
+      } else {
+        p.weight = Math.max(0, Math.round(p.weight * 0.2));
+      }
+    });
+    _luckyMode = true;
+    return true;
+  };
+
+  // 恢复普通模式权重
+  var _disableLuckyMode = function() {
+    if (!_luckyMode || !_savedWeights) return;
+    _prizes.forEach(function(p, idx) {
+      if (typeof _savedWeights[idx] === "number") p.weight = _savedWeights[idx];
+    });
+    _savedWeights = null;
+    _luckyMode = false;
   };
 
   // 生成不重复的随机数
@@ -376,6 +404,8 @@ var JITLottery = (function() {
     if (_onRevealed && _currentPrize) {
       _onRevealed(_currentPrize);
     }
+    // 抽奖完毕后退出幸运模式，恢复默认权重
+    if (_luckyMode) _disableLuckyMode();
   };
 
   var _bindEvents = function() {
@@ -445,14 +475,19 @@ var JITLottery = (function() {
     getPrizes: function() { return _prizes; },
     updatePrizeConfig: function(config) {
       if (!Array.isArray(config)) return;
+      // 如果处于幸运模式，先恢复再应用配置
+      if (_luckyMode) _disableLuckyMode();
       config.forEach(function(item, index) {
-        if (_prizes[index]) {
+        if (_prizes[index] && typeof item.weight === "number" && item.weight >= 0) {
           _prizes[index].weight = item.weight;
         }
       });
     },
     setThreshold: function(threshold) {
       _revealThreshold = typeof threshold === "number" ? threshold : 0.4;
-    }
+    },
+    isLuckyMode: function() { return _luckyMode; },
+    enableLuckyMode: _enableLuckyMode,
+    disableLuckyMode: _disableLuckyMode
   };
 })();
