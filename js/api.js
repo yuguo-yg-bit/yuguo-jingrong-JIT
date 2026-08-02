@@ -85,32 +85,24 @@ var JITApi = (function() {
 
   var _uploadFileToRepo = function(path, base64Content, commitMsg) {
     var url = _apiBase + "/repos/" + _imageRepoFull + "/contents/" + _encodePath(path);
-    var body = {
+    var baseBody = {
       message: commitMsg || "upload image",
       content: base64Content,
       branch: "main"
     };
-    return _safeRequest(url, {
-      method: "PUT",
-      headers: _headers(),
-      body: JSON.stringify(body)
+    // 先尝试获取已有文件的 SHA，如果存在则带 sha 更新，不存在则直接创建
+    return _getFileSha(path).then(function(sha) {
+      var body = Object.assign({}, baseBody);
+      if (sha) {
+        body.sha = sha;
+      }
+      return _safeRequest(url, {
+        method: "PUT",
+        headers: _headers(),
+        body: JSON.stringify(body)
+      });
     }).then(function(result) {
       return result && result.content ? result.content.download_url : "";
-    }).catch(function(err) {
-      var msg = String(err.message || "");
-      if (msg.indexOf("sha") === -1 && msg.indexOf("expected") === -1 && msg.indexOf("422") === -1) {
-        throw err;
-      }
-      return _getFileSha(path).then(function(sha) {
-        if (sha) body.sha = sha;
-        return _safeRequest(url, {
-          method: "PUT",
-          headers: _headers(),
-          body: JSON.stringify(body)
-        });
-      }).then(function(result) {
-        return result && result.content ? result.content.download_url : "";
-      });
     });
   };
 
