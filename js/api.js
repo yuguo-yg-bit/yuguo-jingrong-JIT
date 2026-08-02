@@ -86,32 +86,36 @@ var JITApi = (function() {
   var _uploadFileToRepo = function(path, base64Content, commitMsg, retryCount) {
     retryCount = retryCount || 0;
     var url = _apiBase + "/repos/" + _imageRepoFull + "/contents/" + _encodePath(path);
-    var baseBody = {
+    var body = {
       message: commitMsg || "upload image",
       content: base64Content,
       branch: "main"
     };
-    // 先尝试获取已有文件的 SHA，如果存在则带 sha 更新，不存在则直接创建
-    return _getFileSha(path).then(function(sha) {
-      var body = Object.assign({}, baseBody);
-      if (sha) {
-        body.sha = sha;
-      }
-      return _safeRequest(url, {
-        method: "PUT",
-        headers: _headers(),
-        body: JSON.stringify(body)
-      });
+    // 乐观策略：直接 PUT（不带 sha），文件不存在时一次成功
+    // 失败（文件已存在需要 sha）→ GET sha → 带 sha 重试
+    return _safeRequest(url, {
+      method: "PUT",
+      headers: _headers(),
+      body: JSON.stringify(body)
     }).then(function(result) {
       return result && result.content ? result.content.download_url : "";
     }).catch(function(err) {
-      // SHA 不匹配或冲突时，重试最多 3 次：重新 GET SHA 再 PUT
       var msg = String(err.message || "");
-      if (retryCount < 3 && (msg.indexOf("sha") > -1 || msg.indexOf("expected") > -1 || msg.indexOf("409") > -1 || msg.indexOf("422") > -1)) {
+      // 文件已存在（需要 sha）或 sha 不匹配：重新 GET sha 再重试
+      if (retryCount < 3 && (msg.indexOf("sha") > -1 || msg.indexOf("expected") > -1 || msg.indexOf("422") > -1 || msg.indexOf("409") > -1)) {
         return new Promise(function(resolve) {
-          setTimeout(resolve, 500 * (retryCount + 1));  // 递增延迟
+          setTimeout(resolve, 400 * (retryCount + 1));
         }).then(function() {
-          return _uploadFileToRepo(path, base64Content, commitMsg, retryCount + 1);
+          return _getFileSha(path);
+        }).then(function(sha) {
+          if (sha) body.sha = sha;
+          return _safeRequest(url, {
+            method: "PUT",
+            headers: _headers(),
+            body: JSON.stringify(body)
+          });
+        }).then(function(result) {
+          return result && result.content ? result.content.download_url : "";
         });
       }
       throw err;
