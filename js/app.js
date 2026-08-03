@@ -17,6 +17,12 @@ var JITApp = (function() {
   var _editingVoucher = null;
   var _chatIssueNumber = null;
 
+  // 线上购物相关变量
+  var _onlineProductFile = null;
+  var _onlineShoppingFiles = [];
+  var _onlineShoppingPhotoFiles = [];
+  var _onlineSignatureData = null;
+
   var _init = function() {
     _initBackgroundParticles();
     _initLogin();
@@ -219,6 +225,11 @@ var JITApp = (function() {
       btnCustomerService.addEventListener("click", _openChatModal);
     }
 
+    var btnAddOnlineVoucher = document.getElementById("btnAddOnlineVoucher");
+    if (btnAddOnlineVoucher) {
+      btnAddOnlineVoucher.addEventListener("click", _openAddOnlineVoucherModal);
+    }
+
     var btnJITVip = document.getElementById("btnJITVip");
     if (btnJITVip) {
       btnJITVip.addEventListener("click", function() {
@@ -319,8 +330,11 @@ var JITApp = (function() {
     }
 
     _initUploadListeners();
+    _initOnlineUploadListeners();
     _initSignatureCanvas();
+    _initOnlineSignatureCanvas();
     _initAmountInput();
+    _initOnlineAmountInput();
 
     var ordersTableBody = document.getElementById("ordersTableBody");
     if (ordersTableBody) {
@@ -390,6 +404,24 @@ var JITApp = (function() {
     var btnUnionPaid = document.getElementById("btnUnionPaid");
     if (btnUnionPaid) {
       btnUnionPaid.addEventListener("click", _submitUnionPaid);
+    }
+
+    // 线上购物弹窗事件
+    var btnOnlineModalClose = document.getElementById("btnOnlineModalClose");
+    if (btnOnlineModalClose) {
+      btnOnlineModalClose.addEventListener("click", _closeOnlineAddVoucherModal);
+    }
+    var modalOnlineOverlay = document.getElementById("modalOnlineOverlay");
+    if (modalOnlineOverlay) {
+      modalOnlineOverlay.addEventListener("click", function(e) {
+        if (e.target === modalOnlineOverlay) {
+          _closeOnlineAddVoucherModal();
+        }
+      });
+    }
+    var btnSubmitOnline = document.getElementById("btnSubmitOnlineVoucher");
+    if (btnSubmitOnline) {
+      btnSubmitOnline.addEventListener("click", _submitOnlineVoucherForm);
     }
   };
 
@@ -483,6 +515,100 @@ var JITApp = (function() {
 
   var _refreshOrderPreviewIndices = function() {
     var items = document.querySelectorAll("#previewOrderPhotos .remove-preview");
+    items.forEach(function(item, i) {
+      item.setAttribute("data-index", i);
+    });
+  };
+
+  // ========= 线上购物图片上传监听 =========
+  var _initOnlineUploadListeners = function() {
+    var inputOnlineProduct = document.getElementById("inputOnlineProduct");
+    if (inputOnlineProduct) {
+      inputOnlineProduct.addEventListener("change", function(e) {
+        var file = e.target.files[0];
+        if (file) {
+          if (file.size > 20 * 1024 * 1024) {
+            _showToast("图片不能超过20MB！", "error");
+            inputOnlineProduct.value = "";
+            return;
+          }
+          _onlineProductFile = file;
+          var reader = new FileReader();
+          reader.onload = function(ev) {
+            var preview = document.getElementById("previewOnlineProduct");
+            if (preview) {
+              preview.src = ev.target.result;
+              preview.style.display = "block";
+            }
+            var placeholder = document.querySelector("#uploadOnlineProduct .upload-placeholder");
+            if (placeholder) placeholder.style.display = "none";
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+    }
+    var uploadOnlineProduct = document.getElementById("uploadOnlineProduct");
+    if (uploadOnlineProduct) {
+      uploadOnlineProduct.addEventListener("click", function(e) {
+        if (e.target === uploadOnlineProduct || e.target.closest(".upload-placeholder") || e.target.closest(".upload-preview")) {
+          document.getElementById("inputOnlineProduct").click();
+        }
+      });
+    }
+
+    var inputOnlineShopping = document.getElementById("inputOnlineShopping");
+    if (inputOnlineShopping) {
+      inputOnlineShopping.addEventListener("change", function(e) {
+        var files = Array.from(e.target.files);
+        _onlineShoppingFiles = [];
+        _onlineShoppingPhotoFiles = [];
+        var previewList = document.getElementById("previewOnlineShopping");
+        if (previewList) previewList.innerHTML = "";
+        var oversizedCount = 0;
+        files.forEach(function(file, index) {
+          if (file.size > 20 * 1024 * 1024) {
+            oversizedCount++;
+            return;
+          }
+          _onlineShoppingPhotoFiles.push(file);
+          var reader = new FileReader();
+          reader.onload = function(ev) {
+            _onlineShoppingFiles.push({ name: file.name, data: ev.target.result });
+            var item = document.createElement("div");
+            item.className = "upload-preview-item";
+            item.innerHTML = '<img src="' + ev.target.result + '" alt="购物截图">' +
+              '<button class="remove-online-preview" data-index="' + index + '">&times;</button>';
+            if (previewList) previewList.appendChild(item);
+          };
+          reader.readAsDataURL(file);
+        });
+        if (oversizedCount > 0) {
+          _showToast("已跳过" + oversizedCount + "张超过20MB的图片！", "error");
+        }
+      });
+    }
+    var uploadOnlineShopping = document.getElementById("uploadOnlineShopping");
+    if (uploadOnlineShopping) {
+      uploadOnlineShopping.addEventListener("click", function(e) {
+        if (e.target === uploadOnlineShopping || e.target.closest(".upload-placeholder") || e.target.closest(".upload-preview-list")) {
+          document.getElementById("inputOnlineShopping").click();
+        }
+      });
+    }
+    document.addEventListener("click", function(e) {
+      if (e.target.classList.contains("remove-online-preview")) {
+        var index = parseInt(e.target.getAttribute("data-index"));
+        if (!isNaN(index) && index < _onlineShoppingFiles.length) {
+          _onlineShoppingFiles.splice(index, 1);
+          e.target.parentElement.remove();
+          _refreshOnlinePreviewIndices();
+        }
+      }
+    });
+  };
+
+  var _refreshOnlinePreviewIndices = function() {
+    var items = document.querySelectorAll("#previewOnlineShopping .remove-online-preview");
     items.forEach(function(item, i) {
       item.setAttribute("data-index", i);
     });
@@ -597,8 +723,186 @@ var JITApp = (function() {
     _signatureData = null;
   };
 
+  // ========= 线上购物签名 =========
+  var _initOnlineSignatureCanvas = function() {
+    var canvas = document.getElementById("onlineSignatureCanvas");
+    if (!canvas) return;
+    var ctx = canvas.getContext("2d");
+    var isDrawing = false;
+    var lastX = 0;
+    var lastY = 0;
+
+    var resizeCanvas = function() {
+      var container = canvas.parentElement;
+      var rect = container.getBoundingClientRect();
+      var dpr = window.devicePixelRatio || 1;
+      var width = rect.width;
+      var height = 150;
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      canvas.style.width = width + "px";
+      canvas.style.height = height + "px";
+      ctx.scale(dpr, dpr);
+      ctx.strokeStyle = "#42a5f5";
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+    };
+
+    resizeCanvas();
+    window.addEventListener("resize", function() {
+      var savedData = canvas.toDataURL();
+      resizeCanvas();
+      var img = new Image();
+      img.onload = function() {
+        ctx.drawImage(img, 0, 0);
+      };
+      img.src = savedData;
+    });
+
+    var getPos = function(e) {
+      var rect = canvas.getBoundingClientRect();
+      var clientX, clientY;
+      if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+      } else if (e.changedTouches && e.changedTouches.length > 0) {
+        clientX = e.changedTouches[0].clientX;
+        clientY = e.changedTouches[0].clientY;
+      } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
+      }
+      return { x: clientX - rect.left, y: clientY - rect.top };
+    };
+
+    var startDraw = function(e) {
+      e.preventDefault();
+      isDrawing = true;
+      var pos = getPos(e);
+      lastX = pos.x;
+      lastY = pos.y;
+    };
+    var draw = function(e) {
+      e.preventDefault();
+      if (!isDrawing) return;
+      var pos = getPos(e);
+      ctx.beginPath();
+      ctx.moveTo(lastX, lastY);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      lastX = pos.x;
+      lastY = pos.y;
+    };
+    var endDraw = function(e) {
+      e.preventDefault();
+      isDrawing = false;
+      _onlineSignatureData = canvas.toDataURL();
+    };
+
+    canvas.addEventListener("mousedown", startDraw);
+    canvas.addEventListener("mousemove", draw);
+    canvas.addEventListener("mouseup", endDraw);
+    canvas.addEventListener("mouseleave", endDraw);
+    canvas.addEventListener("touchstart", startDraw, { passive: false });
+    canvas.addEventListener("touchmove", draw, { passive: false });
+    canvas.addEventListener("touchend", endDraw, { passive: false });
+
+    // 清除按钮
+    var btnClear = document.getElementById("btnOnlineClearSignature");
+    if (btnClear) {
+      btnClear.addEventListener("click", function() {
+        var dpr = window.devicePixelRatio || 1;
+        ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+        _onlineSignatureData = null;
+      });
+    }
+
+    // 定位按钮
+    var btnOnlineGetLocation = document.getElementById("btnOnlineGetLocation");
+    if (btnOnlineGetLocation) {
+      btnOnlineGetLocation.addEventListener("click", _getOnlineLocation);
+    }
+  };
+
+  var _getOnlineLocation = function() {
+    var btn = document.getElementById("btnOnlineGetLocation");
+    var info = document.getElementById("onlineLocationInfo");
+    if (!btn) return;
+
+    btn.disabled = true;
+    btn.textContent = "获取中...";
+
+    if (!navigator.geolocation) {
+      _showToast("您的设备不支持定位功能", "error");
+      btn.disabled = false;
+      btn.innerHTML = '<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>获取定位';
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      function(position) {
+        var lat = position.coords.latitude;
+        var lng = position.coords.longitude;
+        document.getElementById("inputOnlineLatitude").value = lat;
+        document.getElementById("inputOnlineLongitude").value = lng;
+        if (info) {
+          info.textContent = "经度: " + lng.toFixed(6) + "  纬度: " + lat.toFixed(6);
+        }
+        btn.disabled = false;
+        btn.innerHTML = '<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>已定位';
+        _showToast("定位成功", "success");
+      },
+      function(err) {
+        var msg = "定位失败: ";
+        switch (err.code) {
+          case err.PERMISSION_DENIED: msg += "用户拒绝定位请求"; break;
+          case err.POSITION_UNAVAILABLE: msg += "位置信息不可用"; break;
+          case err.TIMEOUT: msg += "定位请求超时"; break;
+          default: msg += "未知错误"; break;
+        }
+        _showToast(msg, "error");
+        btn.disabled = false;
+        btn.innerHTML = '<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>获取定位';
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
+
   var _initAmountInput = function() {
     var input = document.getElementById("inputAmount");
+    if (!input) return;
+    input.addEventListener("input", function(e) {
+      var val = e.target.value.replace(/[^\d.]/g, "");
+      var parts = val.split(".");
+      if (parts.length > 2) {
+        val = parts[0] + "." + parts.slice(1).join("");
+      }
+      if (parts.length === 2 && parts[1].length > 2) {
+        parts[1] = parts[1].substring(0, 2);
+        val = parts[0] + "." + parts[1];
+      }
+      e.target.value = val;
+    });
+    input.addEventListener("blur", function(e) {
+      var val = e.target.value.trim();
+      if (val && !val.endsWith("元")) {
+        if (val && val.indexOf(".") === -1) {
+          val += ".00";
+        }
+        if (val && val.split(".")[1] && val.split(".")[1].length === 1) {
+          val += "0";
+        }
+        e.target.value = val + "元";
+      }
+    });
+    input.addEventListener("focus", function(e) {
+      e.target.value = e.target.value.replace("元", "");
+    });
+  };
+
+  var _initOnlineAmountInput = function() {
+    var input = document.getElementById("inputOnlineAmount");
     if (!input) return;
     input.addEventListener("input", function(e) {
       var val = e.target.value.replace(/[^\d.]/g, "");
@@ -671,7 +975,7 @@ var JITApp = (function() {
     var pageVouchers = _allVouchers.slice(start, end);
 
     if (pageVouchers.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8"><div class="table-loading">暂无订单数据</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9"><div class="table-loading">暂无订单数据</div></td></tr>';
       _updatePagination();
       return;
     }
@@ -688,6 +992,8 @@ var JITApp = (function() {
       var finalPrice = v.finalPrice || "-";
 
       html += "<tr>";
+      var typeLabel = (v.voucherType === "线上购物") ? "线上购物" : "普通凭证";
+      html += "<td><span style=\"font-size:12px;padding:2px 6px;border-radius:4px;background:" + (typeLabel === "线上购物" ? "rgba(33,150,243,0.15);color:#2196f3" : "rgba(158,158,158,0.15);color:#999") + ";\">" + typeLabel + "</span></td>";
       html += "<td>" + _escapeHtml(v.shopName || "-") + "</td>";
       html += "<td>" + _escapeHtml(v.date || "-") + "</td>";
       html += "<td><span class=\"discount-badge\">" + _escapeHtml(discount) + "</span></td>";
@@ -1163,6 +1469,172 @@ var JITApp = (function() {
       btn.textContent = originalText;
     });
     }
+  };
+
+  // ========= 线上购物凭证 =========
+  var _openAddOnlineVoucherModal = function() {
+    if (!_currentUser) {
+      _showToast("请先登录", "error");
+      _showLoginPrompt();
+      return;
+    }
+    var overlay = document.getElementById("modalOnlineOverlay");
+    if (overlay) {
+      overlay.classList.add("active");
+      _resetOnlineForm();
+    }
+  };
+
+  var _closeOnlineAddVoucherModal = function() {
+    var overlay = document.getElementById("modalOnlineOverlay");
+    if (overlay) {
+      overlay.classList.remove("active");
+    }
+  };
+
+  var _resetOnlineForm = function() {
+    document.getElementById("inputOnlineShopName").value = "";
+    document.getElementById("inputOnlinePlatform").value = "";
+    document.getElementById("inputOnlineOrderNo").value = "";
+    _onlineProductFile = null;
+    _onlineShoppingFiles = [];
+    _onlineShoppingPhotoFiles = [];
+    var previewProduct = document.getElementById("previewOnlineProduct");
+    if (previewProduct) { previewProduct.src = ""; previewProduct.style.display = "none"; }
+    var placeholderProduct = document.querySelector("#uploadOnlineProduct .upload-placeholder");
+    if (placeholderProduct) placeholderProduct.style.display = "";
+    document.getElementById("inputOnlineProduct").value = "";
+    document.getElementById("previewOnlineShopping").innerHTML = "";
+    document.getElementById("inputOnlineShopping").value = "";
+    document.getElementById("inputOnlineAmount").value = "";
+    document.getElementById("inputOnlineRemark").value = "";
+    document.getElementById("onlineLocationInfo").textContent = "未获取定位";
+    document.getElementById("inputOnlineLatitude").value = "";
+    document.getElementById("inputOnlineLongitude").value = "";
+    var canvas = document.getElementById("onlineSignatureCanvas");
+    if (canvas) {
+      var ctx = canvas.getContext("2d");
+      var dpr = window.devicePixelRatio || 1;
+      ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+    }
+    _onlineSignatureData = null;
+    // 清除错误提示
+    var errors = document.querySelectorAll("#modalOnlineOverlay .form-error");
+    errors.forEach(function(el) { el.classList.remove("visible"); });
+  };
+
+  var _submitOnlineVoucherForm = function() {
+    var paymentMethodInput = document.querySelector('input[name="onlinePaymentMethod"]:checked');
+    var paymentMethodValue = paymentMethodInput ? paymentMethodInput.value : "";
+    var paymentMethodText = paymentMethodValue === "unionFirst" ? "工会先代替支付，再让用户支付优惠差价" : (paymentMethodValue === "userFirst" ? "用户先支付全额，工会再给用户差价" : "");
+    var shopName = document.getElementById("inputOnlineShopName").value.trim();
+    var platform = document.getElementById("inputOnlinePlatform").value;
+    var orderNo = document.getElementById("inputOnlineOrderNo").value.trim();
+    var productFile = _onlineProductFile;
+    var shoppingFiles = _onlineShoppingPhotoFiles.slice();
+    var latitude = document.getElementById("inputOnlineLatitude").value;
+    var longitude = document.getElementById("inputOnlineLongitude").value;
+    var amount = document.getElementById("inputOnlineAmount").value.trim();
+    var remark = document.getElementById("inputOnlineRemark").value.trim();
+
+    // 隐藏之前错误
+    var errorEls = document.querySelectorAll("#modalOnlineOverlay .form-error");
+    errorEls.forEach(function(el) { el.classList.remove("visible"); });
+    var hasError = false;
+
+    if (!paymentMethodValue) { _showError("errorOnlinePaymentMethod", "请选择支付方式"); hasError = true; }
+    if (!shopName) { _showError("errorOnlineShopName", "请输入店铺名称"); hasError = true; }
+    if (!platform) { _showError("errorOnlinePlatform", "请选择购物平台"); hasError = true; }
+    if (!orderNo) { _showError("errorOnlineOrderNo", "请输入订单号"); hasError = true; }
+    if (!productFile) { _showError("errorOnlineProduct", "请上传商品截图"); hasError = true; }
+    if (!shoppingFiles || shoppingFiles.length === 0) { _showError("errorOnlineShopping", "请上传购物截图"); hasError = true; }
+    if (!amount) { _showError("errorOnlineAmount", "请输入余额金额"); hasError = true; }
+    if (!_onlineSignatureData) { _showError("errorOnlineSignature", "请手写签名"); hasError = true; }
+
+    if (hasError) return;
+
+    var btn = document.getElementById("btnSubmitOnlineVoucher");
+    var originalText = btn.textContent;
+    btn.disabled = true;
+    btn.classList.add("btn-loading");
+    btn.textContent = "提交中...";
+
+    var voucherData = {
+      voucherType: "线上购物",
+      platform: platform,
+      orderNo: orderNo,
+      shopName: shopName,
+      date: new Date().toISOString().split("T")[0],
+      shopPhoto: "", // 线上购物不用店铺照片，复用 shopPhoto 字段存商品截图
+      orderPhotos: [], // 复用 orderPhotos 字段存购物截图
+      productPhoto: "",
+      shoppingPhotos: [],
+      latitude: latitude,
+      longitude: longitude,
+      amount: amount.replace("元", ""),
+      signature: _onlineSignatureData,
+      remark: remark || "",
+      username: _currentUser,
+      status: "待审核",
+      statusType: "pending",
+      discount: "",
+      discountValue: 0,
+      originalPrice: amount,
+      finalPrice: amount,
+      paymentMethod: paymentMethodValue,
+      paymentMethodText: paymentMethodText,
+      paymentNote: paymentMethodText,
+      _issueNumber: null,
+      _createdAt: Date.now()
+    };
+
+    JITApi.getNextVoucherId().then(function(nextId) {
+      voucherData.voucherId = nextId;
+      return JITApi.ensureLabels();
+    }).then(function() {
+      // 使用 submitVoucherWithImages 处理上传 + 创建 Issue
+      return JITApi.submitVoucherWithImages(
+        voucherData,
+        productFile,           // 商品截图（作为 shopPhoto 上传）
+        shoppingFiles,         // 购物截图（作为 orderPhotos 上传）
+        !!productFile,
+        shoppingFiles.length > 0
+      );
+    }).then(function(result) {
+      _showToast("线上购物凭证提交成功！", "success");
+      _closeOnlineAddVoucherModal();
+      JITApi.invalidateCache("allVouchers");
+      JITApi.invalidateCache("allVouchersForId");
+      // 积分奖励
+      var awardPromises = [];
+      try {
+        if (JITPoints && JITPoints.changePoints) {
+          awardPromises.push(
+            JITPoints.changePoints(_currentUser, 15, "添加线上购物凭证").catch(function() {})
+          );
+        }
+        if (JITPoints && JITPoints.signIn) {
+          awardPromises.push(
+            JITPoints.signIn(_currentUser).then(function(signResult) {
+              if (signResult && signResult.bonusEarned) {
+                _showToast("连续3天添加凭证 +30 积分！", "success");
+              }
+            }).catch(function() {})
+          );
+        }
+      } catch(e) {}
+      Promise.all(awardPromises).then(function() {
+        _refreshPointsDisplay(true);
+      });
+      _loadData();
+    }).catch(function(err) {
+      console.error("提交线上购物凭证失败:", err);
+      _showToast("提交失败: " + err.message, "error");
+    }).finally(function() {
+      btn.disabled = false;
+      btn.classList.remove("btn-loading");
+      btn.textContent = originalText;
+    });
   };
 
   var _saveLotteryResult = function(prize, targetVoucher) {

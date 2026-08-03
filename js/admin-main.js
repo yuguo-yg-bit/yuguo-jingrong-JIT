@@ -92,6 +92,10 @@ var JITAdmin = (function() {
       else if ((match = trimmed.match(/^｜?内容：店铺：(.+)/))) data.shopName = data.shopName || match[1].trim();
       else if ((match = trimmed.match(/^｜?\s*中奖打折：(.+)/))) data.discount = match[1].trim();
       else if ((match = trimmed.match(/^｜?\s*金额：(.+)/))) data.amount = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*凭证类型：(.+)/))) data.voucherType = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*购物平台：(.+)/))) data.platform = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*订单号：(.+)/))) data.orderNo = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*支付方式：(.+)/))) data.paymentMethod = match[1].trim();
     });
     return data;
   };
@@ -218,6 +222,7 @@ var JITAdmin = (function() {
     var body = document.getElementById("reviewBody");
     var html = '<div class="review-info-row">';
     html += _infoItem("用户", data.userId || data.title || issue.user.login);
+    html += _infoItem("凭证类型", data.voucherType || "普通凭证");
     html += _infoItem("店铺名称", data.shopName || "—");
     html += _infoItem("消费日期", data.date || data.createTime || "—");
     html += _infoItem("消费金额", data.amount || "—");
@@ -225,24 +230,49 @@ var JITAdmin = (function() {
     html += _infoItem("支付方式", data.paymentMethod || "—");
     html += _infoItem("定位", data.location || "未提供");
     html += _infoItem("创建时间", data.createTime || "—");
+    // 线上购物额外字段
+    if (data.voucherType === "线上购物") {
+      html += _infoItem("购物平台", data.platform || "—");
+      html += _infoItem("订单号", data.orderNo || "—");
+    }
     if (data.note) html += _infoItem("备注", data.note, true);
     if (data.rejectReason && status === "rejected") html += _infoItem("不通过原因", data.rejectReason, true, "color:#f44336;");
     html += '</div>';
 
     html += '<div class="review-images-section">';
-    if (data.shopPhoto) {
-      html += '<div class="review-images-title">店铺照片</div>';
-      html += '<div class="review-image-grid"><div class="review-image-wrap"><img src="' + _escapeHtml(encodeURI(data.shopPhoto)) + '" onclick="JITAdmin._previewImage(this.src)" loading="lazy"><div class="review-image-label">店铺照片</div></div></div>';
-    }
-    var orderPhotoStr = data.orderPhotos || "";
-    if (orderPhotoStr) {
-      var orderUrls = orderPhotoStr.split("|").map(function(s) { return s.trim(); }).filter(Boolean);
-      if (orderUrls.length > 0) {
-        html += '<div class="review-images-title">订单照片</div><div class="review-image-grid">';
-        orderUrls.forEach(function(url, idx) {
-          html += '<div class="review-image-wrap"><img src="' + _escapeHtml(encodeURI(url)) + '" onclick="JITAdmin._previewImage(this.src)" loading="lazy"><div class="review-image-label">订单照片 ' + (idx + 1) + '</div></div>';
-        });
-        html += '</div>';
+    if (data.voucherType === "线上购物") {
+      // 线上购物：商品截图 + 购物截图
+      if (data.shopPhoto) {
+        html += '<div class="review-images-title">商品截图</div>';
+        html += '<div class="review-image-grid"><div class="review-image-wrap"><img src="' + _escapeHtml(encodeURI(data.shopPhoto)) + '" onclick="JITAdmin._previewImage(this.src)" loading="lazy"><div class="review-image-label">商品截图</div></div></div>';
+      }
+      var orderPhotoStr = data.orderPhotos || "";
+      if (orderPhotoStr) {
+        var orderUrls = orderPhotoStr.split("|").map(function(s) { return s.trim(); }).filter(Boolean);
+        if (orderUrls.length > 0) {
+          html += '<div class="review-images-title">购物截图</div><div class="review-image-grid">';
+          orderUrls.forEach(function(url, idx) {
+            html += '<div class="review-image-wrap"><img src="' + _escapeHtml(encodeURI(url)) + '" onclick="JITAdmin._previewImage(this.src)" loading="lazy"><div class="review-image-label">购物截图 ' + (idx + 1) + '</div></div>';
+          });
+          html += '</div>';
+        }
+      }
+    } else {
+      // 普通凭证：店铺照片 + 订单照片
+      if (data.shopPhoto) {
+        html += '<div class="review-images-title">店铺照片</div>';
+        html += '<div class="review-image-grid"><div class="review-image-wrap"><img src="' + _escapeHtml(encodeURI(data.shopPhoto)) + '" onclick="JITAdmin._previewImage(this.src)" loading="lazy"><div class="review-image-label">店铺照片</div></div></div>';
+      }
+      var orderPhotoStr = data.orderPhotos || "";
+      if (orderPhotoStr) {
+        var orderUrls = orderPhotoStr.split("|").map(function(s) { return s.trim(); }).filter(Boolean);
+        if (orderUrls.length > 0) {
+          html += '<div class="review-images-title">订单照片</div><div class="review-image-grid">';
+          orderUrls.forEach(function(url, idx) {
+            html += '<div class="review-image-wrap"><img src="' + _escapeHtml(encodeURI(url)) + '" onclick="JITAdmin._previewImage(this.src)" loading="lazy"><div class="review-image-label">订单照片 ' + (idx + 1) + '</div></div>';
+          });
+          html += '</div>';
+        }
       }
     }
     if (data.signature) {

@@ -253,6 +253,7 @@ var JITApi = (function() {
       "｜标题：" + (voucherData.username || "user") + (voucherData.voucherId || ""),
       "｜用户ID：" + (voucherData.username || "user"),
       "｜内容：店铺：" + (voucherData.shopName || ""),
+      "｜     凭证类型：" + (voucherData.voucherType || "普通凭证"),
       "｜     店铺照片：" + (voucherData.shopPhoto || ""),
       "｜     商品订单照片：" + orderPhotos,
       "｜     定位：" + (voucherData.latitude || "") + "," + (voucherData.longitude || ""),
@@ -262,7 +263,11 @@ var JITApi = (function() {
       "｜     创建时间：" + (voucherData.date || new Date().toISOString().split("T")[0]),
       "｜     状态：" + (voucherData.status || "待审核"),
       "｜     中奖打折：" + (voucherData.discount || ""),
-      "｜     支付方式：" + (voucherData.paymentMethodText || voucherData.paymentMethod || "")
+      "｜     支付方式：" + (voucherData.paymentMethodText || voucherData.paymentMethod || ""),
+      "｜     购物平台：" + (voucherData.platform || ""),
+      "｜     订单号：" + (voucherData.orderNo || ""),
+      "｜     商品截图：" + (voucherData.productPhoto || ""),
+      "｜     购物截图：" + (voucherData.shoppingPhotos || "")
     ].join("\n");
   };
 
@@ -306,6 +311,16 @@ var JITApi = (function() {
         data.paymentMethod = match[1].trim();
       } else if ((match = trimmed.match(/^｜?\s*不通过原因：(.+)$/))) {
         data.rejectReason = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*凭证类型：(.+)$/))) {
+        data.voucherType = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*购物平台：(.+)$/))) {
+        data.platform = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*订单号：(.+)$/))) {
+        data.orderNo = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*商品截图：(.+)$/))) {
+        data.productPhoto = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*购物截图：(.+)$/))) {
+        data.shoppingPhotos = match[1].trim();
       }
     });
 
@@ -362,6 +377,11 @@ var JITApi = (function() {
         rejectReason: parsed.rejectReason || "",
         username: parsed.title ? parsed.title.replace(/\d+$/, "") : "",
         voucherId: parsed.voucherId || "",
+        voucherType: parsed.voucherType || "普通凭证",
+        platform: parsed.platform || "",
+        orderNo: parsed.orderNo || "",
+        productPhoto: parsed.productPhoto || "",
+        shoppingPhotos: parsed.shoppingPhotos || "",
         _issueNumber: issue.number,
         _issueUrl: issue.html_url,
         _createdAt: issue.created_at,
