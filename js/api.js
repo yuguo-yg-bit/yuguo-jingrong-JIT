@@ -646,6 +646,96 @@ var JITApi = (function() {
     return _uploadImageToRepo(file, folderPath, "chat_img.png", "聊天图片: " + (username || ""));
   };
 
+  // ======= 用户注册系统 =======
+  var _formatUserBody = function(data) {
+    return [
+      "｜用户名：" + (data.username || ""),
+      "｜密码：" + (data.password || ""),
+      "｜注册时间：" + (data.registerTime || ""),
+      "｜邀请人：" + (data.referrer || "")
+    ].join("\n");
+  };
+
+  var _parseUserBody = function(body) {
+    var data = { username: "", password: "", registerTime: "", referrer: "" };
+    var lines = String(body || "").split(/\r?\n/);
+    lines.forEach(function(line) {
+      var trimmed = line.trim();
+      var match;
+      if ((match = trimmed.match(/^｜?\s*用户名：(.+)$/))) data.username = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*密码：(.+)$/))) data.password = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*注册时间：(.+)$/))) data.registerTime = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*邀请人：(.+)$/))) data.referrer = match[1].trim();
+    });
+    return data;
+  };
+
+  // 查找已注册用户
+  var _findRegisteredUser = function(username) {
+    var label = JITConfig.getLabels().registeredUser;
+    var url = _apiBase + "/repos/" + _repoFull + "/issues?state=open&labels=" + encodeURIComponent(label) + "&per_page=100";
+    return _safeRequest(url, { method: "GET", headers: _headers() }).then(function(issues) {
+      if (!issues || issues.length === 0) return null;
+      for (var i = 0; i < issues.length; i++) {
+        var data = _parseUserBody(issues[i].body);
+        if (data.username === username) return { issue: issues[i], data: data };
+      }
+      return null;
+    });
+  };
+
+  // 注册新用户
+  var _registerUser = function(username, password, referrer) {
+    return _findRegisteredUser(username).then(function(existing) {
+      if (existing) throw new Error("该用户名已被注册");
+      // 检查是否与内置用户冲突
+      var builtinUsers = JITConfig.getUsers();
+      if (builtinUsers[username]) throw new Error("该用户名已存在");
+      var label = JITConfig.getLabels().registeredUser;
+      var data = {
+        username: username,
+        password: password,
+        registerTime: new Date().toISOString().replace("T", " ").slice(0, 19),
+        referrer: referrer || ""
+      };
+      return _safeRequest(_apiBase + "/repos/" + _repoFull + "/issues", {
+        method: "POST",
+        headers: _headers(),
+        body: JSON.stringify({
+          title: "【注册用户】" + username,
+          body: _formatUserBody(data),
+          labels: ["voucher", label]
+        })
+      });
+    });
+  };
+
+  // 验证已注册用户登录
+  var _verifyRegisteredUser = function(username, password) {
+    return _findRegisteredUser(username).then(function(result) {
+      if (!result) return null;
+      if (result.data.password !== password) return null;
+      return result;
+    });
+  };
+
+  // 获取邀请列表（谁通过我的邀请注册了）
+  var _getReferrals = function(username) {
+    var label = JITConfig.getLabels().registeredUser;
+    var url = _apiBase + "/repos/" + _repoFull + "/issues?state=open&labels=" + encodeURIComponent(label) + "&per_page=100";
+    return _safeRequest(url, { method: "GET", headers: _headers() }).then(function(issues) {
+      if (!issues || issues.length === 0) return [];
+      var referrals = [];
+      issues.forEach(function(issue) {
+        var data = _parseUserBody(issue.body);
+        if (data.referrer === username) {
+          referrals.push({ username: data.username, registerTime: data.registerTime });
+        }
+      });
+      return referrals;
+    });
+  };
+
   return {
     getVouchers: _getVouchers,
     getAllVouchers: _getAllVouchers,
@@ -668,6 +758,10 @@ var JITApi = (function() {
     uploadChatImage: _uploadChatImage,
     getIssue: _getIssue,
     markVoucherCompleted: _markVoucherCompleted,
-    markVoucherPaid: _markVoucherPaid
+    markVoucherPaid: _markVoucherPaid,
+    registerUser: _registerUser,
+    findRegisteredUser: _findRegisteredUser,
+    verifyRegisteredUser: _verifyRegisteredUser,
+    getReferrals: _getReferrals
   };
 })();

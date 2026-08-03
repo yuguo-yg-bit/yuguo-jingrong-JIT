@@ -133,6 +133,19 @@ var JITApp = (function() {
   };
 
   var _initLogin = function() {
+    // 处理邀请链接 ?ref=USERNAME
+    try {
+      var params = new URLSearchParams(window.location.search);
+      var ref = params.get("ref");
+      if (ref) {
+        ref = decodeURIComponent(ref);
+        localStorage.setItem("jit_referrer", ref);
+        // 清除URL中的ref参数，避免重复
+        var cleanUrl = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
+    } catch (e) {}
+
     var savedUser = localStorage.getItem("jit_current_user");
     if (savedUser) {
       _currentUser = savedUser;
@@ -146,20 +159,24 @@ var JITApp = (function() {
   };
 
   var _showLoginPrompt = function() {
+    var referrer = localStorage.getItem("jit_referrer") || "";
+    var referrerHint = referrer ? '<div style="text-align:center;color:var(--accent);font-size:13px;margin-bottom:8px;">邀请人：' + _escapeHtml(referrer) + '</div>' : '';
     var overlay = document.createElement("div");
     overlay.className = "modal-overlay";
     overlay.style.cssText = "opacity:1;visibility:visible;z-index:2000;";
     overlay.innerHTML = '<div class="modal-container" style="max-width:380px;transform:translateY(0);">' +
       '<div class="modal-header"><h3 class="modal-title">登录玉国金融</h3></div>' +
       '<div class="modal-body">' +
+      referrerHint +
       '<div class="form-group"><label class="form-label">用户名</label>' +
       '<input type="text" class="form-input" id="loginUsername" placeholder="请输入用户名"></div>' +
       '<div class="form-group"><label class="form-label">密码</label>' +
       '<input type="password" class="form-input" id="loginPassword" placeholder="请输入密码"></div>' +
       '<div class="form-error" id="loginError" style="display:none;"></div>' +
       '</div>' +
-      '<div class="modal-footer" style="justify-content:center;">' +
-      '<button class="btn-submit" id="btnLogin">登 录</button></div>' +
+      '<div class="modal-footer" style="justify-content:space-between;">' +
+      '<button class="btn-submit" id="btnLogin" style="flex:1;margin-right:8px;">登 录</button>' +
+      '<button class="btn-submit" id="btnShowRegister" style="flex:1;margin-left:8px;background:transparent;color:var(--accent);border:1px solid var(--accent);">注 册</button></div>' +
       '</div>';
     document.body.appendChild(overlay);
 
@@ -175,6 +192,7 @@ var JITApp = (function() {
         return;
       }
 
+      // 先检查内置用户
       if (users[username] && users[username] === password) {
         _currentUser = username;
         localStorage.setItem("jit_current_user", username);
@@ -184,8 +202,31 @@ var JITApp = (function() {
         _loadData();
         _refreshPointsDisplay();
       } else {
-        errorEl.style.display = "block";
-        errorEl.textContent = "用户名或密码错误";
+        // 再检查注册用户
+        errorEl.style.display = "none";
+        var btn = document.getElementById("btnLogin");
+        btn.disabled = true;
+        btn.textContent = "验证中...";
+        JITApi.verifyRegisteredUser(username, password).then(function(result) {
+          if (result) {
+            _currentUser = username;
+            localStorage.setItem("jit_current_user", username);
+            _updateLogoutText();
+            overlay.remove();
+            _showToast("登录成功，欢迎 " + username, "success");
+            _loadData();
+            _refreshPointsDisplay();
+          } else {
+            errorEl.style.display = "block";
+            errorEl.textContent = "用户名或密码错误";
+          }
+        }).catch(function(err) {
+          errorEl.style.display = "block";
+          errorEl.textContent = "登录失败: " + err.message;
+        }).finally(function() {
+          btn.disabled = false;
+          btn.textContent = "登 录";
+        });
       }
     });
 
@@ -193,6 +234,162 @@ var JITApp = (function() {
       if (e.key === "Enter") {
         document.getElementById("btnLogin").click();
       }
+    });
+
+    document.getElementById("btnShowRegister").addEventListener("click", function() {
+      overlay.remove();
+      _showRegisterPrompt();
+    });
+  };
+
+  // ======= 注册功能 =======
+  var _showRegisterPrompt = function() {
+    var referrer = localStorage.getItem("jit_referrer") || "";
+    var overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.style.cssText = "opacity:1;visibility:visible;z-index:2000;";
+    overlay.innerHTML = '<div class="modal-container" style="max-width:380px;transform:translateY(0);">' +
+      '<div class="modal-header"><h3 class="modal-title">注册玉国金融</h3></div>' +
+      '<div class="modal-body">' +
+      '<div class="form-group"><label class="form-label">用户名</label>' +
+      '<input type="text" class="form-input" id="regUsername" placeholder="请输入用户名（2-20个字符）"></div>' +
+      '<div class="form-group"><label class="form-label">密码</label>' +
+      '<input type="password" class="form-input" id="regPassword" placeholder="请输入密码（至少6位）"></div>' +
+      '<div class="form-group"><label class="form-label">确认密码</label>' +
+      '<input type="password" class="form-input" id="regPassword2" placeholder="请再次输入密码"></div>' +
+      (referrer ? '<div class="form-group"><label class="form-label">邀请人</label><input type="text" class="form-input" id="regReferrer" value="' + _escapeHtml(referrer) + '" readonly style="background:rgba(255,255,255,0.05);"></div>' : '<div class="form-group"><label class="form-label">邀请人（选填）</label><input type="text" class="form-input" id="regReferrer" placeholder="输入邀请人用户名"></div>') +
+      '<div class="form-error" id="regError" style="display:none;"></div>' +
+      '<div style="text-align:center;font-size:12px;color:var(--text-secondary);margin-top:8px;">注册成功即送' + JITPoints.RULES.INVITE_REWARD + '积分，邀请人也得' + JITPoints.RULES.INVITE_REWARD + '积分</div>' +
+      '</div>' +
+      '<div class="modal-footer" style="justify-content:space-between;">' +
+      '<button class="btn-submit" id="btnBackLogin" style="flex:1;margin-right:8px;background:transparent;color:var(--text-secondary);border:1px solid var(--text-secondary);">返回登录</button>' +
+      '<button class="btn-submit" id="btnRegister" style="flex:1;margin-left:8px;">注 册</button></div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    document.getElementById("btnBackLogin").addEventListener("click", function() {
+      overlay.remove();
+      _showLoginPrompt();
+    });
+
+    document.getElementById("btnRegister").addEventListener("click", function() {
+      var username = document.getElementById("regUsername").value.trim();
+      var password = document.getElementById("regPassword").value.trim();
+      var password2 = document.getElementById("regPassword2").value.trim();
+      var referrerInput = document.getElementById("regReferrer");
+      var referrerVal = referrerInput ? referrerInput.value.trim() : "";
+      var errorEl = document.getElementById("regError");
+
+      if (!username || username.length < 2 || username.length > 20) {
+        errorEl.style.display = "block";
+        errorEl.textContent = "用户名需2-20个字符";
+        return;
+      }
+      if (!password || password.length < 6) {
+        errorEl.style.display = "block";
+        errorEl.textContent = "密码至少6位";
+        return;
+      }
+      if (password !== password2) {
+        errorEl.style.display = "block";
+        errorEl.textContent = "两次密码不一致";
+        return;
+      }
+
+      var btn = document.getElementById("btnRegister");
+      btn.disabled = true;
+      btn.textContent = "注册中...";
+
+      JITApi.registerUser(username, password, referrerVal).then(function() {
+        // 注册成功，发放积分
+        var promises = [];
+        // 新用户得50积分
+        promises.push(JITPoints.changePoints(username, JITPoints.RULES.INVITE_REWARD, "注册奖励"));
+        // 邀请人得50积分
+        if (referrerVal && referrerVal !== username) {
+          promises.push(JITPoints.changePoints(referrerVal, JITPoints.RULES.INVITE_REWARD, "邀请好友：" + username));
+        }
+        return Promise.all(promises);
+      }).then(function() {
+        _showToast("注册成功！获得" + JITPoints.RULES.INVITE_REWARD + "积分", "success");
+        overlay.remove();
+        // 清除邀请人缓存
+        localStorage.removeItem("jit_referrer");
+        // 自动填充用户名，跳转到登录
+        _showLoginPrompt();
+        setTimeout(function() {
+          var u = document.getElementById("loginUsername");
+          if (u) u.value = username;
+        }, 100);
+      }).catch(function(err) {
+        errorEl.style.display = "block";
+        errorEl.textContent = err.message || "注册失败";
+      }).finally(function() {
+        btn.disabled = false;
+        btn.textContent = "注 册";
+      });
+    });
+  };
+
+  // ======= 邀请好友 =======
+  var _showInviteModal = function() {
+    if (!_currentUser) {
+      _showToast("请先登录", "error");
+      _showLoginPrompt();
+      return;
+    }
+    var baseUrl = window.location.origin + window.location.pathname;
+    var inviteLink = baseUrl + "?ref=" + encodeURIComponent(_currentUser);
+    var overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.style.cssText = "opacity:1;visibility:visible;z-index:2000;";
+    overlay.innerHTML = '<div class="modal-container" style="max-width:420px;transform:translateY(0);">' +
+      '<div class="modal-header"><h3 class="modal-title">邀请好友得积分</h3><button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">&times;</button></div>' +
+      '<div class="modal-body">' +
+      '<div style="text-align:center;margin-bottom:16px;">' +
+      '<div style="font-size:36px;font-weight:bold;color:var(--accent);">+' + JITPoints.RULES.INVITE_REWARD + '</div>' +
+      '<div style="font-size:13px;color:var(--text-secondary);">好友注册成功，双方各得' + JITPoints.RULES.INVITE_REWARD + '积分</div>' +
+      '</div>' +
+      '<div class="form-group"><label class="form-label">我的专属邀请链接</label>' +
+      '<div style="display:flex;gap:8px;"><input type="text" class="form-input" id="inviteLinkInput" value="' + _escapeHtml(inviteLink) + '" readonly style="flex:1;">' +
+      '<button class="btn-submit" id="btnCopyInvite" style="flex-shrink:0;padding:0 16px;">复制</button></div></div>' +
+      '<div class="form-group"><label class="form-label">已邀请好友</label>' +
+      '<div id="referralList" style="min-height:40px;"><div style="text-align:center;color:var(--text-secondary);font-size:13px;">加载中...</div></div></div>' +
+      '</div>' +
+      '<div class="modal-footer" style="justify-content:center;">' +
+      '<button class="btn-submit" id="btnInviteClose" style="background:transparent;color:var(--text-secondary);border:1px solid var(--text-secondary);">关 闭</button></div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    document.getElementById("btnInviteClose").addEventListener("click", function() { overlay.remove(); });
+    document.getElementById("btnCopyInvite").addEventListener("click", function() {
+      var input = document.getElementById("inviteLinkInput");
+      input.select();
+      try {
+        document.execCommand("copy");
+        _showToast("邀请链接已复制！", "success");
+      } catch (e) {
+        _showToast("复制失败，请手动复制", "error");
+      }
+    });
+
+    // 加载邀请列表
+    JITApi.getReferrals(_currentUser).then(function(referrals) {
+      var listEl = document.getElementById("referralList");
+      if (!referrals || referrals.length === 0) {
+        listEl.innerHTML = '<div style="text-align:center;color:var(--text-secondary);font-size:13px;">暂无邀请记录，快去邀请好友吧！</div>';
+      } else {
+        var html = '<div style="display:flex;flex-direction:column;gap:6px;">';
+        referrals.forEach(function(r) {
+          html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(255,255,255,0.05);border-radius:6px;">' +
+            '<span style="font-size:14px;">' + _escapeHtml(r.username) + '</span>' +
+            '<span style="font-size:12px;color:var(--text-secondary);">' + (r.registerTime || "") + '</span></div>';
+        });
+        html += '</div>';
+        listEl.innerHTML = html;
+      }
+    }).catch(function() {
+      document.getElementById("referralList").innerHTML = '<div style="text-align:center;color:var(--text-secondary);font-size:13px;">加载失败</div>';
     });
   };
 
@@ -228,6 +425,11 @@ var JITApp = (function() {
     var btnAddOnlineVoucher = document.getElementById("btnAddOnlineVoucher");
     if (btnAddOnlineVoucher) {
       btnAddOnlineVoucher.addEventListener("click", _openAddOnlineVoucherModal);
+    }
+
+    var btnInvite = document.getElementById("btnInvite");
+    if (btnInvite) {
+      btnInvite.addEventListener("click", _showInviteModal);
     }
 
     var btnJITVip = document.getElementById("btnJITVip");

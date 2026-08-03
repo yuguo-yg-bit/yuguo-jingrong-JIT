@@ -21,7 +21,8 @@ var JITConfig = (function() {
     paid: "paid",
     completed: "completed",
     lottery: "lottery",
-    points: "points"
+    points: "points",
+    registeredUser: "registered-user"
   };
 
   var _users = {

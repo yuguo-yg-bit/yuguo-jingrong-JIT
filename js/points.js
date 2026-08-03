@@ -19,7 +19,8 @@ var JITPoints = (function() {
     HIGH_DISCOUNT: 60,         // 抽到 10/11/12/13/14 折
     STREAK_BONUS: 30,          // 连续3天添加凭证奖励
     LUCKY_COST: 45,            // 幸运抽奖一次消耗
-    POINTS_PER_YUAN: 10        // 10 积分 = 1 元（抵消规则）
+    POINTS_PER_YUAN: 10,       // 10 积分 = 1 元（抵消规则）
+    INVITE_REWARD: 50          // 邀请好友奖励（双方各得）
   };
 
   var _lowDiscounts = ["0折", "7折", "8折", "9折", "9.5折"];
