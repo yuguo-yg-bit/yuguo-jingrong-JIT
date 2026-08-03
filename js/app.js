@@ -818,56 +818,7 @@ var JITApp = (function() {
       });
     }
 
-    // 定位按钮
-    var btnOnlineGetLocation = document.getElementById("btnOnlineGetLocation");
-    if (btnOnlineGetLocation) {
-      btnOnlineGetLocation.addEventListener("click", _getOnlineLocation);
-    }
-  };
-
-  var _getOnlineLocation = function() {
-    var btn = document.getElementById("btnOnlineGetLocation");
-    var info = document.getElementById("onlineLocationInfo");
-    if (!btn) return;
-
-    btn.disabled = true;
-    btn.textContent = "获取中...";
-
-    if (!navigator.geolocation) {
-      _showToast("您的设备不支持定位功能", "error");
-      btn.disabled = false;
-      btn.innerHTML = '<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>获取定位';
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      function(position) {
-        var lat = position.coords.latitude;
-        var lng = position.coords.longitude;
-        document.getElementById("inputOnlineLatitude").value = lat;
-        document.getElementById("inputOnlineLongitude").value = lng;
-        if (info) {
-          info.textContent = "经度: " + lng.toFixed(6) + "  纬度: " + lat.toFixed(6);
-        }
-        btn.disabled = false;
-        btn.innerHTML = '<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>已定位';
-        _showToast("定位成功", "success");
-      },
-      function(err) {
-        var msg = "定位失败: ";
-        switch (err.code) {
-          case err.PERMISSION_DENIED: msg += "用户拒绝定位请求"; break;
-          case err.POSITION_UNAVAILABLE: msg += "位置信息不可用"; break;
-          case err.TIMEOUT: msg += "定位请求超时"; break;
-          default: msg += "未知错误"; break;
-        }
-        _showToast(msg, "error");
-        btn.disabled = false;
-        btn.innerHTML = '<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>获取定位';
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
-  };
+    };
 
   var _initAmountInput = function() {
     var input = document.getElementById("inputAmount");
@@ -1508,9 +1459,6 @@ var JITApp = (function() {
     document.getElementById("inputOnlineShopping").value = "";
     document.getElementById("inputOnlineAmount").value = "";
     document.getElementById("inputOnlineRemark").value = "";
-    document.getElementById("onlineLocationInfo").textContent = "未获取定位";
-    document.getElementById("inputOnlineLatitude").value = "";
-    document.getElementById("inputOnlineLongitude").value = "";
     var canvas = document.getElementById("onlineSignatureCanvas");
     if (canvas) {
       var ctx = canvas.getContext("2d");
@@ -1532,8 +1480,6 @@ var JITApp = (function() {
     var orderNo = document.getElementById("inputOnlineOrderNo").value.trim();
     var productFile = _onlineProductFile;
     var shoppingFiles = _onlineShoppingPhotoFiles.slice();
-    var latitude = document.getElementById("inputOnlineLatitude").value;
-    var longitude = document.getElementById("inputOnlineLongitude").value;
     var amount = document.getElementById("inputOnlineAmount").value.trim();
     var remark = document.getElementById("inputOnlineRemark").value.trim();
 
@@ -1569,8 +1515,6 @@ var JITApp = (function() {
       orderPhotos: [], // 复用 orderPhotos 字段存购物截图
       productPhoto: "",
       shoppingPhotos: [],
-      latitude: latitude,
-      longitude: longitude,
       amount: amount.replace("元", ""),
       signature: _onlineSignatureData,
       remark: remark || "",

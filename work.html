@@ -268,7 +268,7 @@
         <div class="form-group">
           <label class="form-label">商品截图 <span class="required">*</span></label>
           <div class="upload-area" id="uploadOnlineProduct">
-            <input type="file" class="upload-input" id="inputOnlineProduct" accept="image/*" capture="environment">
+            <input type="file" class="upload-input" id="inputOnlineProduct" accept="image/*">
             <div class="upload-placeholder">
               <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
@@ -292,19 +292,6 @@
             <div class="upload-preview-list" id="previewOnlineShopping"></div>
           </div>
           <span class="form-error" id="errorOnlineShopping"></span>
-        </div>
-        <div class="form-group">
-          <label class="form-label">定位信息</label>
-          <button type="button" class="btn-location" id="btnOnlineGetLocation">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
-            </svg>
-            获取定位
-          </button>
-          <span class="location-info" id="onlineLocationInfo">未获取定位</span>
-          <input type="hidden" id="inputOnlineLatitude">
-          <input type="hidden" id="inputOnlineLongitude">
-          <span class="form-error" id="errorOnlineLocation"></span>
         </div>
         <div class="form-group">
           <label class="form-label">余额金额 <span class="required">*</span></label>
