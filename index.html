@@ -29,12 +29,60 @@ body { font-family: 'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-seri
 .navbar-cta { background:linear-gradient(135deg,var(--accent),#1565c0); color:#fff; text-decoration:none; font-size:14px; font-weight:600; padding:8px 20px; border-radius:6px; transition:all 0.2s; box-shadow:0 0 12px rgba(66,165,245,0.2); }
 .navbar-cta:hover { box-shadow:0 0 20px rgba(66,165,245,0.4); transform:translateY(-1px); }
 
-.hero { position:relative; z-index:1; min-height:100vh; display:flex; align-items:center; justify-content:center; text-align:center; padding:100px 24px 60px; }
-.hero-badge { display:inline-flex; align-items:center; gap:8px; background:var(--accent-glow); border:1px solid var(--border-strong); padding:6px 16px; border-radius:20px; font-size:13px; color:var(--accent-light); margin-bottom:28px; }
-.hero-badge-dot { width:8px; height:8px; border-radius:50%; background:var(--green); animation:pulse 2s infinite; }
-@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
-.hero-title { font-size:clamp(36px,6vw,64px); font-weight:800; line-height:1.2; background:linear-gradient(135deg,#fff 0%,var(--accent-light) 50%,var(--accent) 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom:20px; }
-.hero-subtitle { font-size:clamp(16px,2vw,20px); color:var(--text-secondary); max-width:640px; margin:0 auto 40px; line-height:1.8; }
+.hero { position:relative; z-index:1; min-height:100vh; display:flex; align-items:center; justify-content:center; text-align:center; padding:100px 24px 60px; overflow:hidden; }
+.hero-inner { position:relative; z-index:2; }
+/* 点阵 canvas 背景（TRAE 风格） */
+.hero-dot-canvas { position:absolute; top:0; left:0; width:100%; height:100%; z-index:1; pointer-events:none; }
+.hero-brand-tag { display:inline-flex; align-items:center; gap:8px; background:rgba(66,165,245,0.06); border:1px solid rgba(66,165,245,0.2); padding:7px 18px; border-radius:24px; font-size:13px; color:var(--accent-light); margin-bottom:24px; letter-spacing:0.5px; }
+.hero-brand-dot { width:8px; height:8px; border-radius:50%; background:linear-gradient(135deg,#42a5f5,#00e5ff); box-shadow:0 0 12px #42a5f5; animation:brandPulse 1.8s ease-in-out infinite; }
+@keyframes brandPulse { 0%,100%{transform:scale(1);opacity:1;} 50%{transform:scale(1.3);opacity:0.6;} }
+
+/* 全球通 三个大字 — 在玉国金融上方 */
+.hero-super-title {
+  font-size: clamp(42px, 7vw, 88px);
+  font-weight: 900;
+  letter-spacing: 0.35em;
+  margin: 0 0 8px 0;
+  background: linear-gradient(90deg,
+    rgba(255,255,255,0.08) 0%,
+    rgba(66,165,245,0.25) 25%,
+    rgba(100,200,255,0.5) 50%,
+    rgba(66,165,245,0.25) 75%,
+    rgba(255,255,255,0.08) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer 4.5s linear infinite;
+  filter: drop-shadow(0 0 20px rgba(66,165,245,0.15));
+  padding-left: 0.35em;
+}
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* 玉国金融 超大主标题 */
+.hero-title {
+  font-size: clamp(56px, 10vw, 120px);
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: 0.04em;
+  margin: 0 0 24px 0;
+  background: linear-gradient(135deg,
+    #ffffff 0%,
+    #c9d8ff 35%,
+    #64b5f6 60%,
+    #42a5f5 85%,
+    #1976d2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter:
+    drop-shadow(0 0 35px rgba(66,165,245,0.28))
+    drop-shadow(0 2px 0 rgba(255,255,255,0.08));
+}
+.hero-subtitle { font-size:clamp(15px,1.8vw,19px); color:var(--text-secondary); max-width:680px; margin:0 auto 44px; line-height:1.9; }
 .hero-actions { display:flex; gap:16px; justify-content:center; flex-wrap:wrap; }
 .btn-primary { background:linear-gradient(135deg,var(--accent),#1565c0); color:#fff; text-decoration:none; font-size:15px; font-weight:600; padding:14px 36px; border-radius:8px; transition:all 0.3s; box-shadow:0 4px 20px rgba(66,165,245,0.25); display:inline-flex; align-items:center; gap:8px; }
 .btn-primary:hover { box-shadow:0 4px 30px rgba(66,165,245,0.4); transform:translateY(-2px); }
@@ -156,19 +204,23 @@ body { font-family: 'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-seri
 </nav>
 
 <section class="hero">
-  <div>
-    <div class="hero-badge fade-in">
-      <span class="hero-badge-dot"></span>
-      <span>JIT 金融活动 · 工会凭证优惠管理平台</span>
+  <!-- TRAE 风格像素点阵背景 -->
+  <canvas id="heroDotCanvas" class="hero-dot-canvas"></canvas>
+
+  <div class="hero-inner">
+    <div class="hero-brand-tag fade-in">
+      <span class="hero-brand-dot"></span>
+      <span>JIT FINANCE · 全球用户信赖的凭证平台</span>
     </div>
-    <h1 class="hero-title fade-in-delay-1">玉国金融【全球通】</h1>
+    <h2 class="hero-super-title fade-in-delay-1">全球通</h2>
+    <h1 class="hero-title fade-in-delay-1">玉国金融</h1>
     <p class="hero-subtitle fade-in-delay-2">
       随时随地提交消费凭证，人工审核通过即可参与抽奖，<br>
       赢取免单至 7 折优惠，更有积分系统让每一笔消费都有惊喜。
     </p>
     <div class="hero-actions fade-in-delay-3">
-      <a href="work" class="btn-primary">进入工作台</a>
-      <a href="#welfare" class="btn-secondary">查看福利</a>
+      <a href="work" class="btn-primary">✨ 进入工作台</a>
+      <a href="#welfare" class="btn-secondary">🎁 查看福利</a>
     </div>
     <div class="hero-stats fade-in-delay-3">
       <div class="hero-stat"><div class="hero-stat-num">9</div><div class="hero-stat-label">抽奖结果</div></div>
@@ -454,6 +506,104 @@ document.querySelectorAll('.feature-card, .welfare-card, .discount-row, .step-it
   el.style.opacity = '0'; el.style.transform = 'translateY(30px)'; el.style.transition = 'all 0.6s ease';
   observer.observe(el);
 });
+
+// ========= TRAE 风格：像素点阵渐变呼吸背景 =========
+(function() {
+  var canvas = document.getElementById("heroDotCanvas");
+  if (!canvas) return;
+  var ctx = canvas.getContext("2d");
+  var DPR = Math.min(window.devicePixelRatio || 1, 2);
+  var dots = [];
+  var W = 0, H = 0, COLS = 0, ROWS = 0;
+  var SPACING = 12; // 像素点间距（越小越密）
+  var SIZE = 2;     // 像素点大小
+  var TIME = 0;
+
+  function resize() {
+    var rect = canvas.getBoundingClientRect();
+    W = rect.width;
+    H = rect.height;
+    canvas.width = W * DPR;
+    canvas.height = H * DPR;
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    COLS = Math.ceil(W / SPACING) + 2;
+    ROWS = Math.ceil(H / SPACING) + 2;
+    dots = [];
+    // 预生成每个点：位置 + 独立相位（像 trae 一样有些点会亮）
+    for (var r = 0; r < ROWS; r++) {
+      for (var c = 0; c < COLS; c++) {
+        dots.push({
+          x: c * SPACING,
+          y: r * SPACING,
+          phase: Math.random() * Math.PI * 2, // 呼吸相位
+          speed: 0.3 + Math.random() * 0.7,    // 呼吸速度
+          base: Math.random(),                 // 基础亮度概率（让大部分点暗，少部分亮，像 trae 那样有像素画感）
+          cluster: Math.random() < 0.08        // 是否属于高亮聚集块（约 8%）
+        });
+      }
+    }
+  }
+
+  // 颜色系：从 trae 的绿改到玉国金融的蓝，也加一些青/金高光点
+  var COLORS = [
+    { r: 66,  g: 165, b: 245 }, // 主蓝色
+    { r: 100, g: 181, b: 246 }, // 浅蓝
+    { r: 25,  g: 118, b: 210 }, // 深蓝
+    { r: 0,   g: 188, b: 212 }, // 青色点缀
+    { r: 255, g: 213, b: 79  }  // 金色点缀（极少）
+  ];
+
+  function draw() {
+    TIME += 0.01;
+    ctx.clearRect(0, 0, W, H);
+    // 做一个整体的渐变光斑（类似 trae 中的绿色云团）
+    var glowX = W * 0.7 + Math.sin(TIME * 0.5) * W * 0.1;
+    var glowY = H * 0.7 + Math.cos(TIME * 0.3) * H * 0.1;
+    var glowX2 = W * 0.3 + Math.cos(TIME * 0.4) * W * 0.08;
+    var glowY2 = H * 0.3 + Math.sin(TIME * 0.35) * H * 0.08;
+
+    for (var i = 0; i < dots.length; i++) {
+      var d = dots[i];
+      // 呼吸值：0 ~ 1 的平滑曲线
+      var breath = 0.5 + 0.5 * Math.sin(TIME * (1 + d.speed) + d.phase);
+      // 到两个光斑的距离 → 0~1 权重
+      var dx1 = d.x - glowX, dy1 = d.y - glowY;
+      var dist1 = Math.sqrt(dx1*dx1 + dy1*dy1) / (Math.min(W, H));
+      var w1 = Math.max(0, 1 - dist1 * 1.2);
+      var dx2 = d.x - glowX2, dy2 = d.y - glowY2;
+      var dist2 = Math.sqrt(dx2*dx2 + dy2*dy2) / (Math.min(W, H));
+      var w2 = Math.max(0, 1 - dist2 * 1.5);
+      var glow = Math.max(w1 * 0.9, w2 * 0.6);
+      // 基础亮度：cluster 点偏亮，普通点看 base 概率 + 呼吸
+      var baseAlpha = d.cluster ? (0.35 + 0.45 * breath) : (0.08 + 0.25 * d.base * breath);
+      var alpha = Math.min(1, baseAlpha + glow * 0.85);
+      if (alpha < 0.02) continue;
+
+      // 选择颜色：光斑处越亮 → 偏向主蓝 / 金色点缀
+      var ci = 0;
+      var r = Math.random();
+      if (glow > 0.55 && r < 0.04) ci = 4;                // 金色极少
+      else if (glow > 0.35 && r < 0.12) ci = 3;           // 青色点缀
+      else if (glow > 0.2) ci = (r < 0.5) ? 0 : 1;
+      else ci = d.cluster ? 1 : 2;
+      var col = COLORS[ci];
+      ctx.fillStyle = "rgba(" + col.r + "," + col.g + "," + col.b + "," + alpha.toFixed(3) + ")";
+      ctx.fillRect(d.x, d.y, SIZE, SIZE);
+    }
+    requestAnimationFrame(draw);
+  }
+
+  // 初始化 + 窗口响应
+  resize();
+  window.addEventListener("resize", function() {
+    clearTimeout(resize._t);
+    resize._t = setTimeout(resize, 150);
+  });
+  draw();
+})();
 </script>
 </body>
 </html>
