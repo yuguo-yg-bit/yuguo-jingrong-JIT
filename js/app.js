@@ -251,18 +251,226 @@ var JITApp = (function() {
     });
   };
 
-  // ======= 注册功能（申请-审核制） =======
-  var _captchaAnswer = 0;
-
-  var _generateCaptcha = function() {
-    var a = Math.floor(Math.random() * 9) + 1;
-    var b = Math.floor(Math.random() * 9) + 1;
-    _captchaAnswer = a + b;
-    var el = document.getElementById("captchaQuestion");
-    if (el) el.textContent = a + " + " + b + " = ?";
+  // ======= 内置常用国家/省份/城市（避免外网API返回对象导致 [object Object]） =======
+  var _REGION_DATA = {
+    "中国": {
+      "北京市": ["东城区","西城区","朝阳区","海淀区","丰台区","石景山区","通州区","昌平区"],
+      "上海市": ["黄浦区","徐汇区","长宁区","静安区","普陀区","虹口区","杨浦区","浦东新区"],
+      "广东省": ["广州市","深圳市","珠海市","佛山市","东莞市","中山市","惠州市","汕头市"],
+      "浙江省": ["杭州市","宁波市","温州市","嘉兴市","湖州市","绍兴市","金华市","台州市"],
+      "江苏省": ["南京市","苏州市","无锡市","常州市","镇江市","南通市","扬州市","徐州市"],
+      "山东省": ["济南市","青岛市","烟台市","潍坊市","济宁市","临沂市","淄博市","威海市"],
+      "四川省": ["成都市","绵阳市","德阳市","宜宾市","南充市","乐山市","泸州市","自贡市"],
+      "湖北省": ["武汉市","宜昌市","襄阳市","荆州市","黄冈市","孝感市","十堰市","黄石市"],
+      "湖南省": ["长沙市","株洲市","湘潭市","衡阳市","岳阳市","常德市","郴州市","益阳市"],
+      "福建省": ["福州市","厦门市","泉州市","漳州市","莆田市","宁德市","龙岩市","南平市"],
+      "河南省": ["郑州市","洛阳市","开封市","新乡市","焦作市","安阳市","南阳市","许昌市"],
+      "陕西省": ["西安市","咸阳市","宝鸡市","渭南市","延安市","榆林市","汉中市","安康市"],
+      "辽宁省": ["沈阳市","大连市","鞍山市","抚顺市","本溪市","丹东市","锦州市","营口市"],
+      "重庆市": ["渝中区","江北区","南岸区","九龙坡区","沙坪坝区","渝北区","巴南区","大渡口区"],
+      "天津市": ["和平区","河东区","河西区","南开区","河北区","红桥区","东丽区","西青区"],
+      "其他省市": ["其他区县"]
+    },
+    "美国": {
+      "California": ["Los Angeles","San Francisco","San Diego","San Jose","Sacramento"],
+      "New York": ["New York City","Buffalo","Rochester","Albany","Syracuse"],
+      "Texas": ["Houston","Dallas","Austin","San Antonio","Fort Worth"],
+      "Florida": ["Miami","Orlando","Tampa","Jacksonville","Fort Lauderdale"],
+      "Washington": ["Seattle","Tacoma","Spokane","Bellevue","Vancouver"],
+      "Illinois": ["Chicago","Aurora","Naperville","Springfield","Rockford"],
+      "Other States": ["Other Cities"]
+    },
+    "日本": {
+      "東京都": ["新宿区","渋谷区","港区","千代田区","中央区","豊島区"],
+      "大阪府": ["大阪市","堺市","豊中市","吹田市","枚方市"],
+      "神奈川県": ["横浜市","川崎市","相模原市","横須賀市"],
+      "北海道": ["札幌市","函館市","旭川市","釧路市"],
+      "福岡県": ["福岡市","北九州市","久留米市"],
+      "Other": ["Other Cities"]
+    },
+    "韩国": {
+      "首尔特别市": ["江南区","江北区","城东区","钟路区","中区"],
+      "釜山广域市": ["海云台区","中区","南区","北区"],
+      "仁川广域市": ["中区","南区","北区","西区"],
+      "Other": ["Other Cities"]
+    },
+    "新加坡": {"新加坡": ["中央区","东区","西区","北区","东北区"]},
+    "马来西亚": {"Kuala Lumpur": ["Kuala Lumpur","Putrajaya","Selangor","Penang","Johor"]},
+    "泰国": {"主要城市": ["Bangkok","Chiang Mai","Phuket","Pattaya","Hua Hin"]},
+    "英国": {
+      "England": ["London","Manchester","Birmingham","Liverpool","Leeds"],
+      "Scotland": ["Edinburgh","Glasgow","Aberdeen"],
+      "Other": ["Other Cities"]
+    },
+    "法国": {"主要城市": ["Paris","Marseille","Lyon","Toulouse","Nice"]},
+    "德国": {
+      "Bayern": ["München","Nürnberg","Augsburg"],
+      "Nordrhein-Westfalen": ["Köln","Düsseldorf","Dortmund","Essen"],
+      "Berlin": ["Berlin"]
+    },
+    "加拿大": {
+      "Ontario": ["Toronto","Ottawa","Mississauga"],
+      "British Columbia": ["Vancouver","Victoria","Burnaby"],
+      "Quebec": ["Montreal","Quebec City"]
+    },
+    "澳大利亚": {
+      "New South Wales": ["Sydney","Newcastle","Wollongong"],
+      "Victoria": ["Melbourne","Geelong"],
+      "Queensland": ["Brisbane","Gold Coast","Cairns"]
+    },
+    "中国香港": {"香港": ["香港岛","九龙","新界","离岛"]},
+    "中国澳门": {"澳门": ["澳门半岛","氹仔","路环"]},
+    "中国台湾": {"台湾省": ["台北市","新北市","高雄市","台中市","台南市"]},
+    "越南": {"主要城市": ["Hanoi","Ho Chi Minh City","Da Nang","Hai Phong"]},
+    "印度尼西亚": {"主要城市": ["Jakarta","Surabaya","Bandung","Medan"]},
+    "菲律宾": {"主要城市": ["Manila","Cebu","Davao","Quezon City"]},
+    "印度": {"主要城市": ["Mumbai","Delhi","Bangalore","Chennai","Kolkata"]},
+    "俄罗斯": {"主要城市": ["Moscow","Saint Petersburg","Novosibirsk","Yekaterinburg"]},
+    "阿联酋": {"主要城市": ["Dubai","Abu Dhabi","Sharjah"]},
+    "沙特阿拉伯": {"主要城市": ["Riyadh","Jeddah","Mecca","Medina"]},
+    "其他国家": {"其他地区": ["其他城市"]}
   };
 
+  // ======= 滑块人机验证状态 =======
+  var _sliderVerified = false;
+
+  var _initSliderCaptcha = function() {
+    var track = document.getElementById("sliderTrack");
+    var knob = document.getElementById("sliderKnob");
+    var filled = document.getElementById("sliderBgFilled");
+    var unfilled = document.getElementById("sliderBgUnfilled");
+    var text = document.getElementById("sliderText");
+    if (!track || !knob) return;
+
+    _sliderVerified = false;
+    track.classList.remove("slider-pass", "slider-fail");
+    text.textContent = "→ 按住滑块拖到最右侧 →";
+    knob.style.left = "0px";
+    filled.style.width = "0px";
+
+    var dragging = false;
+    var startTime = 0;
+    var trajectory = []; // 记录轨迹 [x, y, t]
+    var maxX = 0;
+
+    var onStart = function(e) {
+      if (_sliderVerified) return;
+      dragging = true;
+      startTime = Date.now();
+      trajectory = [];
+      track.classList.add("dragging");
+      onMove(e);
+    };
+    var onMove = function(e) {
+      if (!dragging) return;
+      var rect = track.getBoundingClientRect();
+      var knobW = knob.offsetWidth;
+      var clientX = (e.touches && e.touches.length) ? e.touches[0].clientX : e.clientX;
+      var clientY = (e.touches && e.touches.length) ? e.touches[0].clientY : e.clientY;
+      var x = clientX - rect.left - knobW / 2;
+      if (x < 0) x = 0;
+      maxX = rect.width - knobW;
+      if (x > maxX) x = maxX;
+      knob.style.left = x + "px";
+      filled.style.width = x + "px";
+      if (x > 10 && text.style.opacity !== "0") text.style.opacity = "0";
+      trajectory.push([x, clientY - rect.top, Date.now() - startTime]);
+      if (e.cancelable) e.preventDefault();
+    };
+    var onEnd = function() {
+      if (!dragging) return;
+      dragging = false;
+      track.classList.remove("dragging");
+      var rect = track.getBoundingClientRect();
+      var knobW = knob.offsetWidth;
+      maxX = rect.width - knobW;
+      var curX = parseFloat(knob.style.left) || 0;
+      var tolerance = 2; // 允许2px误差
+      var distanceToEnd = maxX - curX;
+
+      // === 人机检测逻辑（能清楚辨别人类 vs 机器人）===
+      var pass = true;
+      var failReason = "";
+
+      // 1) 必须拖到终点（容忍2px）
+      if (distanceToEnd > tolerance) {
+        pass = false; failReason = "未拖到终点";
+      }
+      // 2) 总耗时检测：人类不可能 <150ms 完成（排除代码瞬间设置）
+      var totalMs = Date.now() - startTime;
+      if (totalMs < 150) {
+        pass = false; failReason = "操作过快";
+      }
+      // 3) 总耗时也不能太慢（>10秒可能异常，不过先放宽松）
+      // 4) 轨迹点数不能太少（说明是瞬移，典型脚本行为）
+      if (trajectory.length < 5) {
+        pass = false; failReason = "轨迹点不足";
+      }
+      // 5) 轨迹必须有抖动/非匀速（机器通常匀速或瞬移）
+      // 计算相邻点dx的方差
+      if (trajectory.length >= 5) {
+        var dxs = [];
+        for (var i = 1; i < trajectory.length; i++) {
+          dxs.push(trajectory[i][0] - trajectory[i - 1][0]);
+        }
+        var meanDx = dxs.reduce(function(s, v) { return s + v; }, 0) / dxs.length;
+        var varDx = dxs.reduce(function(s, v) { return s + (v - meanDx) * (v - meanDx); }, 0) / dxs.length;
+        // 人类速度变化大、dx 方差大；匀速拖动机器方差非常小
+        if (meanDx > 0 && varDx / (meanDx * meanDx + 1) < 0.05) {
+          pass = false; failReason = "移动过于平稳";
+        }
+        // 6) 不能一直严格递增（人类会有轻微回拉/停顿）
+        var backCount = dxs.filter(function(d) { return d < 0; }).length;
+        var pauseCount = dxs.filter(function(d) { return d === 0; }).length;
+        if (backCount === 0 && pauseCount <= 1 && trajectory.length > 15) {
+          // 没有任何回拉或停顿 → 高可疑机器，降低一点置信但不直接fail，配合方差使用
+        }
+      }
+      // 7) Y 轴必须有轻微抖动（人类拖动不可能完全平）
+      if (trajectory.length >= 5) {
+        var ys = trajectory.map(function(t) { return t[1]; });
+        var yMax = Math.max.apply(null, ys);
+        var yMin = Math.min.apply(null, ys);
+        if (yMax - yMin < 1) {
+          pass = false; failReason = "Y轴无波动";
+        }
+      }
+
+      if (pass) {
+        _sliderVerified = true;
+        track.classList.add("slider-pass");
+        text.textContent = "✓ 验证通过";
+        text.style.opacity = "1";
+        knob.innerHTML = '<svg class="slider-knob-icon" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      } else {
+        // 失败：弹回 + 重置
+        track.classList.add("slider-fail");
+        text.style.opacity = "1";
+        text.textContent = "✗ 未通过，请再试一次（" + failReason + "）";
+        var knob_ = knob; var filled_ = filled; var track_ = track;
+        setTimeout(function() {
+          knob_.style.left = "0px";
+          filled_.style.width = "0px";
+          text.style.opacity = "1";
+          text.textContent = "→ 按住滑块拖到最右侧 →";
+          track_.classList.remove("slider-fail");
+          knob_.innerHTML = '<svg class="slider-knob-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+        }, 500);
+      }
+    };
+
+    knob.addEventListener("mousedown", onStart);
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onEnd);
+    knob.addEventListener("touchstart", onStart, { passive: false });
+    document.addEventListener("touchmove", onMove, { passive: false });
+    document.addEventListener("touchend", onEnd);
+  };
+
+  // ======= 注册功能（申请-审核制） =======
+
   var _showRegisterPrompt = function() {
+    _sliderVerified = false;
     var referrer = localStorage.getItem("jit_referrer") || "";
     var overlay = document.createElement("div");
     overlay.className = "modal-overlay";
@@ -287,11 +495,16 @@ var JITApp = (function() {
       '<div class="form-group"><label class="form-label">城市 <span class="required">*</span></label>' +
       '<select class="form-input" id="regCity" disabled><option value="">请先选择省份</option></select></div>' +
       (referrer ? '<div class="form-group"><label class="form-label">邀请人</label><input type="text" class="form-input" id="regReferrer" value="' + _escapeHtml(referrer) + '" readonly style="background:rgba(255,255,255,0.05);"></div>' : '<div class="form-group"><label class="form-label">邀请人（选填）</label><input type="text" class="form-input" id="regReferrer" placeholder="输入邀请人用户名"></div>') +
-      '<div class="form-group"><label class="form-label">验证码 <span class="required">*</span></label>' +
-      '<div style="display:flex;align-items:center;gap:8px;">' +
-      '<span id="captchaQuestion" style="font-size:18px;font-weight:bold;color:var(--accent);background:rgba(255,255,255,0.05);padding:8px 16px;border-radius:6px;letter-spacing:2px;user-select:none;">加载中...</span>' +
-      '<button type="button" id="btnRefreshCaptcha" style="flex-shrink:0;padding:8px 12px;background:transparent;border:1px solid var(--text-secondary);border-radius:6px;color:var(--text-secondary);cursor:pointer;font-size:12px;">刷新</button>' +
-      '<input type="text" class="form-input" id="regCaptcha" placeholder="输入计算结果" style="flex:1;">' +
+      '<div class="form-group"><label class="form-label">人机验证 <span class="required">*</span></label>' +
+      '<div class="slider-captcha" id="sliderCaptcha">' +
+      '  <div class="slider-track" id="sliderTrack">' +
+      '    <div class="slider-bg-unfilled" id="sliderBgUnfilled"></div>' +
+      '    <div class="slider-bg-filled" id="sliderBgFilled"></div>' +
+      '    <span class="slider-text" id="sliderText">→ 按住滑块拖到最右侧 →</span>' +
+      '    <div class="slider-knob" id="sliderKnob">' +
+      '      <svg class="slider-knob-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>' +
+      '    </div>' +
+      '  </div>' +
       '</div></div>' +
       '<div class="form-error" id="regError" style="display:none;"></div>' +
       '<div style="text-align:center;font-size:12px;color:var(--text-secondary);margin-top:8px;">提交后需等待管理员审核通过方可登录</div>' +
@@ -303,90 +516,49 @@ var JITApp = (function() {
       '</div>';
     document.body.appendChild(overlay);
 
-    // 生成验证码
-    _generateCaptcha();
-    document.getElementById("btnRefreshCaptcha").addEventListener("click", _generateCaptcha);
-
-    // 加载国家列表
-    fetch("https://countriesnow.space/api/v0.1/countries").then(function(r) { return r.json(); }).then(function(res) {
-      var countries = res.data || [];
-      var sel = document.getElementById("regCountry");
-      countries.forEach(function(c) {
-        var opt = document.createElement("option");
-        opt.value = c; opt.textContent = c;
-        sel.appendChild(opt);
-      });
-      // 如果有中国，默认选中
-      if (countries.indexOf("China") >= 0) {
-        sel.value = "China";
-        sel.dispatchEvent(new Event("change"));
-      }
-    }).catch(function() {
-      var sel = document.getElementById("regCountry");
-      sel.innerHTML = '<option value="">国家列表加载失败，请手动输入</option><option value="China">China</option>';
+    // ======= 国家/省份/城市级联（内置数据）=======
+    var countrySel = document.getElementById("regCountry");
+    var provinceSel = document.getElementById("regProvince");
+    var citySel = document.getElementById("regCity");
+    Object.keys(_REGION_DATA).forEach(function(c) {
+      var opt = document.createElement("option");
+      opt.value = c; opt.textContent = c;
+      countrySel.appendChild(opt);
     });
-
-    // 国家→省份级联
-    document.getElementById("regCountry").addEventListener("change", function() {
+    if (_REGION_DATA["中国"]) {
+      countrySel.value = "中国";
+      var evt = document.createEvent("HTMLEvents");
+      evt.initEvent("change", false, true);
+      countrySel.dispatchEvent(evt);
+    }
+    countrySel.addEventListener("change", function() {
       var country = this.value;
-      var provSel = document.getElementById("regProvince");
-      var citySel = document.getElementById("regCity");
-      provSel.innerHTML = '<option value="">加载中...</option>';
-      provSel.disabled = true;
+      provinceSel.innerHTML = '<option value="">请选择省份</option>';
       citySel.innerHTML = '<option value="">请先选择省份</option>';
       citySel.disabled = true;
-      if (!country) {
-        provSel.innerHTML = '<option value="">请先选择国家</option>';
-        return;
-      }
-      fetch("https://countriesnow.space/api/v0.1/countries/states", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ country: country })
-      }).then(function(r) { return r.json(); }).then(function(res) {
-        var states = (res.data && res.data.states) ? res.data.states.map(function(s) { return s.name; }) : [];
-        provSel.innerHTML = '<option value="">请选择省份</option>';
-        states.forEach(function(s) {
-          var opt = document.createElement("option");
-          opt.value = s; opt.textContent = s;
-          provSel.appendChild(opt);
-        });
-        provSel.disabled = false;
-      }).catch(function() {
-        provSel.innerHTML = '<option value="">省份加载失败</option>';
-        provSel.disabled = false;
+      if (!country || !_REGION_DATA[country]) { provinceSel.disabled = true; return; }
+      Object.keys(_REGION_DATA[country]).forEach(function(p) {
+        var opt = document.createElement("option");
+        opt.value = p; opt.textContent = p;
+        provinceSel.appendChild(opt);
       });
+      provinceSel.disabled = false;
+    });
+    provinceSel.addEventListener("change", function() {
+      var country = countrySel.value;
+      var province = this.value;
+      citySel.innerHTML = '<option value="">请选择城市</option>';
+      if (!country || !province || !_REGION_DATA[country] || !_REGION_DATA[country][province]) { citySel.disabled = true; return; }
+      _REGION_DATA[country][province].forEach(function(c) {
+        var opt = document.createElement("option");
+        opt.value = c; opt.textContent = c;
+        citySel.appendChild(opt);
+      });
+      citySel.disabled = false;
     });
 
-    // 省份→城市级联
-    document.getElementById("regProvince").addEventListener("change", function() {
-      var country = document.getElementById("regCountry").value;
-      var province = this.value;
-      var citySel = document.getElementById("regCity");
-      citySel.innerHTML = '<option value="">加载中...</option>';
-      citySel.disabled = true;
-      if (!province) {
-        citySel.innerHTML = '<option value="">请先选择省份</option>';
-        return;
-      }
-      fetch("https://countriesnow.space/api/v0.1/countries/state/cities", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ country: country, state: province })
-      }).then(function(r) { return r.json(); }).then(function(res) {
-        var cities = res.data || [];
-        citySel.innerHTML = '<option value="">请选择城市</option>';
-        cities.forEach(function(c) {
-          var opt = document.createElement("option");
-          opt.value = c; opt.textContent = c;
-          citySel.appendChild(opt);
-        });
-        citySel.disabled = false;
-      }).catch(function() {
-        citySel.innerHTML = '<option value="">城市加载失败</option>';
-        citySel.disabled = false;
-      });
-    });
+    // ======= 初始化滑块人机验证 =======
+    _initSliderCaptcha();
 
     document.getElementById("btnBackLogin").addEventListener("click", function() {
       overlay.remove();
@@ -404,7 +576,6 @@ var JITApp = (function() {
       var city = document.getElementById("regCity").value;
       var referrerInput = document.getElementById("regReferrer");
       var referrerVal = referrerInput ? referrerInput.value.trim() : "";
-      var captchaInput = document.getElementById("regCaptcha").value.trim();
       var errorEl = document.getElementById("regError");
 
       if (!fullName) { errorEl.style.display = "block"; errorEl.textContent = "请输入姓名"; return; }
@@ -415,7 +586,7 @@ var JITApp = (function() {
       if (!country) { errorEl.style.display = "block"; errorEl.textContent = "请选择国家"; return; }
       if (!province) { errorEl.style.display = "block"; errorEl.textContent = "请选择省份"; return; }
       if (!city) { errorEl.style.display = "block"; errorEl.textContent = "请选择城市"; return; }
-      if (parseInt(captchaInput, 10) !== _captchaAnswer) { errorEl.style.display = "block"; errorEl.textContent = "验证码错误"; _generateCaptcha(); return; }
+      if (!_sliderVerified) { errorEl.style.display = "block"; errorEl.textContent = "请完成人机验证（拖动滑块到最右侧）"; return; }
 
       var btn = document.getElementById("btnRegister");
       btn.disabled = true;
@@ -452,7 +623,9 @@ var JITApp = (function() {
       }).catch(function(err) {
         errorEl.style.display = "block";
         errorEl.textContent = err.message || "提交失败";
-        _generateCaptcha();
+        // 失败后重置滑块，强制重新验证一次
+        _sliderVerified = false;
+        _initSliderCaptcha();
       }).finally(function() {
         btn.disabled = false;
         btn.textContent = "提交注册申请";
