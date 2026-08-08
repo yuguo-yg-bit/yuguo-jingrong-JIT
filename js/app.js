@@ -901,6 +901,18 @@ var JITApp = (function() {
       });
     }
 
+    // ===== 转盘抽奖按钮事件 =====
+    var btnWheelSpin = document.getElementById("btnWheelSpin");
+    if (btnWheelSpin) btnWheelSpin.addEventListener("click", _doWheelSpin);
+    var btnWheelClose = document.getElementById("btnWheelClose");
+    if (btnWheelClose) btnWheelClose.addEventListener("click", _closeWheelModal);
+    var wheelOverlay = document.getElementById("wheelOverlay");
+    if (wheelOverlay) {
+      wheelOverlay.addEventListener("click", function(e) {
+        if (e.target === wheelOverlay) _closeWheelModal();
+      });
+    }
+
     var btnModalClose = document.getElementById("btnModalClose");
     if (btnModalClose) {
       btnModalClose.addEventListener("click", _closeAddVoucherModal);
