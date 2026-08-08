@@ -27,23 +27,28 @@
 # Prevent directory listing
 Options -Indexes
 
-# URL Rewriting for SPA - automatically redirect to index.html if no file extension matches
+# URL Rewriting for SPA - 配合页面路由白名单
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
-  # If the request is not for a file that exists
-  RewriteCond %{REQUEST_FILENAME} !-f
-  # If the request is not for a directory that exists
-  RewriteCond %{REQUEST_FILENAME} !-d
+  # 已知页面直接命中
+  RewriteRule ^$ index.html [L]
+  RewriteRule ^index(\.html)?$ index.html [L]
+  RewriteRule ^work(\.html)?$ work.html [L]
+  RewriteRule ^AdMiN_AdMiN(\.html)?$ AdMiN_AdMiN.html [L]
 
-  # Handle ADMIN_AdMiN.html directly if matched
-  RewriteRule ^AdMiN_AdMiN.* AdMiN_AdMiN.html [L]
+  # 静态资源按常规处理
+  RewriteCond %{REQUEST_FILENAME} \.(css|js|png|jpg|jpeg|gif|svg|ico|json|xml|txt|woff|woff2|ttf|eot|webp|mp4|webm|wasm|map|avif)$ [NC]
+  RewriteRule .* - [L]
 
-  # Handle 404
+  # 如果请求是一个真实存在的文件/目录，不要重写
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule .* - [L]
+
+  # 其他未命中白名单的页面路径统一回 index.html（里面的路由白名单会跳回首页）
   ErrorDocument 404 /404.html
-
-  # All other non-existent files/urls go to index.html
-  RewriteRule . index.html [L]
+  RewriteRule . 404.html [L]
 </IfModule>
 
 # Disable Apache signature

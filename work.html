@@ -609,13 +609,35 @@
 </div>
 
 <script>
-// 自动去除 URL 中的 .html 后缀
+// ===== 页面路由白名单（自动统计合法页面）=====
+// 隐藏 .html 后缀后，任意 A/B/C 路径都可能被 GitHub Pages 误命中，
+// 这里用严格白名单：只有下列页面允许被访问（静态资源除外）
 (function() {
+  var PATH_WHITELIST = [
+    "/", "/index", "/index.html",
+    "/work", "/work.html",
+    "/AdMiN_AdMiN", "/AdMiN_AdMiN.html",
+    "/404", "/404.html"
+  ];
+  var STATIC_RE = /\.(css|js|png|jpg|jpeg|gif|svg|ico|json|xml|txt|woff|woff2|ttf|eot|webp|mp4|webm|wasm|map|avif)$/i;
+
   var path = window.location.pathname;
+  var normalized = path.replace(/\/$/, '') || '/';
+
+  // 1. 自动去除 URL 中的 .html 后缀（保持路径整洁）
   if (path.endsWith('.html')) {
     var cleanPath = path.replace(/\.html$/, '');
-    var newUrl = window.location.origin + cleanPath + window.location.search + window.location.hash;
-    window.history.replaceState({}, document.title, newUrl);
+    window.history.replaceState({}, document.title,
+      window.location.origin + cleanPath + window.location.search + window.location.hash);
+    normalized = cleanPath.replace(/\/$/, '') || '/';
+  }
+
+  // 2. 白名单检测：静态资源跳过；页面路径必须在白名单中
+  if (STATIC_RE.test(path)) return;
+  // 本站对应页面：work 页面就是 /work，不做重定向；只检测全局路径是否合法
+  // 当前路径如果不在白名单，跳回首页
+  if (PATH_WHITELIST.indexOf(normalized) === -1 && PATH_WHITELIST.indexOf(path) === -1) {
+    window.location.replace("/");
   }
 })();
 </script>

@@ -408,13 +408,31 @@ body { font-family: 'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-seri
 </footer>
 
 <script>
-// 自动去除 URL 中的 .html 后缀
+// ===== 页面路由白名单（自动统计合法页面）=====
 (function() {
+  var PATH_WHITELIST = [
+    "/", "/index", "/index.html",
+    "/work", "/work.html",
+    "/AdMiN_AdMiN", "/AdMiN_AdMiN.html",
+    "/404", "/404.html"
+  ];
+  var STATIC_RE = /\.(css|js|png|jpg|jpeg|gif|svg|ico|json|xml|txt|woff|woff2|ttf|eot|webp|mp4|webm|wasm|map|avif)$/i;
+
   var path = window.location.pathname;
+  var normalized = path.replace(/\/$/, '') || '/';
+
+  // 1. 自动去除 URL 中的 .html 后缀
   if (path.endsWith('.html')) {
     var cleanPath = path.replace(/\.html$/, '');
-    var newUrl = window.location.origin + cleanPath + window.location.search + window.location.hash;
-    window.history.replaceState({}, document.title, newUrl);
+    window.history.replaceState({}, document.title,
+      window.location.origin + cleanPath + window.location.search + window.location.hash);
+    normalized = cleanPath.replace(/\/$/, '') || '/';
+  }
+
+  // 2. 白名单检测：静态资源放行；页面路径不在白名单则跳回首页
+  if (STATIC_RE.test(path)) return;
+  if (PATH_WHITELIST.indexOf(normalized) === -1 && PATH_WHITELIST.indexOf(path) === -1) {
+    window.location.replace("/");
   }
 })();
 window.addEventListener('scroll', function() {
