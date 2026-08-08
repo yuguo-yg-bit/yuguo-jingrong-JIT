@@ -22,7 +22,8 @@ var JITConfig = (function() {
     completed: "completed",
     lottery: "lottery",
     points: "points",
-    registeredUser: "registered-user"
+    registeredUser: "registered-user",
+    registrationRequest: "registration-request"
   };
 
   var _users = {

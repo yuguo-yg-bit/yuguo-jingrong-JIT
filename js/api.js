@@ -646,31 +646,46 @@ var JITApi = (function() {
     return _uploadImageToRepo(file, folderPath, "chat_img.png", "聊天图片: " + (username || ""));
   };
 
-  // ======= 用户注册系统 =======
+  // ======= 用户注册系统（申请-审核制） =======
   var _formatUserBody = function(data) {
     return [
       "｜用户名：" + (data.username || ""),
       "｜密码：" + (data.password || ""),
+      "｜姓名：" + (data.fullName || ""),
+      "｜出生日期：" + (data.birthdate || ""),
+      "｜国家：" + (data.country || ""),
+      "｜省份：" + (data.province || ""),
+      "｜城市：" + (data.city || ""),
       "｜注册时间：" + (data.registerTime || ""),
-      "｜邀请人：" + (data.referrer || "")
+      "｜邀请人：" + (data.referrer || ""),
+      "｜审核状态：" + (data.reviewStatus || "待审核")
     ].join("\n");
   };
 
   var _parseUserBody = function(body) {
-    var data = { username: "", password: "", registerTime: "", referrer: "" };
+    var data = {
+      username: "", password: "", fullName: "", birthdate: "",
+      country: "", province: "", city: "", registerTime: "", referrer: "", reviewStatus: ""
+    };
     var lines = String(body || "").split(/\r?\n/);
     lines.forEach(function(line) {
       var trimmed = line.trim();
       var match;
       if ((match = trimmed.match(/^｜?\s*用户名：(.+)$/))) data.username = match[1].trim();
       else if ((match = trimmed.match(/^｜?\s*密码：(.+)$/))) data.password = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*姓名：(.+)$/))) data.fullName = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*出生日期：(.+)$/))) data.birthdate = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*国家：(.+)$/))) data.country = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*省份：(.+)$/))) data.province = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*城市：(.+)$/))) data.city = match[1].trim();
       else if ((match = trimmed.match(/^｜?\s*注册时间：(.+)$/))) data.registerTime = match[1].trim();
       else if ((match = trimmed.match(/^｜?\s*邀请人：(.+)$/))) data.referrer = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*审核状态：(.+)$/))) data.reviewStatus = match[1].trim();
     });
     return data;
   };
 
-  // 查找已注册用户
+  // 查找已审核通过的用户（registered-user label）
   var _findRegisteredUser = function(username) {
     var label = JITConfig.getLabels().registeredUser;
     var url = _apiBase + "/repos/" + _repoFull + "/issues?state=open&labels=" + encodeURIComponent(label) + "&per_page=100";
@@ -684,27 +699,89 @@ var JITApi = (function() {
     });
   };
 
-  // 注册新用户
-  var _registerUser = function(username, password, referrer) {
+  // 查找待审核的注册申请（registration-request label）
+  var _findPendingRegistration = function(username) {
+    var label = JITConfig.getLabels().registrationRequest;
+    var url = _apiBase + "/repos/" + _repoFull + "/issues?state=open&labels=" + encodeURIComponent(label) + "&per_page=100";
+    return _safeRequest(url, { method: "GET", headers: _headers() }).then(function(issues) {
+      if (!issues || issues.length === 0) return null;
+      for (var i = 0; i < issues.length; i++) {
+        var data = _parseUserBody(issues[i].body);
+        if (data.username === username) return { issue: issues[i], data: data };
+      }
+      return null;
+    });
+  };
+
+  // 提交注册申请
+  var _submitRegistrationRequest = function(data) {
+    var username = data.username;
+    // 先检查是否已注册或已有待审核申请
     return _findRegisteredUser(username).then(function(existing) {
       if (existing) throw new Error("该用户名已被注册");
-      // 检查是否与内置用户冲突
       var builtinUsers = JITConfig.getUsers();
       if (builtinUsers[username]) throw new Error("该用户名已存在");
-      var label = JITConfig.getLabels().registeredUser;
-      var data = {
-        username: username,
-        password: password,
-        registerTime: new Date().toISOString().replace("T", " ").slice(0, 19),
-        referrer: referrer || ""
-      };
+      return _findPendingRegistration(username);
+    }).then(function(pending) {
+      if (pending) throw new Error("您已提交过注册申请，请等待管理员审核");
+      var label = JITConfig.getLabels().registrationRequest;
+      data.registerTime = new Date().toISOString().replace("T", " ").slice(0, 19);
+      data.reviewStatus = "待审核";
       return _safeRequest(_apiBase + "/repos/" + _repoFull + "/issues", {
         method: "POST",
         headers: _headers(),
         body: JSON.stringify({
-          title: "【注册用户】" + username,
+          title: "【注册申请】" + data.fullName + "（" + username + "）",
           body: _formatUserBody(data),
           labels: ["voucher", label]
+        })
+      });
+    });
+  };
+
+  // 管理员获取待审核注册申请列表
+  var _getPendingRegistrations = function() {
+    var label = JITConfig.getLabels().registrationRequest;
+    var url = _apiBase + "/repos/" + _repoFull + "/issues?state=open&labels=" + encodeURIComponent(label) + "&per_page=100";
+    return _safeRequest(url, { method: "GET", headers: _headers() }).then(function(issues) {
+      if (!issues || issues.length === 0) return [];
+      return issues.map(function(issue) {
+        var data = _parseUserBody(issue.body);
+        return { issue: issue, data: data };
+      });
+    });
+  };
+
+  // 管理员通过注册申请（添加 registered-user label，更新审核状态）
+  var _approveRegistration = function(issueNumber) {
+    var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber;
+    // 先获取当前Issue
+    return _safeRequest(url, { method: "GET", headers: _headers() }).then(function(issue) {
+      var data = _parseUserBody(issue.body);
+      data.reviewStatus = "已通过";
+      return _safeRequest(url, {
+        method: "PATCH",
+        headers: _headers(),
+        body: JSON.stringify({
+          body: _formatUserBody(data),
+          labels: ["voucher", JITConfig.getLabels().registeredUser, JITConfig.getLabels().registrationRequest]
+        })
+      });
+    });
+  };
+
+  // 管理员拒绝注册申请
+  var _rejectRegistration = function(issueNumber) {
+    var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber;
+    return _safeRequest(url, { method: "GET", headers: _headers() }).then(function(issue) {
+      var data = _parseUserBody(issue.body);
+      data.reviewStatus = "已拒绝";
+      return _safeRequest(url, {
+        method: "PATCH",
+        headers: _headers(),
+        body: JSON.stringify({
+          body: _formatUserBody(data),
+          labels: ["voucher", JITConfig.getLabels().registrationRequest, "rejected"]
         })
       });
     });
@@ -759,9 +836,13 @@ var JITApi = (function() {
     getIssue: _getIssue,
     markVoucherCompleted: _markVoucherCompleted,
     markVoucherPaid: _markVoucherPaid,
-    registerUser: _registerUser,
+    registerUser: _submitRegistrationRequest,
     findRegisteredUser: _findRegisteredUser,
+    findPendingRegistration: _findPendingRegistration,
     verifyRegisteredUser: _verifyRegisteredUser,
-    getReferrals: _getReferrals
+    getReferrals: _getReferrals,
+    getPendingRegistrations: _getPendingRegistrations,
+    approveRegistration: _approveRegistration,
+    rejectRegistration: _rejectRegistration
   };
 })();

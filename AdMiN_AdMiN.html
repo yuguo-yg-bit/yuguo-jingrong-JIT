@@ -19,6 +19,7 @@
       <a class="admin-nav-item" data-tab="chat">💬 在线聊天</a>
       <a class="admin-nav-item" data-tab="lottery">🎲 抽奖配置</a>
       <a class="admin-nav-item" data-tab="users">👥 用户管理</a>
+      <a class="admin-nav-item" data-tab="registrations">📝 注册审核</a>
       <a class="admin-nav-item" data-tab="points">🏆 积分管理</a>
       <a class="admin-nav-item" data-tab="settings">⚙️ 系统设置</a>
       <a class="admin-nav-item" data-tab="developer">🔧 开发者</a>
@@ -119,6 +120,23 @@
         </div>
         <div class="admin-card-footer">
           <button class="btn btn-approve" id="btnAddUser">➕ 添加用户</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="admin-tab" id="tabRegistrations">
+      <div class="admin-card">
+        <div class="admin-card-header">
+          <h3>📝 注册审核</h3>
+          <p class="admin-card-desc">审核用户提交的注册申请，通过后用户即可登录。</p>
+        </div>
+        <div class="admin-card-body">
+          <table class="admin-table" style="margin-top:0;">
+            <thead>
+              <tr><th>姓名</th><th>用户名</th><th>出生日期</th><th>地区</th><th>邀请人</th><th>提交时间</th><th>状态</th><th>操作</th></tr>
+            </thead>
+            <tbody id="registrationsList"></tbody>
+          </table>
         </div>
       </div>
     </div>

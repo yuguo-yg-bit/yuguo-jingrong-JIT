@@ -174,9 +174,10 @@ var JITApp = (function() {
       '<input type="password" class="form-input" id="loginPassword" placeholder="请输入密码"></div>' +
       '<div class="form-error" id="loginError" style="display:none;"></div>' +
       '</div>' +
-      '<div class="modal-footer" style="justify-content:space-between;">' +
-      '<button class="btn-submit" id="btnLogin" style="flex:1;margin-right:8px;">登 录</button>' +
-      '<button class="btn-submit" id="btnShowRegister" style="flex:1;margin-left:8px;background:transparent;color:var(--accent);border:1px solid var(--accent);">注 册</button></div>' +
+      '<div class="modal-footer" style="flex-direction:column;gap:12px;">' +
+      '<button class="btn-submit" id="btnLogin" style="width:100%;">登 录</button>' +
+      '<div style="text-align:center;font-size:13px;">还没有账号？<a href="javascript:void(0)" id="linkRegister" style="color:var(--accent);text-decoration:underline;">点击注册</a></div>' +
+      '</div>' +
       '</div>';
     document.body.appendChild(overlay);
 
@@ -217,8 +218,16 @@ var JITApp = (function() {
             _loadData();
             _refreshPointsDisplay();
           } else {
-            errorEl.style.display = "block";
-            errorEl.textContent = "用户名或密码错误";
+            // 检查是否有待审核的注册申请
+            return JITApi.findPendingRegistration(username).then(function(pending) {
+              if (pending) {
+                errorEl.style.display = "block";
+                errorEl.textContent = "您的注册申请正在审核中，请耐心等待管理员通过";
+              } else {
+                errorEl.style.display = "block";
+                errorEl.textContent = "用户名或密码错误";
+              }
+            });
           }
         }).catch(function(err) {
           errorEl.style.display = "block";
@@ -236,36 +245,148 @@ var JITApp = (function() {
       }
     });
 
-    document.getElementById("btnShowRegister").addEventListener("click", function() {
+    document.getElementById("linkRegister").addEventListener("click", function() {
       overlay.remove();
       _showRegisterPrompt();
     });
   };
 
-  // ======= 注册功能 =======
+  // ======= 注册功能（申请-审核制） =======
+  var _captchaAnswer = 0;
+
+  var _generateCaptcha = function() {
+    var a = Math.floor(Math.random() * 9) + 1;
+    var b = Math.floor(Math.random() * 9) + 1;
+    _captchaAnswer = a + b;
+    var el = document.getElementById("captchaQuestion");
+    if (el) el.textContent = a + " + " + b + " = ?";
+  };
+
   var _showRegisterPrompt = function() {
     var referrer = localStorage.getItem("jit_referrer") || "";
     var overlay = document.createElement("div");
     overlay.className = "modal-overlay";
-    overlay.style.cssText = "opacity:1;visibility:visible;z-index:2000;";
-    overlay.innerHTML = '<div class="modal-container" style="max-width:380px;transform:translateY(0);">' +
-      '<div class="modal-header"><h3 class="modal-title">注册玉国金融</h3></div>' +
+    overlay.style.cssText = "opacity:1;visibility:visible;z-index:2000;overflow-y:auto;";
+    overlay.innerHTML = '<div class="modal-container" style="max-width:440px;transform:translateY(0);">' +
+      '<div class="modal-header"><h3 class="modal-title">注册申请</h3></div>' +
       '<div class="modal-body">' +
-      '<div class="form-group"><label class="form-label">用户名</label>' +
-      '<input type="text" class="form-input" id="regUsername" placeholder="请输入用户名（2-20个字符）"></div>' +
-      '<div class="form-group"><label class="form-label">密码</label>' +
-      '<input type="password" class="form-input" id="regPassword" placeholder="请输入密码（至少6位）"></div>' +
-      '<div class="form-group"><label class="form-label">确认密码</label>' +
+      '<div class="form-group"><label class="form-label">姓名 <span class="required">*</span></label>' +
+      '<input type="text" class="form-input" id="regFullName" placeholder="请输入真实姓名"></div>' +
+      '<div class="form-group"><label class="form-label">出生日期 <span class="required">*</span></label>' +
+      '<input type="date" class="form-input" id="regBirthdate"></div>' +
+      '<div class="form-group"><label class="form-label">用户名 <span class="required">*</span></label>' +
+      '<input type="text" class="form-input" id="regUsername" placeholder="2-20个字符，用于登录"></div>' +
+      '<div class="form-group"><label class="form-label">密码 <span class="required">*</span></label>' +
+      '<input type="password" class="form-input" id="regPassword" placeholder="至少6位"></div>' +
+      '<div class="form-group"><label class="form-label">确认密码 <span class="required">*</span></label>' +
       '<input type="password" class="form-input" id="regPassword2" placeholder="请再次输入密码"></div>' +
+      '<div class="form-group"><label class="form-label">国家 <span class="required">*</span></label>' +
+      '<select class="form-input" id="regCountry"><option value="">请选择国家</option></select></div>' +
+      '<div class="form-group"><label class="form-label">省份 <span class="required">*</span></label>' +
+      '<select class="form-input" id="regProvince" disabled><option value="">请先选择国家</option></select></div>' +
+      '<div class="form-group"><label class="form-label">城市 <span class="required">*</span></label>' +
+      '<select class="form-input" id="regCity" disabled><option value="">请先选择省份</option></select></div>' +
       (referrer ? '<div class="form-group"><label class="form-label">邀请人</label><input type="text" class="form-input" id="regReferrer" value="' + _escapeHtml(referrer) + '" readonly style="background:rgba(255,255,255,0.05);"></div>' : '<div class="form-group"><label class="form-label">邀请人（选填）</label><input type="text" class="form-input" id="regReferrer" placeholder="输入邀请人用户名"></div>') +
+      '<div class="form-group"><label class="form-label">验证码 <span class="required">*</span></label>' +
+      '<div style="display:flex;align-items:center;gap:8px;">' +
+      '<span id="captchaQuestion" style="font-size:18px;font-weight:bold;color:var(--accent);background:rgba(255,255,255,0.05);padding:8px 16px;border-radius:6px;letter-spacing:2px;user-select:none;">加载中...</span>' +
+      '<button type="button" id="btnRefreshCaptcha" style="flex-shrink:0;padding:8px 12px;background:transparent;border:1px solid var(--text-secondary);border-radius:6px;color:var(--text-secondary);cursor:pointer;font-size:12px;">刷新</button>' +
+      '<input type="text" class="form-input" id="regCaptcha" placeholder="输入计算结果" style="flex:1;">' +
+      '</div></div>' +
       '<div class="form-error" id="regError" style="display:none;"></div>' +
-      '<div style="text-align:center;font-size:12px;color:var(--text-secondary);margin-top:8px;">注册成功即送' + JITPoints.RULES.INVITE_REWARD + '积分，邀请人也得' + JITPoints.RULES.INVITE_REWARD + '积分</div>' +
+      '<div style="text-align:center;font-size:12px;color:var(--text-secondary);margin-top:8px;">提交后需等待管理员审核通过方可登录</div>' +
       '</div>' +
-      '<div class="modal-footer" style="justify-content:space-between;">' +
-      '<button class="btn-submit" id="btnBackLogin" style="flex:1;margin-right:8px;background:transparent;color:var(--text-secondary);border:1px solid var(--text-secondary);">返回登录</button>' +
-      '<button class="btn-submit" id="btnRegister" style="flex:1;margin-left:8px;">注 册</button></div>' +
+      '<div class="modal-footer" style="flex-direction:column;gap:12px;">' +
+      '<button class="btn-submit" id="btnRegister" style="width:100%;">提交注册申请</button>' +
+      '<button class="btn-submit" id="btnBackLogin" style="width:100%;background:transparent;color:var(--text-secondary);border:1px solid var(--text-secondary);">返回登录</button>' +
+      '</div>' +
       '</div>';
     document.body.appendChild(overlay);
+
+    // 生成验证码
+    _generateCaptcha();
+    document.getElementById("btnRefreshCaptcha").addEventListener("click", _generateCaptcha);
+
+    // 加载国家列表
+    fetch("https://countriesnow.space/api/v0.1/countries").then(function(r) { return r.json(); }).then(function(res) {
+      var countries = res.data || [];
+      var sel = document.getElementById("regCountry");
+      countries.forEach(function(c) {
+        var opt = document.createElement("option");
+        opt.value = c; opt.textContent = c;
+        sel.appendChild(opt);
+      });
+      // 如果有中国，默认选中
+      if (countries.indexOf("China") >= 0) {
+        sel.value = "China";
+        sel.dispatchEvent(new Event("change"));
+      }
+    }).catch(function() {
+      var sel = document.getElementById("regCountry");
+      sel.innerHTML = '<option value="">国家列表加载失败，请手动输入</option><option value="China">China</option>';
+    });
+
+    // 国家→省份级联
+    document.getElementById("regCountry").addEventListener("change", function() {
+      var country = this.value;
+      var provSel = document.getElementById("regProvince");
+      var citySel = document.getElementById("regCity");
+      provSel.innerHTML = '<option value="">加载中...</option>';
+      provSel.disabled = true;
+      citySel.innerHTML = '<option value="">请先选择省份</option>';
+      citySel.disabled = true;
+      if (!country) {
+        provSel.innerHTML = '<option value="">请先选择国家</option>';
+        return;
+      }
+      fetch("https://countriesnow.space/api/v0.1/countries/states", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ country: country })
+      }).then(function(r) { return r.json(); }).then(function(res) {
+        var states = (res.data && res.data.states) ? res.data.states.map(function(s) { return s.name; }) : [];
+        provSel.innerHTML = '<option value="">请选择省份</option>';
+        states.forEach(function(s) {
+          var opt = document.createElement("option");
+          opt.value = s; opt.textContent = s;
+          provSel.appendChild(opt);
+        });
+        provSel.disabled = false;
+      }).catch(function() {
+        provSel.innerHTML = '<option value="">省份加载失败</option>';
+        provSel.disabled = false;
+      });
+    });
+
+    // 省份→城市级联
+    document.getElementById("regProvince").addEventListener("change", function() {
+      var country = document.getElementById("regCountry").value;
+      var province = this.value;
+      var citySel = document.getElementById("regCity");
+      citySel.innerHTML = '<option value="">加载中...</option>';
+      citySel.disabled = true;
+      if (!province) {
+        citySel.innerHTML = '<option value="">请先选择省份</option>';
+        return;
+      }
+      fetch("https://countriesnow.space/api/v0.1/countries/state/cities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ country: country, state: province })
+      }).then(function(r) { return r.json(); }).then(function(res) {
+        var cities = res.data || [];
+        citySel.innerHTML = '<option value="">请选择城市</option>';
+        cities.forEach(function(c) {
+          var opt = document.createElement("option");
+          opt.value = c; opt.textContent = c;
+          citySel.appendChild(opt);
+        });
+        citySel.disabled = false;
+      }).catch(function() {
+        citySel.innerHTML = '<option value="">城市加载失败</option>';
+        citySel.disabled = false;
+      });
+    });
 
     document.getElementById("btnBackLogin").addEventListener("click", function() {
       overlay.remove();
@@ -273,60 +394,68 @@ var JITApp = (function() {
     });
 
     document.getElementById("btnRegister").addEventListener("click", function() {
+      var fullName = document.getElementById("regFullName").value.trim();
+      var birthdate = document.getElementById("regBirthdate").value;
       var username = document.getElementById("regUsername").value.trim();
       var password = document.getElementById("regPassword").value.trim();
       var password2 = document.getElementById("regPassword2").value.trim();
+      var country = document.getElementById("regCountry").value;
+      var province = document.getElementById("regProvince").value;
+      var city = document.getElementById("regCity").value;
       var referrerInput = document.getElementById("regReferrer");
       var referrerVal = referrerInput ? referrerInput.value.trim() : "";
+      var captchaInput = document.getElementById("regCaptcha").value.trim();
       var errorEl = document.getElementById("regError");
 
-      if (!username || username.length < 2 || username.length > 20) {
-        errorEl.style.display = "block";
-        errorEl.textContent = "用户名需2-20个字符";
-        return;
-      }
-      if (!password || password.length < 6) {
-        errorEl.style.display = "block";
-        errorEl.textContent = "密码至少6位";
-        return;
-      }
-      if (password !== password2) {
-        errorEl.style.display = "block";
-        errorEl.textContent = "两次密码不一致";
-        return;
-      }
+      if (!fullName) { errorEl.style.display = "block"; errorEl.textContent = "请输入姓名"; return; }
+      if (!birthdate) { errorEl.style.display = "block"; errorEl.textContent = "请选择出生日期"; return; }
+      if (!username || username.length < 2 || username.length > 20) { errorEl.style.display = "block"; errorEl.textContent = "用户名需2-20个字符"; return; }
+      if (!password || password.length < 6) { errorEl.style.display = "block"; errorEl.textContent = "密码至少6位"; return; }
+      if (password !== password2) { errorEl.style.display = "block"; errorEl.textContent = "两次密码不一致"; return; }
+      if (!country) { errorEl.style.display = "block"; errorEl.textContent = "请选择国家"; return; }
+      if (!province) { errorEl.style.display = "block"; errorEl.textContent = "请选择省份"; return; }
+      if (!city) { errorEl.style.display = "block"; errorEl.textContent = "请选择城市"; return; }
+      if (parseInt(captchaInput, 10) !== _captchaAnswer) { errorEl.style.display = "block"; errorEl.textContent = "验证码错误"; _generateCaptcha(); return; }
 
       var btn = document.getElementById("btnRegister");
       btn.disabled = true;
-      btn.textContent = "注册中...";
+      btn.textContent = "提交中...";
 
-      JITApi.registerUser(username, password, referrerVal).then(function() {
-        // 注册成功，发放积分
-        var promises = [];
-        // 新用户得50积分
-        promises.push(JITPoints.changePoints(username, JITPoints.RULES.INVITE_REWARD, "注册奖励"));
-        // 邀请人得50积分
-        if (referrerVal && referrerVal !== username) {
-          promises.push(JITPoints.changePoints(referrerVal, JITPoints.RULES.INVITE_REWARD, "邀请好友：" + username));
-        }
-        return Promise.all(promises);
-      }).then(function() {
-        _showToast("注册成功！获得" + JITPoints.RULES.INVITE_REWARD + "积分", "success");
-        overlay.remove();
+      var regData = {
+        username: username,
+        password: password,
+        fullName: fullName,
+        birthdate: birthdate,
+        country: country,
+        province: province,
+        city: city,
+        referrer: referrerVal
+      };
+
+      JITApi.registerUser(regData).then(function() {
         // 清除邀请人缓存
         localStorage.removeItem("jit_referrer");
-        // 自动填充用户名，跳转到登录
-        _showLoginPrompt();
-        setTimeout(function() {
-          var u = document.getElementById("loginUsername");
-          if (u) u.value = username;
-        }, 100);
+        // 显示成功提示弹窗
+        overlay.innerHTML = '<div class="modal-container" style="max-width:380px;transform:translateY(0);">' +
+          '<div class="modal-body" style="padding:40px 24px;text-align:center;">' +
+          '<div style="font-size:48px;margin-bottom:16px;">✓</div>' +
+          '<h3 style="font-size:18px;margin-bottom:8px;">已提交信息，等待管理员审核</h3>' +
+          '<p style="font-size:13px;color:var(--text-secondary);line-height:1.6;">您的注册申请已成功提交，管理员审核通过后即可登录使用。</p>' +
+          '</div>' +
+          '<div class="modal-footer" style="justify-content:center;">' +
+          '<button class="btn-submit" id="btnRegSuccessClose" style="width:100%;">知道了</button></div>' +
+          '</div>';
+        document.getElementById("btnRegSuccessClose").addEventListener("click", function() {
+          overlay.remove();
+          _showLoginPrompt();
+        });
       }).catch(function(err) {
         errorEl.style.display = "block";
-        errorEl.textContent = err.message || "注册失败";
+        errorEl.textContent = err.message || "提交失败";
+        _generateCaptcha();
       }).finally(function() {
         btn.disabled = false;
-        btn.textContent = "注 册";
+        btn.textContent = "提交注册申请";
       });
     });
   };

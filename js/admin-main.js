@@ -96,6 +96,15 @@ var JITAdmin = (function() {
       else if ((match = trimmed.match(/^｜?\s*购物平台：(.+)/))) data.platform = match[1].trim();
       else if ((match = trimmed.match(/^｜?\s*订单号：(.+)/))) data.orderNo = match[1].trim();
       else if ((match = trimmed.match(/^｜?\s*支付方式：(.+)/))) data.paymentMethod = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*用户名：(.+)/))) data.username = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*姓名：(.+)/))) data.fullName = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*出生日期：(.+)/))) data.birthdate = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*国家：(.+)/))) data.country = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*省份：(.+)/))) data.province = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*城市：(.+)/))) data.city = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*注册时间：(.+)/))) data.registerTime = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*邀请人：(.+)/))) data.referrer = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*审核状态：(.+)/))) data.reviewStatus = match[1].trim();
     });
     return data;
   };
@@ -982,6 +991,7 @@ var JITAdmin = (function() {
         else { stopChatPoll(); }
         if (tab === "lottery") loadLotteryConfig();
         if (tab === "users") loadUsers();
+        if (tab === "registrations") loadRegistrations();
         if (tab === "points") loadPointsList();
         if (tab === "settings") loadSettings();
         if (tab === "developer") loadSystemInfo();
@@ -1054,9 +1064,81 @@ var JITAdmin = (function() {
 
   init();
 
+  // ======= 注册审核 =======
+  var loadRegistrations = function() {
+    var tbody = document.getElementById("registrationsList");
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#999;">加载中...</td></tr>';
+    JITApi.getPendingRegistrations().then(function(list) {
+      if (!list || list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#999;">暂无注册申请</td></tr>';
+        return;
+      }
+      tbody.innerHTML = "";
+      list.forEach(function(item) {
+        var d = item.data;
+        var issueNum = item.issue.number;
+        var status = d.reviewStatus || "待审核";
+        var statusColor = status === "已通过" ? "#4caf50" : (status === "已拒绝" ? "#f44336" : "#ff9800");
+        var location = [d.country, d.province, d.city].filter(Boolean).join(" / ") || "—";
+        var tr = document.createElement("tr");
+        var actionsHtml = "";
+        if (status === "待审核") {
+          actionsHtml = '<button class="btn btn-approve" style="padding:4px 10px;font-size:12px;margin-right:4px;" onclick="JITAdmin._approveReg(' + issueNum + ')">通过</button>' +
+            '<button class="btn btn-reject" style="padding:4px 10px;font-size:12px;" onclick="JITAdmin._rejectReg(' + issueNum + ')">拒绝</button>';
+        } else {
+          actionsHtml = '<span style="color:#999;font-size:12px;">已处理</span>';
+        }
+        tr.innerHTML = '<td>' + _escapeHtml(d.fullName || "—") + '</td>' +
+          '<td>' + _escapeHtml(d.username || "—") + '</td>' +
+          '<td>' + _escapeHtml(d.birthdate || "—") + '</td>' +
+          '<td style="font-size:12px;">' + _escapeHtml(location) + '</td>' +
+          '<td>' + _escapeHtml(d.referrer || "—") + '</td>' +
+          '<td style="font-size:12px;">' + _escapeHtml(d.registerTime || "—") + '</td>' +
+          '<td><span style="color:' + statusColor + ';font-size:12px;font-weight:bold;">' + status + '</span></td>' +
+          '<td>' + actionsHtml + '</td>';
+        tbody.appendChild(tr);
+      });
+    }).catch(function(e) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#f44336;">加载失败: ' + _escapeHtml(e.message) + '</td></tr>';
+    });
+  };
+
+  var _approveReg = function(issueNum) {
+    JITApi.approveRegistration(issueNum).then(function() {
+      _showToast("已通过注册申请");
+      // 发放积分奖励
+      return JITApi.getIssue(issueNum).then(function(issue) {
+        var bodyData = _parseIssueBody(issue.body);
+        var promises = [];
+        // 新用户得50积分
+        if (bodyData.username) {
+          promises.push(JITPoints.changePoints(bodyData.username, JITPoints.RULES.INVITE_REWARD, "注册奖励"));
+        }
+        // 邀请人得50积分
+        if (bodyData.referrer && bodyData.referrer !== bodyData.username) {
+          promises.push(JITPoints.changePoints(bodyData.referrer, JITPoints.RULES.INVITE_REWARD, "邀请好友：" + bodyData.username));
+        }
+        return Promise.all(promises);
+      });
+    }).then(function() {
+      loadRegistrations();
+    }).catch(function(e) { _showToast("操作失败: " + e.message); });
+  };
+
+  var _rejectReg = function(issueNum) {
+    JITApi.rejectRegistration(issueNum).then(function() {
+      _showToast("已拒绝注册申请");
+      loadRegistrations();
+    }).catch(function(e) { _showToast("操作失败: " + e.message); });
+  };
+
   return {
     _previewImage: _previewImage,
     _openVoucherFromChat: _openVoucherFromChat,
-    loadIssues: loadIssues
+    loadIssues: loadIssues,
+    loadRegistrations: loadRegistrations,
+    _approveReg: _approveReg,
+    _rejectReg: _rejectReg
   };
 })();
