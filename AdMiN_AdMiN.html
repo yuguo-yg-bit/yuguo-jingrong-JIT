@@ -21,6 +21,7 @@
       <a class="admin-nav-item" data-tab="users">👥 用户管理</a>
       <a class="admin-nav-item" data-tab="registrations">📝 注册审核</a>
       <a class="admin-nav-item" data-tab="points">🏆 积分管理</a>
+      <a class="admin-nav-item" data-tab="blacklist">🚫 黑名单</a>
       <a class="admin-nav-item" data-tab="settings">⚙️ 系统设置</a>
       <a class="admin-nav-item" data-tab="developer">🔧 开发者</a>
     </nav>
@@ -159,6 +160,34 @@
         </div>
         <div class="admin-card-footer">
           <button class="btn btn-approve" id="btnRefreshPoints">🔄 刷新积分列表</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="admin-tab" id="tabBlacklist">
+      <div class="admin-card">
+        <div class="admin-card-header">
+          <h3>🚫 用户黑名单</h3>
+          <p class="admin-card-desc">列入黑名单的用户将被禁止登录系统。静态黑名单来自 config.js，动态黑名单可在此处直接增删，动态名单保存在 localStorage 和 GitHub（自动持久化）。</p>
+        </div>
+        <div class="admin-card-body">
+          <div class="form-group" style="display:flex;gap:10px;align-items:flex-end;">
+            <div style="flex:1;">
+              <label class="form-label">添加用户到黑名单</label>
+              <input type="text" class="form-input" id="blacklistNewUser" placeholder="输入要封禁的用户名">
+            </div>
+            <div style="flex:1;">
+              <label class="form-label">原因（选填）</label>
+              <input type="text" class="form-input" id="blacklistNewReason" placeholder="如：违规操作、恶意注册...">
+            </div>
+            <button class="btn btn-reject" id="btnBlacklistAdd">🚫 加入黑名单</button>
+          </div>
+          <table class="admin-table" style="margin-top:16px;">
+            <thead>
+              <tr><th>类型</th><th>用户名</th><th>封禁原因</th><th>添加时间</th><th>操作</th></tr>
+            </thead>
+            <tbody id="blacklistTable"></tbody>
+          </table>
         </div>
       </div>
     </div>

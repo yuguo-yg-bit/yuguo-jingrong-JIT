@@ -25,6 +25,7 @@ var JITApp = (function() {
 
   var _init = function() {
     _initBackgroundParticles();
+    _syncBlacklistFromCloud(); // 启动时先同步云端黑名单（优先级高于自动登录检测）
     _initLogin();
     _bindEvents();
     // 确保积分 label 存在
@@ -130,6 +131,51 @@ var JITApp = (function() {
       particle.style.animationDelay = Math.random() * 10 + "s";
       container.appendChild(particle);
     }
+  };
+
+  // 启动时：从云端同步黑名单（GitHub Issue label=blacklist）
+  // 和管理员后台写入的同一条 Issue，保持多端一致
+  var _syncBlacklistFromCloud = function() {
+    try {
+      if (typeof JITApi === "undefined" || !JITApi.getLabels) return;
+      var TOKEN = JITConfig.getTokenPart1() + JITConfig.getTokenPart3() + JITConfig.getTokenPart4();
+      var BASE = JITConfig.getApiBase();
+      var REPO = JITConfig.getRepoFull();
+      var lb = JITConfig.getBlacklistLabel();
+      fetch(BASE + "/repos/" + REPO + "/issues?state=open&labels=" + encodeURIComponent(lb) + "&per_page=10", {
+        headers: { Authorization: "token " + TOKEN, Accept: "application/vnd.github.v3+json" }
+      }).then(function(r) {
+        if (!r.ok) return null;
+        return r.json();
+      }).then(function(issues) {
+        if (!issues || !issues.length) return;
+        var body = issues[0].body || "";
+        var lines = String(body).split(/\r?\n/);
+        var out = {};
+        var cur = null;
+        lines.forEach(function(line) {
+          var t = line.trim();
+          var m;
+          if ((m = t.match(/^｜?\s*用户名：(.+)$/))) { cur = m[1].trim(); if (!out[cur]) out[cur] = {}; }
+          else if (cur && (m = t.match(/^｜?\s*原因：(.+)$/))) { out[cur].reason = m[1].trim(); }
+          else if (cur && (m = t.match(/^｜?\s*时间：(.+)$/))) { out[cur].time = m[1].trim(); }
+        });
+        var localMap = JITConfig.getDynamicBlacklist ? JITConfig.getDynamicBlacklist() : {};
+        var merged = {};
+        Object.keys(out).forEach(function(u) { merged[u] = out[u]; });
+        Object.keys(localMap).forEach(function(u) { merged[u] = localMap[u]; });
+        if (JITConfig.setDynamicBlacklist) {
+          JITConfig.setDynamicBlacklist(merged);
+        }
+        // 同步完再检查一次当前登录用户是否被封
+        if (_currentUser && JITConfig.isBlacklisted(_currentUser)) {
+          localStorage.removeItem("jit_current_user");
+          _currentUser = null;
+          _showToast("该账户已被管理员列入黑名单，禁止登录", "error");
+          _showLoginPrompt();
+        }
+      }).catch(function() { /* 静默失败，使用本地黑名单即可 */ });
+    } catch (e) {}
   };
 
   var _initLogin = function() {

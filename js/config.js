@@ -23,7 +23,8 @@ var JITConfig = (function() {
     lottery: "lottery",
     points: "points",
     registeredUser: "registered-user",
-    registrationRequest: "registration-request"
+    registrationRequest: "registration-request",
+    blacklist: "blacklist"
   };
 
   var _users = {
@@ -33,11 +34,26 @@ var JITConfig = (function() {
   };
 
   // ======= 黑名单/白名单 =======
-  // 黑名单：这些用户禁止登录
+  // 静态黑名单（config.js 内置，不可被UI删除）
   var _blacklist = [
     // "用户名1",
     // "用户名2"
   ];
+  // 动态黑名单（UI管理，保存在 localStorage + GitHub Issue）
+  // 持久化格式：{ username: { reason, time } }
+  var _BL_LOCAL_KEY = "jit_blacklist_dynamic";
+  var _BL_LABEL_KEY = "blacklist"; // GitHub Issue label
+
+  var _getDynamicBlacklist = function() {
+    try {
+      var raw = localStorage.getItem(_BL_LOCAL_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+  };
+  var _setDynamicBlacklist = function(obj) {
+    localStorage.setItem(_BL_LOCAL_KEY, JSON.stringify(obj || {}));
+  };
+
   // 白名单：如果启用白名单模式，只有白名单中的用户可以登录
   var _whitelistEnabled = false; // true=开启白名单模式，false=关闭
   var _whitelist = [
@@ -64,11 +80,51 @@ var JITConfig = (function() {
     getImageRepoName: function() { return _imageRepoName; },
     getLabels: function() { return _labels; },
     getUsers: function() { return _users; },
-    getBlacklist: function() { return _blacklist; },
-    getWhitelist: function() { return _whitelist; },
+    getBlacklist: function() { return _blacklist.slice(); },
+    // 返回合并后的完整黑名单（静态 + 动态），格式：[{username, reason, time, type}]
+    getAllBlacklistDetailed: function() {
+      var list = [];
+      _blacklist.forEach(function(u) {
+        list.push({ username: u, reason: "config.js 静态配置（需改代码移除）", time: "—", type: "static" });
+      });
+      var dyn = _getDynamicBlacklist();
+      Object.keys(dyn).forEach(function(u) {
+        list.push({
+          username: u,
+          reason: dyn[u].reason || "—",
+          time: dyn[u].time || "—",
+          type: "dynamic"
+        });
+      });
+      return list;
+    },
+    getDynamicBlacklist: function() { return _getDynamicBlacklist(); },
+    setDynamicBlacklist: _setDynamicBlacklist,
+    // 加入动态黑名单（UI 里点「加入黑名单」调用）
+    addToBlacklist: function(username, reason) {
+      if (!username) return false;
+      var dyn = _getDynamicBlacklist();
+      dyn[username] = { reason: reason || "", time: new Date().toLocaleString("zh-CN") };
+      _setDynamicBlacklist(dyn);
+      return true;
+    },
+    // 从动态黑名单移除（UI 里点「解除」调用）
+    removeFromBlacklist: function(username) {
+      if (!username) return false;
+      var dyn = _getDynamicBlacklist();
+      if (!dyn[username]) return false; // 静态的不能通过这里删
+      delete dyn[username];
+      _setDynamicBlacklist(dyn);
+      return true;
+    },
+    getBlacklistLabel: function() { return _labels[_BL_LABEL_KEY] || _BL_LABEL_KEY; },
+    getWhitelist: function() { return _whitelist.slice(); },
     isWhitelistEnabled: function() { return _whitelistEnabled; },
     isBlacklisted: function(username) {
-      return _blacklist.indexOf(username) !== -1;
+      if (!username) return false;
+      if (_blacklist.indexOf(username) !== -1) return true;
+      var dyn = _getDynamicBlacklist();
+      return !!dyn[username];
     },
     isWhitelisted: function(username) {
       return _whitelist.indexOf(username) !== -1;

@@ -613,6 +613,170 @@ var JITAdmin = (function() {
     document.getElementById("addUserOverlay").classList.remove("active");
   };
 
+  // ========= 黑名单管理 =========
+  var _blIssueCache = null;   // 缓存云端黑名单 Issue
+  var _blPendingSync = false; // 是否有未同步的更改
+
+  // 黑名单 Issue Body 格式：每行一个用户
+  // ｜用户名：xxx
+  // ｜原因：xxx
+  // ｜时间：xxx
+  var _parseBlacklistBody = function(body) {
+    var out = {};
+    var lines = String(body || "").split(/\r?\n/);
+    var cur = null;
+    lines.forEach(function(line) {
+      var trimmed = line.trim();
+      var m;
+      if ((m = trimmed.match(/^｜?\s*用户名：(.+)$/))) {
+        cur = m[1].trim();
+        if (!out[cur]) out[cur] = {};
+      } else if (cur && (m = trimmed.match(/^｜?\s*原因：(.+)$/))) {
+        out[cur].reason = m[1].trim();
+      } else if (cur && (m = trimmed.match(/^｜?\s*时间：(.+)$/))) {
+        out[cur].time = m[1].trim();
+      }
+    });
+    return out;
+  };
+
+  var _formatBlacklistBody = function(map) {
+    var lines = ["【动态黑名单】此文件由系统自动生成，请勿手动编辑。"];
+    Object.keys(map || {}).forEach(function(u) {
+      lines.push("｜用户名：" + u);
+      lines.push("｜原因：" + (map[u].reason || "—"));
+      lines.push("｜时间：" + (map[u].time || "—"));
+      lines.push("");
+    });
+    return lines.join("\n");
+  };
+
+  var _ensureBlacklistLabel = function() {
+    var lb = JITConfig.getBlacklistLabel();
+    return fetch(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/labels/" + encodeURIComponent(lb), {
+      headers: { Authorization: "token " + TOKEN, Accept: "application/vnd.github.v3+json" }
+    }).then(function(r) {
+      if (r.status === 404) {
+        return _apiPost(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/labels", {
+          name: lb, color: "b71c1c"
+        }).catch(function() {});
+      }
+    }).catch(function() {});
+  };
+
+  var _findBlacklistIssue = function() {
+    var lb = JITConfig.getBlacklistLabel();
+    return _apiGet(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues?state=open&labels=" + encodeURIComponent(lb) + "&per_page=10").then(function(issues) {
+      if (issues && issues.length > 0) {
+        _blIssueCache = issues[0];
+        return issues[0];
+      }
+      // 没找到就创建
+      return _ensureBlacklistLabel().then(function() {
+        return _apiPost(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues", {
+          title: "【系统】动态黑名单",
+          body: _formatBlacklistBody(JITConfig.getDynamicBlacklist()),
+          labels: [lb]
+        }).then(function(issue) {
+          _blIssueCache = issue;
+          return issue;
+        });
+      });
+    });
+  };
+
+  var loadBlacklist = function() {
+    var tbody = document.getElementById("blacklistTable");
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">加载中...</td></tr>';
+
+    // 先显示本地缓存
+    _renderBlacklist();
+
+    // 拉取云端，合并到本地
+    _findBlacklistIssue().then(function(issue) {
+      if (issue && issue.body) {
+        var cloudMap = _parseBlacklistBody(issue.body);
+        var localMap = JITConfig.getDynamicBlacklist();
+        var merged = {};
+        Object.keys(cloudMap).forEach(function(u) { merged[u] = cloudMap[u]; });
+        Object.keys(localMap).forEach(function(u) { merged[u] = localMap[u]; });
+        // 如果不一致，写回本地 + 下次增删操作会同步云端
+        var changed = Object.keys(cloudMap).length !== Object.keys(localMap).length;
+        if (!changed) {
+          for (var k in merged) {
+            if (!cloudMap[k]) { changed = true; break; }
+          }
+        }
+        JITConfig.setDynamicBlacklist(merged);
+        _renderBlacklist();
+      }
+    }).catch(function(e) {
+      console.warn("加载云端黑名单失败，使用本地缓存", e);
+    });
+  };
+
+  var _renderBlacklist = function() {
+    var tbody = document.getElementById("blacklistTable");
+    if (!tbody) return;
+    var list = JITConfig.getAllBlacklistDetailed();
+    if (list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">黑名单为空</td></tr>';
+      return;
+    }
+    var html = "";
+    list.forEach(function(item) {
+      var isStatic = item.type === "static";
+      html += '<tr>';
+      html += '<td>' + (isStatic ? '<span class="status-badge rejected" style="background:rgba(123,31,162,0.2);color:#ce93d8;border-color:rgba(123,31,162,0.4);">静态</span>' : '<span class="status-badge pending">动态</span>') + '</td>';
+      html += '<td style="font-weight:600;">' + _escapeHtml(item.username) + '</td>';
+      html += '<td>' + _escapeHtml(item.reason || "—") + '</td>';
+      html += '<td>' + _escapeHtml(item.time || "—") + '</td>';
+      html += '<td>';
+      if (isStatic) {
+        html += '<span style="color:#9e9e9e;font-size:12px;">config.js内置，改代码移除</span>';
+      } else {
+        html += '<button class="action-btn bl-remove" data-user="' + _escapeHtml(item.username) + '" style="border-color:#4caf50;color:#4caf50;background:rgba(76,175,80,0.15);">🔓 解除封禁</button>';
+      }
+      html += '</td></tr>';
+    });
+    tbody.innerHTML = html;
+    tbody.querySelectorAll(".bl-remove").forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        var username = this.getAttribute("data-user");
+        if (!confirm("确定将 " + username + " 移出黑名单？")) return;
+        if (JITConfig.removeFromBlacklist(username)) {
+          _syncBlacklistToCloud();
+          _showToast("已解除 " + username + " 的封禁");
+          _renderBlacklist();
+        } else {
+          _showToast("移除失败（可能是静态黑名单）");
+        }
+      });
+    });
+  };
+
+  var _syncBlacklistToCloud = function() {
+    var map = JITConfig.getDynamicBlacklist();
+    _blPendingSync = true;
+    // 使用防抖：合并多次更改到一次请求
+    clearTimeout(_syncBlacklistToCloud._t);
+    _syncBlacklistToCloud._t = setTimeout(function() {
+      _findBlacklistIssue().then(function(issue) {
+        if (!issue) return;
+        return _apiPatch(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues/" + issue.number, {
+          body: _formatBlacklistBody(map)
+        });
+      }).then(function() {
+        _blPendingSync = false;
+        console.log("黑名单已同步到云端");
+      }).catch(function(e) {
+        console.warn("黑名单同步失败：", e);
+        _showToast("黑名单同步云端失败，已保存在本地");
+      });
+    }, 600);
+  };
+
   // ========= 积分管理 =========
   var _pointsListData = {};   // { username: { points, frozen, ... } }
   var _pointsOpTarget = null; // { username, op: 'add'|'reduce'|'clear'|'freeze'|'unfreeze' }
@@ -993,6 +1157,7 @@ var JITAdmin = (function() {
         if (tab === "users") loadUsers();
         if (tab === "registrations") loadRegistrations();
         if (tab === "points") loadPointsList();
+        if (tab === "blacklist") loadBlacklist();
         if (tab === "settings") loadSettings();
         if (tab === "developer") loadSystemInfo();
       });
@@ -1060,6 +1225,26 @@ var JITAdmin = (function() {
     document.getElementById("btnSaveSettings").addEventListener("click", saveSettings);
     document.getElementById("btnClearCache").addEventListener("click", clearCache);
     document.getElementById("btnExportData").addEventListener("click", exportData);
+
+    // 黑名单事件绑定
+    var btnBlacklistAdd = document.getElementById("btnBlacklistAdd");
+    if (btnBlacklistAdd) {
+      btnBlacklistAdd.addEventListener("click", function() {
+        var userInput = document.getElementById("blacklistNewUser");
+        var reasonInput = document.getElementById("blacklistNewReason");
+        var username = userInput ? userInput.value.trim() : "";
+        var reason = reasonInput ? reasonInput.value.trim() : "";
+        if (!username) { _showToast("请输入用户名"); return; }
+        if (username === "admin") { _showToast("不能封禁admin用户"); return; }
+        if (JITConfig.isBlacklisted(username)) { _showToast("该用户已在黑名单中"); return; }
+        JITConfig.addToBlacklist(username, reason);
+        _syncBlacklistToCloud();
+        if (userInput) userInput.value = "";
+        if (reasonInput) reasonInput.value = "";
+        _showToast("已将 " + username + " 加入黑名单");
+        loadBlacklist();
+      });
+    }
   };
 
   init();
