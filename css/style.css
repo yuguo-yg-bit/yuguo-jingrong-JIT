@@ -102,6 +102,13 @@ html, body {
 
 .header-left {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-logout-mobile {
+  /* 桌面端也显示，移动端通过 media query 调整 */
 }
 
 .site-title {
@@ -2169,11 +2176,6 @@ html, body {
 }
 
 @media (max-width: 1200px) {
-  .header-center {
-    order: 3;
-    flex-basis: 100%;
-    justify-content: flex-start;
-  }
   .content-wrapper {
     flex-direction: column;
   }
@@ -2188,30 +2190,125 @@ html, body {
 }
 
 @media (max-width: 768px) {
+  /* === 手机端 Header 整体改为竖排 === */
   .top-header {
-    padding: 10px 12px;
+    padding: 8px 10px;
+    flex-direction: column;
+    gap: 6px;
+    position: sticky;
+    top: 0;
+  }
+
+  /* 第一行：标题 + 退出 */
+  .header-left {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
   }
   .site-title {
-    font-size: 16px;
+    font-size: 15px;
+    letter-spacing: 1px;
   }
-  .nav-module {
-    padding: 6px 10px;
-    min-width: 80px;
+
+  /* 第二行：积分 + 进度条 紧凑一行 */
+  .header-right {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: space-between;
+    align-items: center;
   }
-  .module-tip {
-    font-size: 8px;
+  .points-bar {
+    margin-bottom: 0 !important;
+    gap: 4px !important;
   }
-  .module-btn {
-    font-size: 11px;
+  .points-bar span {
+    font-size: 11px !important;
+  }
+  #pointsTotal {
+    font-size: 15px !important;
+  }
+  #btnPointsHistory {
+    padding: 2px 6px !important;
+    font-size: 10px !important;
   }
   .member-progress {
-    min-width: 140px;
+    min-width: 100px;
+    flex: 1;
   }
   .progress-label {
     font-size: 7px;
   }
+  .progress-text {
+    font-size: 8px;
+  }
+  .btn-logout {
+    padding: 5px 10px;
+    font-size: 11px;
+    gap: 3px;
+    flex-shrink: 0;
+  }
+  .btn-logout .nav-icon {
+    width: 13px;
+    height: 13px;
+  }
+
+  /* 第三行：小按钮行（客服、JIT会员） */
+  .header-center {
+    width: 100%;
+    flex-direction: column;
+    gap: 6px;
+    justify-content: flex-start;
+  }
+  .nav-group-small {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+  .nav-btn-small {
+    width: 36px;
+    height: 36px;
+  }
+  .nav-btn-small .nav-icon {
+    width: 17px;
+    height: 17px;
+  }
+  #btnJITVip {
+    width: auto;
+    padding: 0 10px;
+    font-size: 11px;
+    height: 36px;
+  }
+
+  /* 第四行：功能按钮 横向滚动 */
+  .nav-group-large {
+    width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 6px;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .nav-group-large::-webkit-scrollbar {
+    display: none;
+  }
+  .nav-module {
+    flex-shrink: 0;
+    padding: 6px 10px;
+    min-width: 72px;
+  }
+  .module-tip {
+    font-size: 9px;
+  }
+  .module-btn {
+    font-size: 11px;
+  }
+
   .content-wrapper {
-    padding: 10px;
+    padding: 8px;
   }
   .lottery-card {
     width: 260px;
@@ -2222,8 +2319,11 @@ html, body {
   }
   .orders-table th,
   .orders-table td {
-    padding: 8px 10px;
-    font-size: 11px;
+    padding: 6px 4px;
+    font-size: 10px;
+  }
+  .orders-table {
+    font-size: 10px;
   }
 }
 
