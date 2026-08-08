@@ -32,6 +32,19 @@ var JITConfig = (function() {
     "江睿博": "27015150111"
   };
 
+  // ======= 黑名单/白名单 =======
+  // 黑名单：这些用户禁止登录
+  var _blacklist = [
+    // "用户名1",
+    // "用户名2"
+  ];
+  // 白名单：如果启用白名单模式，只有白名单中的用户可以登录
+  var _whitelistEnabled = false; // true=开启白名单模式，false=关闭
+  var _whitelist = [
+    // "admin",
+    // "谭绣云"
+  ];
+
   // 工会代付时展示的微信支付收款码（仓库根目录 IMG_3106.jpeg）
   var _unionPayQrImage = "https://raw.githubusercontent.com/yuguo-yg-bit/yuguo-jingrong-JIT/main/IMG_3106.jpeg";
   var _unionPayLink = "https://wx.tenpay.com/tmp/yuguo-union-collect"; // 备用：如改为收款链接则动态生成二维码
@@ -51,6 +64,15 @@ var JITConfig = (function() {
     getImageRepoName: function() { return _imageRepoName; },
     getLabels: function() { return _labels; },
     getUsers: function() { return _users; },
+    getBlacklist: function() { return _blacklist; },
+    getWhitelist: function() { return _whitelist; },
+    isWhitelistEnabled: function() { return _whitelistEnabled; },
+    isBlacklisted: function(username) {
+      return _blacklist.indexOf(username) !== -1;
+    },
+    isWhitelisted: function(username) {
+      return _whitelist.indexOf(username) !== -1;
+    },
     getRepoFull: function() { return _repoOwner + "/" + _repoName; },
     getImageRepoFull: function() { return _repoOwner + "/" + _imageRepoName; },
     getUnionPayQrUrl: _getUnionPayQrUrl

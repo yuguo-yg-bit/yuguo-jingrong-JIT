@@ -316,6 +316,17 @@
 <div class="toast" id="adminToast"></div>
 <div class="image-preview-overlay" id="imagePreviewOverlay" style="display:none;"></div>
 
+<script>
+// 自动去除 URL 中的 .html 后缀
+(function() {
+  var path = window.location.pathname;
+  if (path.endsWith('.html')) {
+    var cleanPath = path.replace(/\.html$/, '');
+    var newUrl = window.location.origin + cleanPath + window.location.search + window.location.hash;
+    window.history.replaceState({}, document.title, newUrl);
+  }
+})();
+</script>
 <script src="js/config.js"></script>
 <script src="js/api.js"></script>
 <script src="js/points.js"></script>

@@ -148,6 +148,19 @@ var JITApp = (function() {
 
     var savedUser = localStorage.getItem("jit_current_user");
     if (savedUser) {
+      // 黑名单/白名单检查（防止被封禁用户自动登录绕过）
+      if (JITConfig.isBlacklisted(savedUser)) {
+        localStorage.removeItem("jit_current_user");
+        _showToast("该账户已被列入黑名单，禁止登录", "error");
+        _showLoginPrompt();
+        return;
+      }
+      if (JITConfig.isWhitelistEnabled() && !JITConfig.isWhitelisted(savedUser)) {
+        localStorage.removeItem("jit_current_user");
+        _showToast("当前为白名单模式，您的账户未在白名单中", "error");
+        _showLoginPrompt();
+        return;
+      }
       _currentUser = savedUser;
       _updateLogoutText();
       var savedChat = localStorage.getItem("jit_chat_issue_" + savedUser);
@@ -190,6 +203,19 @@ var JITApp = (function() {
       if (!username || !password) {
         errorEl.style.display = "block";
         errorEl.textContent = "请输入用户名和密码";
+        return;
+      }
+
+      // 黑名单检查
+      if (JITConfig.isBlacklisted(username)) {
+        errorEl.style.display = "block";
+        errorEl.textContent = "该账户已被列入黑名单，禁止登录。如有疑问请联系管理员。";
+        return;
+      }
+      // 白名单模式检查
+      if (JITConfig.isWhitelistEnabled() && !JITConfig.isWhitelisted(username)) {
+        errorEl.style.display = "block";
+        errorEl.textContent = "当前为白名单模式，您的账户未在白名单中，暂时无法登录。";
         return;
       }
 

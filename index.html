@@ -151,7 +151,7 @@ body { font-family: 'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-seri
       <a href="#points" class="navbar-link">积分系统</a>
       <a href="#about" class="navbar-link">关于平台</a>
     </div>
-    <a href="work.html?v=20260802b" class="navbar-cta">进入工作台 →</a>
+    <a href="work" class="navbar-cta">进入工作台 →</a>
   </div>
 </nav>
 
@@ -167,7 +167,7 @@ body { font-family: 'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-seri
       赢取免单至 7 折优惠，更有积分系统让每一笔消费都有惊喜。
     </p>
     <div class="hero-actions fade-in-delay-3">
-      <a href="work.html?v=20260802b" class="btn-primary">进入工作台</a>
+      <a href="work" class="btn-primary">进入工作台</a>
       <a href="#welfare" class="btn-secondary">查看福利</a>
     </div>
     <div class="hero-stats fade-in-delay-3">
@@ -408,6 +408,15 @@ body { font-family: 'Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-seri
 </footer>
 
 <script>
+// 自动去除 URL 中的 .html 后缀
+(function() {
+  var path = window.location.pathname;
+  if (path.endsWith('.html')) {
+    var cleanPath = path.replace(/\.html$/, '');
+    var newUrl = window.location.origin + cleanPath + window.location.search + window.location.hash;
+    window.history.replaceState({}, document.title, newUrl);
+  }
+})();
 window.addEventListener('scroll', function() {
   var navbar = document.querySelector('.navbar');
   navbar.style.background = window.scrollY > 50 ? 'rgba(10,14,23,0.95)' : 'rgba(10,14,23,0.85)';

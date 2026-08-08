@@ -609,10 +609,13 @@
 </div>
 
 <script>
+// 自动去除 URL 中的 .html 后缀
 (function() {
   var path = window.location.pathname;
-  if (path && path !== "/" && !path.endsWith("index.html") && !path.endsWith("work.html") && !path.endsWith("AdMiN_AdMiN.html") && !path.endsWith("404.html") && !path.match(/\.(css|js|png|jpg|jpeg|gif|svg|ico|json|xml|txt|woff|woff2|ttf|eot|webp|mp4|webm)$/)) {
-    window.location.replace("index.html");
+  if (path.endsWith('.html')) {
+    var cleanPath = path.replace(/\.html$/, '');
+    var newUrl = window.location.origin + cleanPath + window.location.search + window.location.hash;
+    window.history.replaceState({}, document.title, newUrl);
   }
 })();
 </script>

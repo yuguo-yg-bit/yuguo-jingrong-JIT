@@ -53,11 +53,23 @@ a:hover {
 }
 </style>
 <script>
-// 自动重定向：如果URL不以index.html结尾，自动加上
+// 自动重定向：无后缀路径 → 尝试找到对应页面
 (function() {
   var path = window.location.pathname;
-  if (path && path !== "/" && !path.endsWith("index.html") && !path.endsWith("work.html") && !path.endsWith("AdMiN_AdMiN.html") && !path.endsWith("404.html") && !path.match(/\.(css|js|png|jpg|jpeg|gif|svg|ico|json|xml|txt|woff|woff2|ttf|eot|webp|mp4|webm)$/)) {
-    window.location.replace("/index.html");
+  // 如果是根路径或已经是有效页面，不处理
+  if (path === "/" || path === "") return;
+  // 如果带 .html 后缀，去掉后缀重定向
+  if (path.endsWith('.html')) {
+    var cleanPath = path.replace(/\.html$/, '');
+    window.location.replace(cleanPath || '/');
+    return;
+  }
+  // 如果是不带后缀的路径（如 /work），GitHub Pages 会自动找到 work.html
+  // 如果走到这里说明真的404了，回到首页
+  var known = ['/work', '/index', '/AdMiN_AdMiN'];
+  var base = path.replace(/\/$/, '');
+  if (known.indexOf(base) === -1 && !path.match(/\.(css|js|png|jpg|jpeg|gif|svg|ico|json|xml|txt|woff|woff2|ttf|eot|webp|mp4|webm)$/)) {
+    window.location.replace("/");
   }
 })();
 </script>
@@ -66,7 +78,7 @@ a:hover {
 <div class="container">
   <h1>404</h1>
   <p>页面未找到<br>您访问的页面不存在或已被移除。</p>
-  <a href="index.html">返回首页</a>
+  <a href="/">返回首页</a>
 </div>
 </body>
 </html>
