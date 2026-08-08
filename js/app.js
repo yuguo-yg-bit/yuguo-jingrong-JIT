@@ -522,6 +522,119 @@ var JITApp = (function() {
     });
   };
 
+  // ======= 积分转盘抽奖 =======
+  var _openWheelModal = function() {
+    if (!_currentUser) {
+      _showToast("请先登录", "error");
+      _showLoginPrompt();
+      return;
+    }
+    var overlay = document.getElementById("wheelOverlay");
+    if (!overlay) return;
+    overlay.classList.add("active");
+
+    // 初始化转盘
+    if (JITWheel && JITWheel.init) {
+      setTimeout(function() {
+        JITWheel.init("wheelCanvas");
+        _updateWheelUI();
+      }, 200);
+    }
+  };
+
+  var _closeWheelModal = function() {
+    var overlay = document.getElementById("wheelOverlay");
+    if (overlay) overlay.classList.remove("active");
+    if (JITWheel && JITWheel.reset) JITWheel.reset();
+  };
+
+  var _updateWheelUI = function() {
+    if (!_currentUser) return;
+    var freeBadge = document.getElementById("wheelFreeBadge");
+    var freeCountEl = document.getElementById("wheelFreeCount");
+    var isFree = JITWheel && JITWheel.checkFreeSpin && JITWheel.checkFreeSpin(_currentUser);
+    if (freeBadge) {
+      freeBadge.style.display = isFree ? "inline-block" : "none";
+    }
+    if (freeCountEl) {
+      freeCountEl.textContent = isFree ? "今日还有 1 次免费抽奖机会 🎁" : "今日免费已用，每次消耗 10 积分";
+    }
+  };
+
+  var _doWheelSpin = function() {
+    if (!_currentUser) {
+      _showToast("请先登录", "error");
+      return;
+    }
+    if (JITWheel && JITWheel.isSpinning && JITWheel.isSpinning()) {
+      _showToast("转盘正在旋转中，请稍候...", "");
+      return;
+    }
+
+    var isFree = JITWheel && JITWheel.checkFreeSpin && JITWheel.checkFreeSpin(_currentUser);
+    var cost = JITWheel.getCost ? JITWheel.getCost() : 10;
+
+    // 如果不是免费，检查积分够不够
+    if (!isFree) {
+      if (_currentPoints < cost) {
+        _showToast("积分不足！需要 " + cost + " 积分，当前 " + _currentPoints + " 分。添加凭证可赚积分~", "error");
+        return;
+      }
+    }
+
+    // 冻结检查
+    if (_currentFrozen) {
+      _showToast("积分账户已冻结，无法参与抽奖", "error");
+      return;
+    }
+
+    var btn = document.getElementById("btnWheelSpin");
+    var spinText = document.getElementById("wheelSpinText");
+    if (btn) btn.disabled = true;
+    if (spinText) spinText.textContent = "旋转中...";
+
+    // 开始转盘动画
+    JITWheel.spin(function(prize) {
+      // 转盘停止后的回调
+      if (!prize) {
+        if (btn) btn.disabled = false;
+        if (spinText) spinText.textContent = "🎯 开始抽奖";
+        return;
+      }
+
+      var delta = prize.delta || 0;
+      // 扣除/增加积分
+      var ptsPromise;
+      if (isFree) {
+        // 免费抽奖：不扣积分，只加积分（如果是正的话）
+        if (delta >= 0) {
+          ptsPromise = JITPoints.changePoints(_currentUser, delta, "转盘抽奖免费获得 " + delta + " 积分");
+        } else {
+          ptsPromise = Promise.resolve();
+        }
+        JITWheel.markFreeSpinUsed(_currentUser);
+      } else {
+        // 付费抽奖：先扣10分，再加/减结果
+        if (delta >= 0) {
+          ptsPromise = JITPoints.changePoints(_currentUser, delta - cost, "转盘抽奖：消耗" + cost + "积分，获得+" + delta + "积分");
+        } else {
+          ptsPromise = JITPoints.changePoints(_currentUser, delta - cost, "转盘抽奖：消耗" + cost + "积分，结果" + delta + "积分");
+        }
+      }
+
+      ptsPromise.then(function() {
+        _refreshPointsDisplay(true);
+        _updateWheelUI();
+        if (btn) btn.disabled = false;
+        if (spinText) spinText.textContent = "🎯 开始抽奖";
+      }).catch(function(err) {
+        _showToast("积分更新失败: " + (err.message || ""), "error");
+        if (btn) btn.disabled = false;
+        if (spinText) spinText.textContent = "🎯 开始抽奖";
+      });
+    });
+  };
+
   var _updateLogoutText = function() {
     var el = document.getElementById("logoutUserText");
     if (el && _currentUser) {
@@ -559,6 +672,11 @@ var JITApp = (function() {
     var btnInvite = document.getElementById("btnInvite");
     if (btnInvite) {
       btnInvite.addEventListener("click", _showInviteModal);
+    }
+
+    var btnWheel = document.getElementById("btnWheelLottery");
+    if (btnWheel) {
+      btnWheel.addEventListener("click", _openWheelModal);
     }
 
     var btnJITVip = document.getElementById("btnJITVip");

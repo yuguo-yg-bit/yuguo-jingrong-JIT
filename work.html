@@ -44,6 +44,10 @@
           <span class="module-tip" style="color:var(--accent);">线上购物</span>
           <button class="module-btn" id="btnAddOnlineVoucher" style="border-color:var(--accent);color:var(--accent);">添加线上购物</button>
         </div>
+        <div class="nav-module" id="moduleWheelLottery">
+          <span class="module-tip" style="color:#ffd700;">积分抽奖</span>
+          <button class="module-btn" id="btnWheelLottery" style="border-color:#ffd700;color:#ffd700;">🎡 转盘抽奖</button>
+        </div>
         <div class="nav-module" id="moduleInvite">
           <span class="module-tip" style="color:#4caf50;">邀请好友</span>
           <button class="module-btn" id="btnInvite" style="border-color:#4caf50;color:#4caf50;">邀请好友得积分</button>
@@ -460,6 +464,52 @@
   </div>
 </div>
 
+<!-- 积分转盘抽奖弹窗 -->
+<div class="modal-overlay" id="wheelOverlay" style="z-index:2000;">
+  <div class="wheel-container" id="wheelContainer">
+    <div class="wheel-header">
+      <h3 class="wheel-title">🎡 积分抽奖转盘</h3>
+      <button class="modal-close" id="btnWheelClose">&times;</button>
+    </div>
+    <div class="wheel-body">
+      <div class="wheel-info" id="wheelInfo">
+        <span>消耗 <b style="color:#ffd700;font-size:18px;">10</b> 积分抽一次</span>
+        <span class="wheel-free-badge" id="wheelFreeBadge">每日免费</span>
+      </div>
+      <div class="wheel-canvas-wrap">
+        <canvas id="wheelCanvas" width="320" height="320"></canvas>
+      </div>
+      <div class="wheel-cost-info" id="wheelCostInfo">
+        <span id="wheelFreeCount" style="font-size:13px;color:var(--text-secondary);"></span>
+      </div>
+      <button class="wheel-spin-btn" id="btnWheelSpin">
+        <span id="wheelSpinText">🎯 开始抽奖</span>
+      </button>
+      <div class="wheel-prizes-list">
+        <span class="wheel-prize-tag win">+10</span>
+        <span class="wheel-prize-tag lose">-10</span>
+        <span class="wheel-prize-tag win">+20</span>
+        <span class="wheel-prize-tag lose">-20</span>
+        <span class="wheel-prize-tag win">+30</span>
+        <span class="wheel-prize-tag win">+40</span>
+        <span class="wheel-prize-tag win">+50</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 转盘结果弹窗 -->
+<div class="modal-overlay" id="wheelResultOverlay" style="z-index:2001;">
+  <div class="wheel-result-container" id="wheelResultContainer">
+    <div class="wheel-result-body">
+      <div class="wheel-result-icon" id="wheelResultIcon">🎉</div>
+      <div class="wheel-result-label" id="wheelResultLabel">恭喜获得积分！</div>
+      <div class="wheel-result-delta" id="wheelResultDelta">+10</div>
+      <button class="wheel-result-close" id="btnWheelResultClose">知道了</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <div class="modal-overlay" id="userFirstPayOverlay">
@@ -569,6 +619,7 @@
 <script src="js/api.js"></script>
 <script src="js/points.js"></script>
 <script src="js/lottery.js"></script>
+<script src="js/wheel.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
