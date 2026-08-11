@@ -264,16 +264,67 @@ var JITAdmin = (function() {
       html += '<td><span class="discount-badge"' + discountStyle + '>' + _escapeHtml(discountDisplay) + '</span></td>';
       html += '<td>' + _escapeHtml((data.paymentMethod || "—").substring(0, 15)) + '</td>';
       html += '<td><span class="status-badge ' + status + '">' + statusText + '</span></td>';
-      html += '<td><button class="action-btn" data-issue="' + issue.number + '">审核</button></td>';
+      // ===== 操作列：审核 + 加急切换 + 加急黑名单 =====
+      var urgentBtn = '';
+      if (isUrgent) {
+        urgentBtn = '<button class="action-btn urgent-toggle-btn" data-issue="' + issue.number + '" data-urgent="1" title="取消加急标记" style="background:#fff3e0;color:#e65100;border-color:#ffab91;">⚡ 取消加急</button>';
+      } else {
+        urgentBtn = '<button class="action-btn urgent-toggle-btn" data-issue="' + issue.number + '" data-urgent="0" title="标记为加急凭证" style="background:#ffebee;color:#b71c1c;border-color:#ef9a9a;">⚡ 设为加急</button>';
+      }
+      var blBtn = '<button class="action-btn urgent-bl-btn" data-issue="' + issue.number + '" data-user="' + _escapeHtml(data.userId || data.title || '') + '" title="将此用户加入加急黑名单" style="background:#f3e5f5;color:#6a1b9a;border-color:#ce93d8;">🚫 加黑</button>';
+      html += '<td style="white-space:nowrap;">'
+        + '<button class="action-btn" data-issue="' + issue.number + '">审核</button>'
+        + urgentBtn
+        + blBtn
+        + '</td>';
       html += '</tr>';
     });
 
     tbody.innerHTML = html;
-    tbody.querySelectorAll(".action-btn").forEach(function(btn) {
+    tbody.querySelectorAll(".action-btn[data-issue]").forEach(function(btn) {
+      if (btn.classList.contains("urgent-toggle-btn") || btn.classList.contains("urgent-bl-btn")) return;
       btn.addEventListener("click", function() {
         openReview(parseInt(this.getAttribute("data-issue")));
       });
     });
+    // 加急切换
+    tbody.querySelectorAll(".urgent-toggle-btn").forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        var num = parseInt(this.getAttribute("data-issue"));
+        var isUrg = this.getAttribute("data-urgent") === "1";
+        _toggleUrgentOnRow(num, !isUrg);
+      });
+    });
+    // 列表快捷加黑
+    tbody.querySelectorAll(".urgent-bl-btn").forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        var user = this.getAttribute("data-user");
+        if (!user) { _showToast("未能读取用户", "error"); return; }
+        _currentUGBanUser = user;
+        document.getElementById("urgentBlBanUser").value = user;
+        document.getElementById("urgentBlBanReason").value = "管理员从审核列表快捷加入（加急理由不合理）";
+        document.getElementById("urgentBlPermBan").checked = true;
+        _onUrgBanPermToggle.call(document.getElementById("urgentBlPermBan"));
+        document.getElementById("urgentBlacklistOverlay").style.display = "flex";
+      });
+    });
+  };
+
+  // 列表行快捷切换加急状态
+  var _toggleUrgentOnRow = function(issueNumber, setUrgent) {
+    var issue = allIssues.find(function(i) { return i.number === issueNumber; });
+    if (!issue) return;
+    if (setUrgent) {
+      JITApi.markUrgent(issueNumber, "【管理员手动加急】从列表操作列直接标记", "admin").then(function() {
+        _showToast("✅ 已设为加急");
+        loadVouchers();
+      }).catch(function(e) { _showToast("操作失败: " + e.message, "error"); });
+    } else {
+      JITApi.removeUrgent(issueNumber).then(function() {
+        _showToast("已取消加急标记");
+        loadVouchers();
+      }).catch(function(e) { _showToast("操作失败: " + e.message, "error"); });
+    }
   };
 
   var openReview = function(issueNumber) {

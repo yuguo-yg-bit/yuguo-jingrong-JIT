@@ -1033,6 +1033,14 @@ var JITApi = (function() {
     });
   };
 
+  var _removeLabel = function(issueNumber, labelName) {
+    var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber + "/labels/" + encodeURIComponent(labelName);
+    return _safeRequest(url, {
+      method: "DELETE",
+      headers: _headers()
+    });
+  };
+
   var _removeUrgent = function(issueNumber) {
     var label = JITConfig.getLabels().urgent;
     var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber + "/labels/" + encodeURIComponent(label);
