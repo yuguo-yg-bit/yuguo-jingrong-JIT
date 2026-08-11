@@ -248,8 +248,9 @@ var JITApi = (function() {
     } else if (voucherData.orderPhotos) {
       orderPhotos = voucherData.orderPhotos;
     }
+    var isElectric = !!(voucherData.electric || voucherData.voucherType === "电器凭证" || voucherData.electricCategory || voucherData.electricBrand);
 
-    return [
+    var lines = [
       "｜标题：" + (voucherData.username || "user") + (voucherData.voucherId || ""),
       "｜用户ID：" + (voucherData.username || "user"),
       "｜内容：店铺：" + (voucherData.shopName || ""),
@@ -268,7 +269,18 @@ var JITApi = (function() {
       "｜     订单号：" + (voucherData.orderNo || ""),
       "｜     商品截图：" + (voucherData.productPhoto || ""),
       "｜     购物截图：" + (voucherData.shoppingPhotos || "")
-    ].join("\n");
+    ];
+    if (isElectric) {
+      lines.push("｜     模式标识：电器补贴（非抽奖）");
+      lines.push("｜     电器分类：" + (voucherData.electricCategory || ""));
+      lines.push("｜     品牌名称：" + (voucherData.electricBrand || ""));
+      lines.push("｜     申请基数金额：" + (voucherData.electricApplyAmount || ""));
+      lines.push("｜     补贴比例：" + (voucherData.electricSubsidyRate || ""));
+      lines.push("｜     补贴金额：" + (voucherData.electricSubsidyAmount || ""));
+      lines.push("｜     审核结果：" + (voucherData.reviewResult || ""));
+      lines.push("｜     最终实付：" + (voucherData.finalPrice || ""));
+    }
+    return lines.join("\n");
   };
 
   var _parseIssueBody = function(body) {
@@ -321,6 +333,28 @@ var JITApi = (function() {
         data.productPhoto = match[1].trim();
       } else if ((match = trimmed.match(/^｜?\s*购物截图：(.+)$/))) {
         data.shoppingPhotos = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*模式标识：(.+)$/))) {
+        var s = match[1].trim();
+        if (s.indexOf("电器补贴") !== -1) data.electric = true;
+      } else if ((match = trimmed.match(/^｜?\s*电器分类：(.+)$/))) {
+        data.electricCategory = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*品牌名称：(.+)$/))) {
+        data.electricBrand = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*申请基数金额：(.+)$/))) {
+        data.electricApplyAmount = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*补贴比例：(.+)$/))) {
+        data.electricSubsidyRate = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*补贴金额：(.+)$/))) {
+        data.electricSubsidyAmount = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*审核结果：(.+)$/))) {
+        data.reviewResult = match[1].trim();
+      } else if ((match = trimmed.match(/^｜?\s*最终实付：(.+)$/))) {
+        data.finalPrice = match[1].trim();
+        if (typeof data.discount === "undefined" || !data.discount) {
+          // 兼容逻辑：前端 _renderOrders 取 discountValue/finalPrice 展示结果，
+          // 补贴模式没有折扣，但给 discount 占位避免显示“未抽奖”
+          data.discount = "补贴模式";
+        }
       }
     });
 
@@ -341,30 +375,68 @@ var JITApi = (function() {
     var hasCompletedLabel = labels.indexOf("completed") > -1;
 
     if (parsed.shopName || parsed.amount || parsed.paymentMethod || parsed.status || parsed.date) {
+      var isElectric = !!(parsed.electric || parsed.voucherType === "电器凭证" || parsed.electricCategory || parsed.electricSubsidyRate);
       var amountValue = parseFloat(parsed.amount || 0);
       var discountValue = 0;
-      if (parsed.discount && parsed.discount.indexOf("折") > -1) {
+      // ===== 电器补贴：discount 显示补贴比例 =====
+      var displayDiscount = parsed.discount || "";
+      if (isElectric) {
+        if (parsed.electricSubsidyRate) {
+          // 已审核：补贴 X%
+          displayDiscount = "🎁 补贴 " + parsed.electricSubsidyRate;
+          if (parsed.electricSubsidyAmount) displayDiscount += "（约 " + parsed.electricSubsidyAmount + "）";
+        } else {
+          // 待审核：还没设置补贴比例
+          displayDiscount = "⏳ 待审核补贴";
+        }
+      } else if (parsed.discount && parsed.discount.indexOf("折") > -1) {
         var discountMatch = parsed.discount.match(/(\d+(?:\.\d+)?)/);
         if (discountMatch) {
           discountValue = parseFloat(discountMatch[1]) / 10;
         }
       }
-      var finalAmount = isNaN(amountValue) ? parsed.amount : (amountValue * (discountValue || 1)).toFixed(2);
+      // ===== finalPrice：电器优先用 body 里已经算好的文本 =====
+      var finalAmount;
+      if (isElectric && parsed.finalPrice) {
+        finalAmount = parsed.finalPrice; // 如 "4749.05元（已减补贴 ¥249.95）"
+      } else {
+        finalAmount = isNaN(amountValue) ? parsed.amount : (amountValue * (discountValue || 1)).toFixed(2);
+      }
+      var finalPriceStr;
+      if (isElectric && parsed.finalPrice) {
+        finalPriceStr = parsed.finalPrice;
+      } else {
+        finalPriceStr = finalAmount ? (finalAmount + (String(finalAmount).indexOf("元") > -1 ? "" : "元")) : "";
+      }
+      var originalPriceStr = parsed.amount ? (parsed.amount + (parsed.amount.indexOf("元") > -1 ? "" : "元")) : "";
+      // ===== 申请基数（电器）显示 =====
+      if (isElectric && parsed.electricApplyAmount) {
+        try {
+          var n = parseFloat(parsed.electricApplyAmount);
+          if (!isNaN(n)) originalPriceStr = n.toFixed(2) + "元（电器申请基数）";
+        } catch(e) {}
+      }
       var paymentMethodType = "userFirst";
       if (parsed.paymentMethod && parsed.paymentMethod.indexOf("工会先代替") > -1) {
         paymentMethodType = "unionFirst";
       }
       var statusText = parsed.status || (hasCompletedLabel ? "已完成交易" : (issue.state === "closed" ? "已关闭" : "待审核"));
       return {
+        electric: isElectric,
+        electricCategory: parsed.electricCategory || "",
+        electricBrand: parsed.electricBrand || "",
+        electricApplyAmount: parsed.electricApplyAmount || "",
+        electricSubsidyRate: parsed.electricSubsidyRate || "",
+        electricSubsidyAmount: parsed.electricSubsidyAmount || "",
         shopName: parsed.shopName || "",
         date: parsed.date || (issue.created_at ? issue.created_at.split("T")[0] : ""),
-        discount: parsed.discount || "",
+        discount: displayDiscount,
         discountValue: discountValue,
         paymentNote: parsed.paymentMethod || "",
         paymentMethod: parsed.paymentMethod || "",
         paymentMethodType: paymentMethodType,
-        originalPrice: parsed.amount ? (parsed.amount + (parsed.amount.indexOf("元") > -1 ? "" : "元")) : "",
-        finalPrice: finalAmount ? (finalAmount + (String(finalAmount).indexOf("元") > -1 ? "" : "元")) : "",
+        originalPrice: originalPriceStr,
+        finalPrice: finalPriceStr,
         amount: parsed.amount || "",
         status: statusText,
         statusType: labels.indexOf("completed") > -1 ? "completed" : (labels.indexOf("paid") > -1 ? "paid" : (labels.indexOf("approved") > -1 ? "approved" : (labels.indexOf("rejected") > -1 ? "rejected" : "pending"))),
@@ -377,7 +449,7 @@ var JITApi = (function() {
         rejectReason: parsed.rejectReason || "",
         username: parsed.title ? parsed.title.replace(/\d+$/, "") : "",
         voucherId: parsed.voucherId || "",
-        voucherType: parsed.voucherType || "普通凭证",
+        voucherType: parsed.voucherType || (isElectric ? "电器凭证" : "普通凭证"),
         platform: parsed.platform || "",
         orderNo: parsed.orderNo || "",
         productPhoto: parsed.productPhoto || "",
@@ -813,6 +885,134 @@ var JITApi = (function() {
     });
   };
 
+  // ======= 通知系统 =======
+  var _formatNotificationBody = function(data) {
+    return [
+      "｜发送者：" + (data.sender || "admin"),
+      "｜标题：" + (data.title || ""),
+      "｜内容：" + (data.content || ""),
+      "｜目标用户：" + (data.targetUsers || "all"),
+      "｜发送时间：" + (data.sendTime || new Date().toISOString().replace("T", " ").slice(0, 19)),
+      "｜状态：active"
+    ].join("\n");
+  };
+
+  var _parseNotificationBody = function(body) {
+    var data = {};
+    var lines = String(body || "").split(/\r?\n/);
+    lines.forEach(function(line) {
+      var trimmed = line.trim();
+      var match;
+      if ((match = trimmed.match(/^｜?\s*发送者：(.+)$/))) data.sender = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*标题：(.+)$/))) data.title = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*内容：(.+)$/))) data.content = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*目标用户：(.+)$/))) data.targetUsers = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*发送时间：(.+)$/))) data.sendTime = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*状态：(.+)$/))) data.status = match[1].trim();
+    });
+    return data;
+  };
+
+  // 发送通知（管理员调用）
+  var _sendNotification = function(title, content, targetUsers) {
+    var label = JITConfig.getLabels().notification;
+    var data = {
+      sender: "admin",
+      title: title,
+      content: content,
+      targetUsers: targetUsers || "all",
+      sendTime: new Date().toISOString().replace("T", " ").slice(0, 19)
+    };
+    return _safeRequest(_apiBase + "/repos/" + _repoFull + "/issues", {
+      method: "POST",
+      headers: _headers(),
+      body: JSON.stringify({
+        title: "【通知】" + title,
+        body: _formatNotificationBody(data),
+        labels: ["voucher", label]
+      })
+    });
+  };
+
+  // 获取所有通知（管理员）
+  var _getAllNotifications = function() {
+    var label = JITConfig.getLabels().notification;
+    var url = _apiBase + "/repos/" + _repoFull + "/issues?state=open&labels=" + encodeURIComponent(label) + "&per_page=100&sort=created&direction=desc";
+    return _safeRequest(url, { method: "GET", headers: _headers() }).then(function(issues) {
+      if (!issues) return [];
+      return issues.map(function(issue) {
+        var data = _parseNotificationBody(issue.body);
+        return {
+          issueNumber: issue.number,
+          sender: data.sender || "admin",
+          title: data.title || "",
+          content: data.content || "",
+          targetUsers: data.targetUsers || "all",
+          sendTime: data.sendTime || "",
+          status: data.status || "active",
+          createdAt: issue.created_at,
+          comments: issue.comments || 0
+        };
+      });
+    });
+  };
+
+  // 获取用户可见的通知
+  var _getUserNotifications = function(username) {
+    return _getAllNotifications().then(function(list) {
+      return list.filter(function(n) {
+        if (n.status !== "active") return false;
+        if (n.targetUsers === "all") return true;
+        var targets = n.targetUsers.split(",").map(function(s) { return s.trim(); });
+        return targets.indexOf(username) !== -1;
+      });
+    });
+  };
+
+  // 用户回复通知
+  var _replyNotification = function(issueNumber, username, message) {
+    return _addIssueComment(issueNumber, "｜NOTIFY_REPLY｜" + username + "：" + message);
+  };
+
+  // 获取通知的回复
+  var _getNotificationReplies = function(issueNumber) {
+    return _getIssueComments(issueNumber).then(function(comments) {
+      var replies = [];
+      (comments || []).forEach(function(c) {
+        if (c.body && c.body.indexOf("｜NOTIFY_REPLY｜") === 0) {
+          var rest = c.body.replace("｜NOTIFY_REPLY｜", "");
+          var idx = rest.indexOf("：");
+          replies.push({
+            username: idx > -1 ? rest.substring(0, idx) : "unknown",
+            message: idx > -1 ? rest.substring(idx + 1) : rest,
+            time: c.created_at,
+            commenter: c.user ? c.user.login : ""
+          });
+        }
+      });
+      return replies;
+    });
+  };
+
+  // ======= 加急审核 =======
+  var _markUrgent = function(issueNumber) {
+    var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber + "/labels";
+    return _safeRequest(url, {
+      method: "POST",
+      headers: _headers(),
+      body: JSON.stringify({ labels: [JITConfig.getLabels().urgent] })
+    });
+  };
+
+  var _removeUrgent = function(issueNumber) {
+    var label = JITConfig.getLabels().urgent;
+    var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber + "/labels/" + encodeURIComponent(label);
+    return _safeRequest(url, {
+      method: "DELETE",
+      headers: _headers()
+    }).catch(function() { return null; });
+  };
+
   return {
     getVouchers: _getVouchers,
     getAllVouchers: _getAllVouchers,
@@ -843,6 +1043,13 @@ var JITApi = (function() {
     getReferrals: _getReferrals,
     getPendingRegistrations: _getPendingRegistrations,
     approveRegistration: _approveRegistration,
-    rejectRegistration: _rejectRegistration
+    rejectRegistration: _rejectRegistration,
+    sendNotification: _sendNotification,
+    getAllNotifications: _getAllNotifications,
+    getUserNotifications: _getUserNotifications,
+    replyNotification: _replyNotification,
+    getNotificationReplies: _getNotificationReplies,
+    markUrgent: _markUrgent,
+    removeUrgent: _removeUrgent
   };
 })();

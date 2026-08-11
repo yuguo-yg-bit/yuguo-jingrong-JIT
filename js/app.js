@@ -23,6 +23,11 @@ var JITApp = (function() {
   var _onlineShoppingPhotoFiles = [];
   var _onlineSignatureData = null;
 
+  // 大额电器补贴相关变量
+  var _electricProductFile = null;
+  var _electricOrderFiles = [];
+  var _electricSignatureData = null;
+
   var _init = function() {
     _initBackgroundParticles();
     _syncBlacklistFromCloud(); // 启动时先同步云端黑名单（优先级高于自动登录检测）
@@ -40,6 +45,10 @@ var JITApp = (function() {
     setInterval(function() {
       if (_currentUser) _refreshPointsDisplay(true);
     }, 30000);
+    // 每 60 秒拉取一次通知，更新铃铛未读数
+    setInterval(function() {
+      if (_currentUser) _loadNotifications();
+    }, 60000);
   };
 
   // ========= 积分相关 =========
@@ -212,6 +221,7 @@ var JITApp = (function() {
       var savedChat = localStorage.getItem("jit_chat_issue_" + savedUser);
       if (savedChat) _chatIssueNumber = parseInt(savedChat, 10);
       _refreshPointsDisplay();
+      _loadNotifications();
       return;
     }
     _showLoginPrompt();
@@ -274,6 +284,7 @@ var JITApp = (function() {
         _showToast("登录成功，欢迎 " + username, "success");
         _loadData();
         _refreshPointsDisplay();
+        _loadNotifications();
       } else {
         // 再检查注册用户
         errorEl.style.display = "none";
@@ -289,6 +300,7 @@ var JITApp = (function() {
             _showToast("登录成功，欢迎 " + username, "success");
             _loadData();
             _refreshPointsDisplay();
+            _loadNotifications();
           } else {
             // 检查是否有待审核的注册申请
             return JITApi.findPendingRegistration(username).then(function(pending) {
@@ -914,6 +926,56 @@ var JITApp = (function() {
       btnAddOnlineVoucher.addEventListener("click", _openAddOnlineVoucherModal);
     }
 
+    // ===== 大额电器补贴 =====
+    var btnAddElectricVoucher = document.getElementById("btnAddElectricVoucher");
+    if (btnAddElectricVoucher) {
+      btnAddElectricVoucher.addEventListener("click", _openAddElectricModal);
+    }
+    var _jumpToElectric = function() {
+      // 关掉普通添加凭证弹窗，直接开电器补贴弹窗
+      var overlay = document.getElementById("modalOverlay");
+      if (overlay) overlay.classList.remove("active");
+      _openAddElectricModal();
+    };
+    // 原 body 内的卡片按钮
+    var btnJumpElectric = document.getElementById("btnJumpElectric");
+    if (btnJumpElectric) btnJumpElectric.addEventListener("click", _jumpToElectric);
+    // 新增：弹窗顶部大卡片（打开即可见）
+    var jumpTop = document.getElementById("jumpElectricTop");
+    if (jumpTop) jumpTop.addEventListener("click", _jumpToElectric);
+    // 新增：footer 固定入口条（不随body滚动）
+    var jumpFooter = document.getElementById("jumpElectricFooter");
+    if (jumpFooter) jumpFooter.addEventListener("click", _jumpToElectric);
+    var btnElectricModalClose = document.getElementById("btnElectricModalClose");
+    if (btnElectricModalClose) {
+      btnElectricModalClose.addEventListener("click", _closeAddElectricModal);
+    }
+    var modalElectricOverlay = document.getElementById("modalElectricOverlay");
+    if (modalElectricOverlay) {
+      modalElectricOverlay.addEventListener("click", function(e) {
+        if (e.target === modalElectricOverlay) _closeAddElectricModal();
+      });
+    }
+    var btnSubmitElectric = document.getElementById("btnSubmitElectricVoucher");
+    if (btnSubmitElectric) {
+      btnSubmitElectric.addEventListener("click", _submitElectricVoucherForm);
+    }
+    // 电器上传 / 签名
+    var btnElectricClearSig = document.getElementById("btnElectricClearSignature");
+    if (btnElectricClearSig) btnElectricClearSig.addEventListener("click", _clearElectricSignature);
+    var uploadElectricProduct = document.getElementById("uploadElectricProduct");
+    if (uploadElectricProduct) {
+      var f1 = document.getElementById("inputElectricProduct");
+      uploadElectricProduct.addEventListener("click", function(e) { if (e.target.tagName !== "INPUT") f1 && f1.click(); });
+      if (f1) f1.addEventListener("change", _onElectricProductFileChange);
+    }
+    var uploadElectricOrder = document.getElementById("uploadElectricOrder");
+    if (uploadElectricOrder) {
+      var f2 = document.getElementById("inputElectricOrder");
+      uploadElectricOrder.addEventListener("click", function(e) { if (e.target.tagName !== "INPUT") f2 && f2.click(); });
+      if (f2) f2.addEventListener("change", _onElectricOrderFilesChange);
+    }
+
     var btnInvite = document.getElementById("btnInvite");
     if (btnInvite) {
       btnInvite.addEventListener("click", _showInviteModal);
@@ -1041,6 +1103,28 @@ var JITApp = (function() {
     _initOnlineSignatureCanvas();
     _initAmountInput();
     _initOnlineAmountInput();
+
+    // ===== 通知相关事件 =====
+    var btnNotification = document.getElementById("btnNotification");
+    if (btnNotification) btnNotification.addEventListener("click", _openNotificationList);
+    var btnNotificationClose = document.getElementById("btnNotificationClose");
+    if (btnNotificationClose) btnNotificationClose.addEventListener("click", _closeNotificationList);
+    var notificationOverlay = document.getElementById("notificationOverlay");
+    if (notificationOverlay) {
+      notificationOverlay.addEventListener("click", function(e) {
+        if (e.target === notificationOverlay) _closeNotificationList();
+      });
+    }
+    var btnNotifDetailClose = document.getElementById("btnNotifDetailClose");
+    if (btnNotifDetailClose) btnNotifDetailClose.addEventListener("click", _closeNotificationDetail);
+    var notifDetailOverlay = document.getElementById("notificationDetailOverlay");
+    if (notifDetailOverlay) {
+      notifDetailOverlay.addEventListener("click", function(e) {
+        if (e.target === notifDetailOverlay) _closeNotificationDetail();
+      });
+    }
+    var btnSendNotifReply = document.getElementById("btnSendNotifReply");
+    if (btnSendNotifReply) btnSendNotifReply.addEventListener("click", _submitNotifReply);
 
     var ordersTableBody = document.getElementById("ordersTableBody");
     if (ordersTableBody) {
@@ -1643,17 +1727,27 @@ var JITApp = (function() {
       var statusText = v.status || "待审核";
       if (v.statusType === "completed") statusText = "已完成交易";
       if (v.statusType === "paid") statusText = "已付款·待确认";
+      var isElectric = !!(v.electric || v.voucherType === "电器凭证");
       var discount = v.discount || "-";
       var paymentNote = v.paymentNote || v.paymentMethod || "-";
       var originalPrice = v.originalPrice || "-";
       var finalPrice = v.finalPrice || "-";
 
       html += "<tr>";
-      var typeLabel = (v.voucherType === "线上购物") ? "线上购物" : "普通凭证";
-      html += "<td><span style=\"font-size:12px;padding:2px 6px;border-radius:4px;background:" + (typeLabel === "线上购物" ? "rgba(33,150,243,0.15);color:#2196f3" : "rgba(158,158,158,0.15);color:#999") + ";\">" + typeLabel + "</span></td>";
+      // ===== 类型标签：普通 / 线上 / 电器 =====
+      var typeLabel = "普通凭证";
+      var typeBg = "rgba(158,158,158,0.15);color:#999";
+      if (v.voucherType === "线上购物") {
+        typeLabel = "线上购物";
+        typeBg = "rgba(33,150,243,0.15);color:#2196f3";
+      } else if (isElectric) {
+        typeLabel = "🎁 大额电器补贴";
+        typeBg = "rgba(255,112,67,0.15);color:#ff7043;border:1px solid rgba(255,112,67,0.3);";
+      }
+      html += "<td><span style=\"font-size:12px;padding:2px 6px;border-radius:4px;background:" + typeBg + "\">" + typeLabel + "</span></td>";
       html += "<td>" + _escapeHtml(v.shopName || "-") + "</td>";
       html += "<td>" + _escapeHtml(v.date || "-") + "</td>";
-      html += "<td><span class=\"discount-badge\">" + _escapeHtml(discount) + "</span></td>";
+      html += "<td><span class=\"discount-badge\"" + (isElectric ? " style=\"background:rgba(255,112,67,0.15);color:#ff7043;border-color:rgba(255,112,67,0.4);\"" : "") + ">" + _escapeHtml(discount) + "</span></td>";
       html += "<td>" + _escapeHtml(paymentNote) + "</td>";
       html += "<td>" + _escapeHtml(originalPrice) + "</td>";
       html += "<td>" + _escapeHtml(finalPrice) + "</td>";
@@ -1666,8 +1760,8 @@ var JITApp = (function() {
       if (v.statusType === "pending") {
         actions += "<button class=\"edit-order-btn\" data-issue-number=\"" + _escapeHtml(v._issueNumber || "") + "\">编辑</button>";
       }
-      // 未抽奖的凭证才显示抽奖按钮
-      if (!v.discount) {
+      // ===== 电器凭证不显示抽奖按钮（非抽奖模式）=====
+      if (!isElectric && !v.discount) {
         actions += "<button class=\"lottery-order-btn\" data-issue-number=\"" + _escapeHtml(v._issueNumber || "") + "\">🎰 抽奖</button>";
       }
       // 审核通过且未完成交易时显示去支付
@@ -1790,6 +1884,12 @@ var JITApp = (function() {
     }
     if (!voucher) {
       _showToast("请先选择要抽奖的凭证", "error");
+      return;
+    }
+    // ===== 电器凭证（非抽奖模式）禁止抽奖 =====
+    var isElectric = !!(voucher.electric || voucher.voucherType === "电器凭证");
+    if (isElectric) {
+      _showToast("🎁 大额电器补贴为非抽奖模式，请等待管理员审核补贴比例~", "");
       return;
     }
     // 如果已抽过奖，提示不能重复抽
@@ -2284,6 +2384,224 @@ var JITApp = (function() {
       btn.disabled = false;
       btn.classList.remove("btn-loading");
       btn.textContent = originalText;
+    });
+  };
+
+  // ========= 大额电器补贴 =========
+  var _openAddElectricModal = function() {
+    if (!_currentUser) { _showToast("请先登录","error"); _showLoginPrompt(); return; }
+    var overlay = document.getElementById("modalElectricOverlay");
+    if (!overlay) return;
+    overlay.classList.add("active");
+    _resetElectricForm();
+    setTimeout(function() { _initElectricSignatureCanvas(); }, 200);
+  };
+
+  var _closeAddElectricModal = function() {
+    var overlay = document.getElementById("modalElectricOverlay");
+    if (overlay) overlay.classList.remove("active");
+  };
+
+  var _resetElectricForm = function() {
+    var fields = ["inputElectricOrderType","inputElectricShop","inputElectricCategory","inputElectricBrand","inputElectricAmount","inputElectricRemark"];
+    fields.forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ""; });
+    document.querySelectorAll('input[name="electricPaymentMethod"]').forEach(function(r) { r.checked = false; });
+    // 清空上传
+    _electricProductFile = null;
+    _electricOrderFiles = [];
+    var pimg = document.getElementById("previewElectricProduct");
+    if (pimg) { pimg.src = ""; pimg.style.display = "none"; }
+    var olist = document.getElementById("previewElectricOrder");
+    if (olist) olist.innerHTML = "";
+    // 清空签名
+    _electricSignatureData = null;
+    setTimeout(function() { _clearElectricSignature(); }, 50);
+  };
+
+  var _initElectricSignatureCanvas = function() {
+    var canvas = document.getElementById("electricSignatureCanvas");
+    if (!canvas) return;
+    var parent = canvas.parentElement;
+    canvas.width = parent.clientWidth;
+    canvas.height = parent.clientHeight;
+    var ctx = canvas.getContext("2d");
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#ffffff";
+    var drawing = false, lastX = 0, lastY = 0;
+    function pos(e) {
+      var rect = canvas.getBoundingClientRect();
+      var t = e.touches && e.touches[0] ? e.touches[0] : e;
+      return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+    }
+    function start(e) { e.preventDefault(); drawing = true; var p = pos(e); lastX = p.x; lastY = p.y; }
+    function move(e) {
+      if (!drawing) return; e.preventDefault();
+      var p = pos(e);
+      ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(p.x, p.y); ctx.stroke();
+      lastX = p.x; lastY = p.y;
+    }
+    function end(e) { if (drawing) { drawing = false; _electricSignatureData = canvas.toDataURL(); } }
+    canvas.onmousedown = start; canvas.onmousemove = move; canvas.onmouseup = end; canvas.onmouseleave = end;
+    canvas.ontouchstart = start; canvas.ontouchmove = move; canvas.ontouchend = end;
+  };
+
+  var _clearElectricSignature = function() {
+    var canvas = document.getElementById("electricSignatureCanvas");
+    if (!canvas) return;
+    var ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    _electricSignatureData = null;
+  };
+
+  var _onElectricProductFileChange = function(e) {
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    _electricProductFile = file;
+    var preview = document.getElementById("previewElectricProduct");
+    if (!preview) return;
+    var reader = new FileReader();
+    reader.onload = function(ev) { preview.src = ev.target.result; preview.style.display = "block"; };
+    reader.readAsDataURL(file);
+  };
+
+  var _onElectricOrderFilesChange = function(e) {
+    var files = Array.prototype.slice.call(e.target.files || []);
+    if (!files.length) return;
+    _electricOrderFiles = _electricOrderFiles.concat(files);
+    var list = document.getElementById("previewElectricOrder");
+    if (!list) return;
+    files.forEach(function(f) {
+      var reader = new FileReader();
+      reader.onload = function(ev) {
+        var wrap = document.createElement("div");
+        wrap.className = "upload-preview-item";
+        var img = document.createElement("img"); img.src = ev.target.result;
+        var rm = document.createElement("button");
+        rm.className = "upload-preview-remove"; rm.textContent = "×";
+        rm.addEventListener("click", function() {
+          var i = _electricOrderFiles.indexOf(f);
+          if (i >= 0) _electricOrderFiles.splice(i, 1);
+          wrap.remove();
+        });
+        wrap.appendChild(img); wrap.appendChild(rm);
+        list.appendChild(wrap);
+      };
+      reader.readAsDataURL(f);
+    });
+  };
+
+  var _submitElectricVoucherForm = function() {
+    if (!_currentUser) { _showToast("请先登录","error"); return; }
+    var orderType = document.getElementById("inputElectricOrderType").value;
+    var payRadio = document.querySelector('input[name="electricPaymentMethod"]:checked');
+    var payVal = payRadio ? payRadio.value : "";
+    var payText = payVal === "unionFirst" ? "工会先代替支付，再让用户支付优惠差价" : (payVal === "userFirst" ? "用户先支付全额，工会再给用户差价" : "");
+    var shop = document.getElementById("inputElectricShop").value.trim();
+    var cat = document.getElementById("inputElectricCategory").value;
+    var brand = document.getElementById("inputElectricBrand").value.trim();
+    var amountRaw = document.getElementById("inputElectricAmount").value.trim();
+    var remark = document.getElementById("inputElectricRemark").value.trim();
+
+    // 错误提示初始化隐藏
+    var errorMap = {
+      errorElectricOrderType: orderType ? "" : "请选择订单类型",
+      errorElectricPaymentMethod: payVal ? "" : "请选择支付方式",
+      errorElectricShop: shop ? "" : "请填写店铺 / 平台名称",
+      errorElectricCategory: cat ? "" : "请选择电器分类",
+      errorElectricBrand: brand ? "" : "请填写品牌名称",
+      errorElectricProduct: _electricProductFile ? "" : "请上传商品实物照片",
+      errorElectricOrder: _electricOrderFiles.length ? "" : "请上传订单 / 付款截图",
+      errorElectricSignature: _electricSignatureData ? "" : "请手写签名"
+    };
+    var hasError = false;
+    Object.keys(errorMap).forEach(function(k) {
+      var el = document.getElementById(k);
+      if (!el) return;
+      if (errorMap[k]) { el.textContent = errorMap[k]; el.classList.add("visible"); hasError = true; }
+      else { el.textContent = ""; el.classList.remove("visible"); }
+    });
+    // 金额校验
+    var amtEl = document.getElementById("errorElectricAmount");
+    var amtNum = parseFloat((amountRaw || "").replace(/元|,/g, ""));
+    if (!amountRaw) {
+      if (amtEl) { amtEl.textContent = "请输入消费金额"; amtEl.classList.add("visible"); hasError = true; }
+    } else if (isNaN(amtNum) || amtNum <= 0) {
+      if (amtEl) { amtEl.textContent = "消费金额格式不正确"; amtEl.classList.add("visible"); hasError = true; }
+    } else if (amtNum < 3000) {
+      if (amtEl) { amtEl.textContent = "大额电器补贴仅支持金额 ≥ 3000 元，当前：" + amtNum + " 元"; amtEl.classList.add("visible"); hasError = true; }
+    } else {
+      if (amtEl) { amtEl.textContent = ""; amtEl.classList.remove("visible"); }
+    }
+    if (hasError) return;
+
+    var btn = document.getElementById("btnSubmitElectricVoucher");
+    var originalText = btn.textContent;
+    btn.disabled = true; btn.classList.add("btn-loading"); btn.textContent = "提交中...";
+
+    var voucherData = {
+      voucherType: "电器凭证",
+      electric: true,                   // 大字段，用来识别这是大额电器补贴
+      electricCategory: cat,            // 18 类之一
+      electricBrand: brand,
+      electricApplyAmount: amtNum.toFixed(2),   // 申请基数
+      electricSubsidyRate: "",          // 留空，管理员审核填写（%）
+      electricSubsidyAmount: "",        // 留空，管理员审核时算
+      shopName: shop,
+      date: new Date().toISOString().split("T")[0],
+      shopPhoto: "",
+      orderPhotos: [],
+      amount: amtNum.toFixed(2) + "元",
+      signature: _electricSignatureData,
+      remark: remark || "",
+      username: _currentUser,
+      status: "待审核",
+      statusType: "pending",
+      discount: "",
+      discountValue: 0,
+      originalPrice: amtNum.toFixed(2) + "元",
+      finalPrice: amtNum.toFixed(2) + "元",
+      paymentMethod: payVal,
+      paymentMethodText: payText,
+      paymentNote: payText,
+      _issueNumber: null,
+      _createdAt: Date.now()
+    };
+
+    JITApi.getNextVoucherId().then(function(nextId) {
+      voucherData.voucherId = nextId;
+      return JITApi.ensureLabels();
+    }).then(function() {
+      return JITApi.submitVoucherWithImages(
+        voucherData,
+        _electricProductFile,
+        _electricOrderFiles,
+        !!_electricProductFile,
+        _electricOrderFiles.length > 0
+      );
+    }).then(function(result) {
+      _showToast("电器补贴凭证提交成功！等待管理员审核补贴比例", "success");
+      _closeAddElectricModal();
+      JITApi.invalidateCache("allVouchers");
+      JITApi.invalidateCache("allVouchersForId");
+      // 添加凭证 + 连续签到 积分
+      var awardPromises = [];
+      try {
+        if (JITPoints && JITPoints.changePoints) {
+          awardPromises.push(JITPoints.changePoints(_currentUser, 15, "添加电器补贴凭证").catch(function() {}));
+        }
+        if (JITPoints && JITPoints.signIn) {
+          awardPromises.push(JITPoints.signIn(_currentUser).then(function(r){ if(r && r.bonusEarned) _showToast("连续3天添加凭证 +30 积分！","success"); }).catch(function() {}));
+        }
+      } catch(e) {}
+      Promise.all(awardPromises).then(function(){ _refreshPointsDisplay(true); });
+      _loadData();
+    }).catch(function(err) {
+      console.error("提交电器补贴凭证失败:", err);
+      _showToast("提交失败: " + err.message, "error");
+    }).finally(function() {
+      btn.disabled = false; btn.classList.remove("btn-loading"); btn.textContent = originalText;
     });
   };
 
@@ -2813,10 +3131,25 @@ var JITApp = (function() {
         }
       }
       if (v.signature) html += '<div style="margin:8px 0;"><strong>签名</strong><br><img src="' + encodeURI(v.signature) + '" style="max-width:200px;border-radius:8px;margin-top:4px;"></div>';
-      html += '<button id="btnCloseVoucherDetail" style="margin-top:12px;width:100%;padding:8px;border:none;border-radius:8px;background:var(--bg-card);color:var(--text-primary);cursor:pointer;">关闭</button>';
+      // ===== 加急审核按钮（仅未审核且未加急时显示）=====
+      var isUrgent = (v._labels || []).indexOf("urgent") > -1;
+      if (v.statusType === "pending") {
+        if (isUrgent) {
+          html += '<div style="margin-top:12px;padding:10px 12px;border-radius:8px;background:rgba(244,67,54,0.1);border:1px solid rgba(244,67,54,0.3);text-align:center;font-size:13px;color:#f44336;font-weight:600;">⚡ 已申请加急，管理员将优先处理</div>';
+        } else {
+          html += '<button id="btnApplyUrgent" style="margin-top:12px;width:100%;padding:10px;border:none;border-radius:8px;background:linear-gradient(135deg,#ff7043,#f44336);color:#fff;font-weight:600;cursor:pointer;font-size:13px;">⚡ 申请加急审核</button>';
+        }
+      }
+      html += '<button id="btnCloseVoucherDetail" style="margin-top:8px;width:100%;padding:8px;border:none;border-radius:8px;background:var(--bg-card);color:var(--text-primary);cursor:pointer;">关闭</button>';
       box.innerHTML = html;
       overlay.appendChild(box);
       document.body.appendChild(overlay);
+      var urgentBtn = document.getElementById("btnApplyUrgent");
+      if (urgentBtn) {
+        urgentBtn.addEventListener("click", function() {
+          _applyUrgentReview(v);
+        });
+      }
       document.getElementById("btnCloseVoucherDetail").addEventListener("click", function() {
         document.body.removeChild(overlay);
       });
@@ -2825,6 +3158,199 @@ var JITApp = (function() {
       });
     }).catch(function(err) {
       _showToast("加载凭证失败: " + err.message, "error");
+    });
+  };
+
+  // ========= 通知系统 =========
+  var _currentNotifDetailIssue = null;
+
+  var _loadNotifications = function() {
+    if (!_currentUser) return Promise.resolve();
+    return JITApi.getUserNotifications(_currentUser).then(function(list) {
+      var badge = document.getElementById("notificationBadge");
+      if (badge) {
+        if (list && list.length > 0) {
+          badge.textContent = list.length > 99 ? "99+" : String(list.length);
+          badge.style.display = "block";
+        } else {
+          badge.style.display = "none";
+        }
+      }
+      // 若通知列表弹窗打开，则同步刷新
+      var overlay = document.getElementById("notificationOverlay");
+      if (overlay && overlay.classList.contains("active")) {
+        _renderNotifications(list || []);
+      }
+      return list || [];
+    }).catch(function() {
+      return [];
+    });
+  };
+
+  var _openNotificationList = function() {
+    var overlay = document.getElementById("notificationOverlay");
+    if (!overlay) return;
+    overlay.classList.add("active");
+    var listEl = document.getElementById("notificationList");
+    if (listEl) listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-secondary);">加载中...</div>';
+    if (!_currentUser) {
+      if (listEl) listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-secondary);">请先登录</div>';
+      return;
+    }
+    JITApi.getUserNotifications(_currentUser).then(function(list) {
+      _renderNotifications(list || []);
+    }).catch(function(err) {
+      if (listEl) listEl.innerHTML = '<div style="text-align:center;padding:40px;color:#f44336;">加载失败: ' + _escapeHtml(err.message) + '</div>';
+    });
+  };
+
+  var _closeNotificationList = function() {
+    var overlay = document.getElementById("notificationOverlay");
+    if (overlay) overlay.classList.remove("active");
+  };
+
+  var _renderNotifications = function(list) {
+    var listEl = document.getElementById("notificationList");
+    if (!listEl) return;
+    if (!list || list.length === 0) {
+      listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-secondary);">暂无通知</div>';
+      return;
+    }
+    var html = "";
+    list.forEach(function(n) {
+      var targetTag = (n.targetUsers === "all") ? '<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:rgba(76,175,80,0.15);color:#4caf50;margin-right:6px;">全体</span>' : '<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:rgba(33,150,243,0.15);color:#2196f3;margin-right:6px;">定向</span>';
+      html += '<div class="notification-item" data-notif="' + n.issueNumber + '" style="padding:12px 14px;border:1px solid var(--border-color);border-radius:10px;margin-bottom:10px;cursor:pointer;transition:all .2s ease;">';
+      html += '<div style="font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:4px;">' + targetTag + _escapeHtml(n.title) + '</div>';
+      html += '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + _escapeHtml(n.content) + '</div>';
+      html += '<div style="font-size:11px;color:var(--text-muted);display:flex;justify-content:space-between;align-items:center;">';
+      html += '<span>' + _escapeHtml(n.sendTime || "") + '</span>';
+      if (n.comments && n.comments > 0) {
+        html += '<span style="color:var(--accent);">💬 ' + n.comments + ' 条回复</span>';
+      }
+      html += '</div>';
+      html += '</div>';
+    });
+    listEl.innerHTML = html;
+    listEl.querySelectorAll(".notification-item").forEach(function(item) {
+      item.addEventListener("click", function() {
+        _openNotificationDetail(parseInt(this.getAttribute("data-notif")));
+      });
+    });
+  };
+
+  var _openNotificationDetail = function(issueNumber) {
+    var overlay = document.getElementById("notificationDetailOverlay");
+    if (!overlay) return;
+    _currentNotifDetailIssue = issueNumber;
+    overlay.classList.add("active");
+    var titleEl = document.getElementById("notifDetailTitle");
+    var contentEl = document.getElementById("notifDetailContent");
+    var repliesEl = document.getElementById("notifMyReplies");
+    var inputEl = document.getElementById("inputNotifReply");
+    if (inputEl) inputEl.value = "";
+    if (titleEl) titleEl.textContent = "通知详情";
+    if (contentEl) contentEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-secondary);">加载中...</div>';
+    if (repliesEl) repliesEl.innerHTML = "";
+
+    JITApi.getAllNotifications().then(function(list) {
+      var n = list.find(function(x) { return x.issueNumber === issueNumber; });
+      if (titleEl) titleEl.textContent = n ? ("🔔 " + n.title) : "通知详情";
+      if (contentEl) {
+        if (!n) {
+          contentEl.innerHTML = '<div style="color:#f44336;">通知不存在或已被删除</div>';
+        } else {
+          var html = '<div style="padding:12px 14px;border-radius:10px;background:rgba(33,150,243,0.06);border:1px solid rgba(33,150,243,0.2);margin-bottom:8px;">';
+          html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">发送者：管理员 · ' + _escapeHtml(n.sendTime || "") + '</div>';
+          html += '<div style="font-size:14px;line-height:1.6;color:var(--text-primary);white-space:pre-wrap;word-break:break-word;">' + _escapeHtml(n.content) + '</div>';
+          html += '</div>';
+          contentEl.innerHTML = html;
+        }
+      }
+      // 拉取该通知的所有回复（含其他用户）
+      return JITApi.getNotificationReplies(issueNumber);
+    }).then(function(replies) {
+      _renderNotifReplies(replies || []);
+    }).catch(function(err) {
+      if (contentEl) contentEl.innerHTML = '<div style="color:#f44336;">加载失败: ' + _escapeHtml(err.message) + '</div>';
+    });
+  };
+
+  var _closeNotificationDetail = function() {
+    var overlay = document.getElementById("notificationDetailOverlay");
+    if (overlay) overlay.classList.remove("active");
+    _currentNotifDetailIssue = null;
+  };
+
+  var _renderNotifReplies = function(replies) {
+    var repliesEl = document.getElementById("notifMyReplies");
+    if (!repliesEl) return;
+    if (!replies || replies.length === 0) {
+      repliesEl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:12px;">暂无回复，快来抢沙发~</div>';
+      return;
+    }
+    var html = "";
+    replies.forEach(function(r) {
+      var isMe = (r.username === _currentUser);
+      var alignStyle = isMe ? "text-align:right;" : "text-align:left;";
+      var bgStyle = isMe ? "background:rgba(76,175,80,0.12);border:1px solid rgba(76,175,80,0.3);" : "background:var(--bg-card);border:1px solid var(--border-color);";
+      html += '<div style="margin-bottom:8px;' + alignStyle + '">';
+      html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:2px;">' + _escapeHtml(r.username) + (isMe ? '（我）' : '') + ' · ' + _escapeHtml((r.time || "").replace("T", " ").slice(0, 16)) + '</div>';
+      html += '<div style="display:inline-block;max-width:80%;padding:8px 12px;border-radius:10px;font-size:13px;word-break:break-word;' + bgStyle + '">' + _escapeHtml(r.message) + '</div>';
+      html += '</div>';
+    });
+    repliesEl.innerHTML = html;
+    repliesEl.scrollTop = repliesEl.scrollHeight;
+  };
+
+  var _submitNotifReply = function() {
+    if (!_currentUser) { _showToast("请先登录", "error"); return; }
+    if (!_currentNotifDetailIssue) { _showToast("未选中通知", "error"); return; }
+    var inputEl = document.getElementById("inputNotifReply");
+    if (!inputEl) return;
+    var msg = (inputEl.value || "").trim();
+    if (!msg) { _showToast("请输入回复内容", "error"); return; }
+    if (msg.length > 500) { _showToast("回复内容不能超过500字", "error"); return; }
+    var btn = document.getElementById("btnSendNotifReply");
+    if (btn) btn.disabled = true;
+    JITApi.replyNotification(_currentNotifDetailIssue, _currentUser, msg).then(function() {
+      inputEl.value = "";
+      _showToast("回复成功", "success");
+      // 刷新回复列表
+      return JITApi.getNotificationReplies(_currentNotifDetailIssue).then(function(replies) {
+        _renderNotifReplies(replies || []);
+      });
+    }).catch(function(err) {
+      _showToast("回复失败: " + err.message, "error");
+    }).finally(function() {
+      if (btn) btn.disabled = false;
+    });
+  };
+
+  // ========= 申请加急审核 =========
+  var _applyUrgentReview = function(voucher) {
+    if (!voucher) return;
+    if (voucher.statusType && voucher.statusType !== "pending") {
+      _showToast("只能对未审核的凭证申请加急", "error");
+      return;
+    }
+    var alreadyUrgent = (voucher._labels || []).indexOf("urgent") > -1;
+    if (alreadyUrgent) {
+      _showToast("该凭证已申请过加急，请耐心等待管理员审核", "");
+      return;
+    }
+    if (!confirm("确定申请加急审核吗？\n\n加急后管理员将优先处理此凭证。\n（请勿滥用，恶意加急可能影响后续审核）")) return;
+    JITApi.markUrgent(voucher._issueNumber).then(function() {
+      _showToast("⚡ 加急申请已提交，管理员将优先审核", "success");
+      // 关闭详情弹窗
+      var overlays = document.querySelectorAll('.modal-overlay[style*="z-index:9999"]');
+      overlays.forEach(function(o) {
+        if (o.parentNode) o.parentNode.removeChild(o);
+      });
+      // 刷新本地数据
+      if (voucher._labels) voucher._labels.push("urgent");
+      _loadData();
+    }).catch(function(err) {
+      _showToast("申请失败: " + err.message, "error");
     });
   };
 
@@ -2878,7 +3404,13 @@ var JITApp = (function() {
 
   return {
     init: _init,
-    _openVoucherDetail: _openVoucherDetail
+    _openVoucherDetail: _openVoucherDetail,
+    // 暴露给 work.html 内嵌 onclick 调用（顶部大卡片 / footer 固定入口点击跳转到电器补贴弹窗）
+    jumpToElectric: function() {
+      var overlay = document.getElementById("modalOverlay");
+      if (overlay) overlay.classList.remove("active");
+      if (typeof _openAddElectricModal === "function") _openAddElectricModal();
+    }
   };
 })();
 

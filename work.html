@@ -34,6 +34,13 @@
             <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
           </svg>
         </button>
+        <button class="nav-btn-small" id="btnNotification" title="通知" style="position:relative;">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          <span id="notificationBadge" style="position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;line-height:16px;text-align:center;font-size:10px;font-weight:700;color:#fff;background:#f44336;border-radius:8px;padding:0 4px;display:none;"></span>
+        </button>
         <button class="nav-btn-small" id="btnJITVip">JIT级别会员优惠券</button>
       </div>
       <div class="nav-group nav-group-large">
@@ -49,6 +56,10 @@
         <div class="nav-module" id="moduleAddOnline">
           <span class="module-tip" style="color:var(--accent);">线上购物</span>
           <button class="module-btn" id="btnAddOnlineVoucher" style="border-color:var(--accent);color:var(--accent);">添加线上购物</button>
+        </div>
+        <div class="nav-module" id="moduleElectric">
+          <span class="module-tip" style="color:#ff7043;">大额电器补贴</span>
+          <button class="module-btn" id="btnAddElectricVoucher" style="border-color:#ff7043;color:#ff7043;">🎁 电器补贴凭证</button>
         </div>
         <div class="nav-module" id="moduleWheelLottery">
           <span class="module-tip" style="color:#ffd700;">积分抽奖</span>
@@ -142,6 +153,23 @@
     </div>
     <div class="modal-body">
       <form id="voucherForm" enctype="multipart/form-data">
+        <!-- ===== 弹窗顶部：大额电器补贴醒目入口（打开就看到） ===== -->
+        <div id="jumpElectricTop" style="margin-bottom:16px;padding:14px 16px;border-radius:14px;background:linear-gradient(135deg,rgba(255,112,67,0.15),rgba(255,152,0,0.2));border:1.5px solid rgba(255,112,67,0.4);cursor:pointer;transition:all .2s ease;" onclick="JITApp && JITApp.jumpToElectric && JITApp.jumpToElectric();">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:15px;font-weight:800;color:#ff6e40;margin-bottom:4px;">🎁 玉国金融 · 大额电器补贴（推荐）</div>
+              <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;">
+                单件 / 单订单金额 ≥ <b style="color:#ff8a65;">3000 元</b> 的电器消费<br>
+                <b style="color:#ffab91;">非抽奖模式</b> → 管理员审核按比例直接补贴（如 5%）
+              </div>
+            </div>
+            <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:6px;">
+              <div style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#ff7043,#ff5722);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:18px;box-shadow:0 4px 14px rgba(255,87,34,0.4);">🎁</div>
+              <div style="font-size:11px;color:#ff8a65;font-weight:700;white-space:nowrap;">点我去填写 →</div>
+            </div>
+          </div>
+        </div>
+
         <div class="form-group">
           <label class="form-label">支付方式 <span class="required">*</span></label>
           <div class="payment-options" id="paymentOptions">
@@ -221,10 +249,161 @@
           <label class="form-label">备注</label>
           <textarea class="form-textarea" id="inputRemark" placeholder="可选备注信息" rows="3"></textarea>
         </div>
+        <div style="margin-top:10px;padding:12px 14px;border-radius:12px;background:linear-gradient(90deg,rgba(255,112,67,0.08),rgba(255,152,0,0.1));border:1px solid rgba(255,112,67,0.25);">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+            <div>
+              <div style="font-weight:700;color:#ff8a65;margin-bottom:2px;">🎁 玉国金融 · 大额电器补贴</div>
+              <div style="font-size:12px;color:var(--text-secondary);">购买 <b style="color:#ff8a65;">3000 元以上</b> 电器可申请，非抽奖模式，管理员审核按比例补贴</div>
+            </div>
+            <button type="button" id="btnJumpElectric" class="btn-submit" style="margin:0;min-width:auto;padding:10px 16px;font-size:13px;background:linear-gradient(135deg,#ff7043,#ff5722);">去填写 →</button>
+          </div>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer" style="flex-direction:column;gap:10px;align-items:stretch;">
+      <!-- ===== footer 固定入口（不随 body 滚动，始终可见） ===== -->
+      <div id="jumpElectricFooter" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-radius:12px;background:linear-gradient(90deg,rgba(255,112,67,0.1),rgba(255,152,0,0.12));border:1px solid rgba(255,112,67,0.35);cursor:pointer;">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
+          <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#ff7043,#ff5722);display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;flex-shrink:0;">🎁</div>
+          <div style="min-width:0;">
+            <div style="font-size:13px;font-weight:700;color:#ff6e40;line-height:1.3;">大额电器补贴（≥3000元 专用）</div>
+            <div style="font-size:11px;color:var(--text-secondary);margin-top:1px;">非抽奖 · 审核按比例补贴</div>
+          </div>
+        </div>
+        <div style="flex-shrink:0;">
+          <span style="display:inline-block;font-size:12px;font-weight:700;color:#fff;padding:6px 12px;border-radius:8px;background:linear-gradient(135deg,#ff7043,#ff5722);">去填写 →</span>
+        </div>
+      </div>
+      <button type="button" class="btn-submit" id="btnSubmitVoucher" style="width:100%;margin:0;">添加凭证并提交审核</button>
+    </div>
+  </div>
+</div>
+
+<!-- 大额电器补贴 二级弹窗（18 分类，满 3000 元适用） -->
+<div class="modal-overlay" id="modalElectricOverlay">
+  <div class="modal-container" id="modalAddElectricVoucher">
+    <div class="modal-header">
+      <h3 class="modal-title">🎁 玉国金融 · 大额电器补贴</h3>
+      <button class="modal-close" id="btnElectricModalClose">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div style="margin-bottom:16px;padding:10px 12px;border-radius:10px;background:rgba(255,112,67,0.08);border:1px solid rgba(255,112,67,0.2);color:#ffccbc;font-size:13px;line-height:1.7;">
+        ⚠️ 仅适用于 <b style="color:#ff8a65;">单件 / 单订单金额 ≥ 3000 元</b> 的电器消费。<br>
+        非抽奖模式：管理员审核通过时按规则设置补贴比例（如 5%），补贴直接记录到结果。
+      </div>
+      <form id="electricVoucherForm" enctype="multipart/form-data">
+        <div class="form-group">
+          <label class="form-label">订单类型 <span class="required">*</span></label>
+          <select class="form-input" id="inputElectricOrderType">
+            <option value="">请选择订单类型</option>
+            <option value="电器凭证">电器凭证（大额补贴专用）</option>
+          </select>
+          <span class="form-error" id="errorElectricOrderType"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">支付方式 <span class="required">*</span></label>
+          <div class="payment-options" id="electricPaymentOptions">
+            <label class="payment-option">
+              <input type="radio" name="electricPaymentMethod" value="unionFirst">
+              <span>工会先代替支付，再让用户支付优惠差价</span>
+            </label>
+            <label class="payment-option">
+              <input type="radio" name="electricPaymentMethod" value="userFirst">
+              <span>用户先支付全额，工会再给用户差价</span>
+            </label>
+          </div>
+          <span class="form-error" id="errorElectricPaymentMethod"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">店铺 / 平台名称 <span class="required">*</span></label>
+          <input type="text" class="form-input" id="inputElectricShop" placeholder="如：京东自营 / 苏宁电器 / 国美 / 华为旗舰店...">
+          <span class="form-error" id="errorElectricShop"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">电器分类（共 18 类） <span class="required">*</span></label>
+          <select class="form-input" id="inputElectricCategory">
+            <option value="">请选择电器分类</option>
+            <optgroup label="📱 数码移动（6 类）">
+              <option value="手机">手机</option>
+              <option value="笔记本电脑">笔记本电脑</option>
+              <option value="平板电脑">平板电脑</option>
+              <option value="耳机音响">耳机 / 音响</option>
+              <option value="智能手表手环">智能手表 / 手环</option>
+              <option value="相机摄像机">相机 / 摄像机</option>
+            </optgroup>
+            <optgroup label="🏠 大家电（12 类）">
+              <option value="电视">电视</option>
+              <option value="冰箱">冰箱</option>
+              <option value="洗衣机">洗衣机</option>
+              <option value="空调">空调</option>
+              <option value="热水器">热水器</option>
+              <option value="油烟机燃气灶">油烟机 / 燃气灶</option>
+              <option value="洗碗机消毒柜">洗碗机 / 消毒柜</option>
+              <option value="微波炉烤箱">微波炉 / 烤箱</option>
+              <option value="破壁料理机">破壁机 / 料理机</option>
+              <option value="净化器加湿器">空气净化器 / 加湿器</option>
+              <option value="扫地机器人洗地机">扫地机器人 / 洗地机</option>
+              <option value="其他大家电">其他大家电</option>
+            </optgroup>
+          </select>
+          <span class="form-error" id="errorElectricCategory"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">品牌名称 <span class="required">*</span></label>
+          <input type="text" class="form-input" id="inputElectricBrand" placeholder="如：Apple / 华为 / 小米 / 美的 / 海尔 / 索尼...">
+          <span class="form-error" id="errorElectricBrand"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">电器商品实物照片 <span class="required">*</span></label>
+          <div class="upload-area" id="uploadElectricProduct">
+            <input type="file" class="upload-input" id="inputElectricProduct" accept="image/*" capture="environment">
+            <div class="upload-placeholder">
+              <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <span>点击拍照或选择商品实物照片（手机端直接调相机）</span>
+            </div>
+            <img class="upload-preview" id="previewElectricProduct" style="display:none;">
+          </div>
+          <span class="form-error" id="errorElectricProduct"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">订单 / 付款截图 <span class="required">*</span></label>
+          <div class="upload-area" id="uploadElectricOrder">
+            <input type="file" class="upload-input" id="inputElectricOrder" accept="image/*" multiple>
+            <div class="upload-placeholder">
+              <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <span>点击上传订单 / 付款截图（支持多张）</span>
+            </div>
+            <div class="upload-preview-list" id="previewElectricOrder"></div>
+          </div>
+          <span class="form-error" id="errorElectricOrder"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">消费金额 <span class="required">*</span> <small style="color:#ff8a65;font-weight:600;">（大额电器补贴必须 ≥ 3000 元）</small></label>
+          <input type="text" class="form-input" id="inputElectricAmount" placeholder="如：4999.00元">
+          <span class="form-error" id="errorElectricAmount"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">手写签名 <span class="required">*</span></label>
+          <div class="signature-container">
+            <canvas class="signature-canvas" id="electricSignatureCanvas"></canvas>
+            <div class="signature-actions">
+              <button type="button" class="btn-signature-action" id="btnElectricClearSignature">清除</button>
+            </div>
+          </div>
+          <span class="form-error" id="errorElectricSignature"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">备注</label>
+          <textarea class="form-textarea" id="inputElectricRemark" placeholder="型号 / 序列号 / 其他补充说明（选填）" rows="3"></textarea>
+        </div>
       </form>
     </div>
     <div class="modal-footer">
-      <button type="button" class="btn-submit" id="btnSubmitVoucher">添加凭证并提交审核</button>
+      <button type="button" class="btn-submit" id="btnSubmitElectricVoucher" style="background:linear-gradient(135deg,#ff7043,#ff5722);">🎁 提交电器补贴凭证（等待人工审核）</button>
     </div>
   </div>
 </div>
@@ -461,6 +640,39 @@
         <!-- 刮开提示 -->
         <div class="ticket-scratch-hint" id="lotteryInfo">刮开涂层，匹配号码赢折扣！</div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 通知弹窗 ===== -->
+<div class="modal-overlay" id="notificationOverlay" style="z-index:2000;">
+  <div class="modal-container" style="max-width:480px;">
+    <div class="modal-header">
+      <h3 class="modal-title">🔔 我的通知</h3>
+      <button class="modal-close" id="btnNotificationClose">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="notificationList" style="min-height:200px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 通知详情/回复弹窗 ===== -->
+<div class="modal-overlay" id="notificationDetailOverlay" style="z-index:2100;">
+  <div class="modal-container" style="max-width:480px;">
+    <div class="modal-header">
+      <h3 class="modal-title" id="notifDetailTitle">通知详情</h3>
+      <button class="modal-close" id="btnNotifDetailClose">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="notifDetailContent" style="margin-bottom:16px;"></div>
+      <div class="form-group">
+        <label class="form-label">回复通知</label>
+        <textarea class="form-textarea" id="inputNotifReply" rows="3" placeholder="输入回复内容..."></textarea>
+      </div>
+      <button class="btn-submit" id="btnSendNotifReply" style="width:100%;margin-bottom:12px;">发送回复</button>
+      <h4 style="margin-bottom:8px;">我的回复记录</h4>
+      <div id="notifMyReplies" style="max-height:200px;overflow-y:auto;"></div>
     </div>
   </div>
 </div>

@@ -22,6 +22,7 @@
       <a class="admin-nav-item" data-tab="registrations">📝 注册审核</a>
       <a class="admin-nav-item" data-tab="points">🏆 积分管理</a>
       <a class="admin-nav-item" data-tab="blacklist">🚫 黑名单</a>
+      <a class="admin-nav-item" data-tab="notifications">🔔 通知管理</a>
       <a class="admin-nav-item" data-tab="settings">⚙️ 系统设置</a>
       <a class="admin-nav-item" data-tab="developer">🔧 开发者</a>
     </nav>
@@ -192,6 +193,79 @@
       </div>
     </div>
 
+    <!-- ===== 通知管理 ===== -->
+    <div class="admin-tab" id="tabNotifications">
+      <div class="admin-card">
+        <div class="admin-card-header">
+          <h3>🔔 通知管理</h3>
+          <p class="admin-card-desc">向用户发送通知，可发送给全部用户或指定用户。用户收到后可回复，回复内容在此处查看。</p>
+        </div>
+        <div class="admin-card-body">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <h4 style="margin:0;">已发送通知</h4>
+            <button class="btn btn-approve" id="btnNewNotification">✏️ 发送新通知</button>
+          </div>
+          <table class="admin-table">
+            <thead>
+              <tr><th>标题</th><th>目标用户</th><th>发送时间</th><th>回复数</th><th>操作</th></tr>
+            </thead>
+            <tbody id="notificationsTable">
+              <tr><td colspan="5" class="loading-cell">点击「发送新通知」或切换到此页加载</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 发送通知弹窗 ===== -->
+    <div class="modal-overlay" id="notifSendOverlay" style="display:none;">
+      <div class="modal-container" style="max-width:500px;">
+        <div class="modal-header">
+          <h3 class="modal-title">✏️ 发送通知</h3>
+          <button class="modal-close" id="btnNotifSendClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">通知标题 <span class="required">*</span></label>
+            <input type="text" class="form-input" id="inputNotifTitle" placeholder="如：系统维护通知">
+          </div>
+          <div class="form-group">
+            <label class="form-label">通知内容 <span class="required">*</span></label>
+            <textarea class="form-textarea" id="inputNotifContent" rows="4" placeholder="输入通知正文..."></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">发送对象</label>
+            <select class="form-input" id="inputNotifTarget">
+              <option value="all">全部用户</option>
+              <option value="custom">指定用户（下方填写）</option>
+            </select>
+          </div>
+          <div class="form-group" id="notifCustomUsersWrap" style="display:none;">
+            <label class="form-label">指定用户名（多个用逗号分隔）</label>
+            <input type="text" class="form-input" id="inputNotifUsers" placeholder="如：谭绣云,江睿博">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-submit" id="btnNotifSendConfirm" style="width:100%;">发送通知</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 通知详情/回复查看弹窗 ===== -->
+    <div class="modal-overlay" id="notifDetailOverlay" style="display:none;">
+      <div class="modal-container" style="max-width:550px;">
+        <div class="modal-header">
+          <h3 class="modal-title" id="notifDetailTitle">通知详情</h3>
+          <button class="modal-close" id="btnNotifDetailClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div id="notifDetailBody" style="margin-bottom:16px;"></div>
+          <h4 style="margin-bottom:8px;">用户回复</h4>
+          <div id="notifRepliesList" style="max-height:300px;overflow-y:auto;"></div>
+        </div>
+      </div>
+    </div>
+
     <div class="admin-tab" id="tabSettings">
       <div class="admin-card">
         <div class="admin-card-header">
@@ -260,6 +334,25 @@
     <div class="review-modal-body" id="reviewBody">
     </div>
     <div class="review-modal-footer">
+      <!-- 大额电器补贴：补贴比例选择（仅电器凭证显示） -->
+      <div class="subsidy-rate-wrap" id="subsidyRateWrap" style="display:none;padding:14px 20px;border-radius:14px;margin-bottom:14px;background:linear-gradient(90deg,rgba(255,112,67,0.08),rgba(255,152,0,0.1));border:1px solid rgba(255,112,67,0.25);">
+        <label class="form-label" style="margin-bottom:8px;">🎁 大额电器补贴 · 设置补贴比例 <span class="required">*</span></label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+          <button type="button" class="subsidy-preset" data-rate="1">补贴 1%</button>
+          <button type="button" class="subsidy-preset" data-rate="2">补贴 2%</button>
+          <button type="button" class="subsidy-preset" data-rate="3">补贴 3%</button>
+          <button type="button" class="subsidy-preset" data-rate="5">补贴 5%</button>
+          <button type="button" class="subsidy-preset" data-rate="7">补贴 7%</button>
+          <button type="button" class="subsidy-preset" data-rate="10">补贴 10%</button>
+          <button type="button" class="subsidy-preset" data-rate="15">补贴 15%</button>
+          <button type="button" class="subsidy-preset" data-rate="20">补贴 20%</button>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;">
+          <input type="number" min="0" max="100" step="0.1" class="form-input" id="inputSubsidyRate" placeholder="或自定义：如 4.5" style="flex:1;min-width:180px;">
+          <span style="font-weight:800;color:#ff7043;font-size:18px;">%</span>
+          <span id="subsidyAmountHint" style="font-size:13px;color:var(--text-secondary);min-width:180px;text-align:right;"></span>
+        </div>
+      </div>
       <div class="reject-reason-wrap" id="rejectReasonWrap">
         <label class="form-label">不通过原因 <span class="required">*</span></label>
         <textarea class="form-input reject-reason" id="rejectReason" placeholder="请填写不通过原因，将显示给用户"></textarea>

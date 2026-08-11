@@ -105,6 +105,24 @@ var JITAdmin = (function() {
       else if ((match = trimmed.match(/^｜?\s*注册时间：(.+)/))) data.registerTime = match[1].trim();
       else if ((match = trimmed.match(/^｜?\s*邀请人：(.+)/))) data.referrer = match[1].trim();
       else if ((match = trimmed.match(/^｜?\s*审核状态：(.+)/))) data.reviewStatus = match[1].trim();
+      // ===== 大额电器补贴字段 =====
+      else if ((match = trimmed.match(/^｜?\s*模式标识：(.+)/))) {
+        var s = match[1].trim();
+        if (s.indexOf("电器补贴") !== -1) data.electric = true;
+      }
+      else if ((match = trimmed.match(/^｜?\s*电器分类：(.+)/))) data.electricCategory = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*品牌名称：(.+)/))) data.electricBrand = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*申请基数金额：(.+)/))) data.electricApplyAmount = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*补贴比例：(.+)/))) data.electricSubsidyRate = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*补贴金额：(.+)/))) data.electricSubsidyAmount = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*补贴结果：(.+)/))) data.subsidyResult = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*审核结果：(.+)/))) data.reviewResult = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*最终实付：(.+)/))) {
+        data.finalPrice = match[1].trim();
+        if (typeof data.discount === "undefined" || !data.discount) {
+          data.discount = "补贴模式";
+        }
+      }
     });
     return data;
   };
@@ -177,6 +195,15 @@ var JITAdmin = (function() {
       return filter === "all" || status === filter;
     });
 
+    // ===== 加急凭证排到最前面 =====
+    filtered.sort(function(a, b) {
+      var aUrgent = (a.labels || []).some(function(l) { return l.name === "urgent"; });
+      var bUrgent = (b.labels || []).some(function(l) { return l.name === "urgent"; });
+      if (aUrgent && !bUrgent) return -1;
+      if (!aUrgent && bUrgent) return 1;
+      return 0;
+    });
+
     document.getElementById("statPending").textContent = "待审核: " + pendingCount;
     document.getElementById("statApproved").textContent = "已通过: " + approvedCount;
     document.getElementById("statRejected").textContent = "已拒绝: " + rejectedCount;
@@ -201,12 +228,40 @@ var JITAdmin = (function() {
       var data = _parseIssueBody(issue.body);
       var status = _getIssueStatus(issue);
       var statusText = statusTextMap[status] || "待审核";
+      var isElectric = !!(data.electric || data.voucherType === "电器凭证" || data.electricCategory);
+      var isUrgent = (issue.labels || []).some(function(l) { return l.name === "urgent"; });
+
+      // ===== 金额列：电器显示申请基数 =====
+      var amtDisplay = data.amount || "—";
+      if (isElectric && data.electricApplyAmount) {
+        amtDisplay = data.electricApplyAmount + " 元🎁";
+      }
+      // ===== 折扣/补贴列：电器显示补贴率 =====
+      var discountDisplay = data.discount || "未抽奖";
+      var discountStyle = "";
+      if (isElectric) {
+        if (data.electricSubsidyRate) {
+          discountDisplay = "补贴 " + data.electricSubsidyRate;
+          if (data.electricSubsidyAmount) discountDisplay += " ≈" + data.electricSubsidyAmount;
+        } else {
+          discountDisplay = "⏳ 待设补贴";
+        }
+        discountStyle = ' style="background:rgba(255,112,67,0.15);color:#ff7043;border-color:rgba(255,112,67,0.4);"';
+      }
+
       html += '<tr>';
-      html += '<td>' + _escapeHtml((data.userId || data.title || issue.user.login || "—").substring(0, 15)) + '</td>';
-      html += '<td>' + _escapeHtml((data.shopName || "—").substring(0, 12)) + '</td>';
+      html += '<td>' + (isUrgent ? '<span style="display:inline-block;font-size:10px;padding:1px 5px;margin-right:4px;border-radius:3px;background:#f44336;color:#fff;font-weight:700;animation:pulse 1.5s infinite;">⚡加急</span>' : '') + _escapeHtml((data.userId || data.title || issue.user.login || "—").substring(0, 15)) + '</td>';
+      // 店铺列：电器附小标签
+      var shopCell = (data.shopName || "—").substring(0, 12);
+      if (isElectric) {
+        shopCell = '<span style="display:inline-block;font-size:10px;padding:1px 4px;margin-right:4px;border-radius:3px;background:rgba(255,112,67,0.15);color:#ff7043;">🎁电器</span>' + _escapeHtml(shopCell);
+      } else {
+        shopCell = _escapeHtml(shopCell);
+      }
+      html += '<td>' + shopCell + '</td>';
       html += '<td>' + _escapeHtml(data.date || data.createTime || "—") + '</td>';
-      html += '<td>' + _escapeHtml(data.amount || "—") + '</td>';
-      html += '<td><span class="discount-badge">' + _escapeHtml(data.discount || "未抽奖") + '</span></td>';
+      html += '<td>' + _escapeHtml(amtDisplay) + '</td>';
+      html += '<td><span class="discount-badge"' + discountStyle + '>' + _escapeHtml(discountDisplay) + '</span></td>';
       html += '<td>' + _escapeHtml((data.paymentMethod || "—").substring(0, 15)) + '</td>';
       html += '<td><span class="status-badge ' + status + '">' + statusText + '</span></td>';
       html += '<td><button class="action-btn" data-issue="' + issue.number + '">审核</button></td>';
@@ -227,16 +282,35 @@ var JITAdmin = (function() {
     currentIssue = issue;
     var data = _parseIssueBody(issue.body);
     var status = _getIssueStatus(issue);
+    var isElectric = !!(data.electric || data.voucherType === "电器凭证" || data.electricCategory || data.electricBrand);
 
     var body = document.getElementById("reviewBody");
     var html = '<div class="review-info-row">';
-    html += _infoItem("用户", data.userId || data.title || issue.user.login);
-    html += _infoItem("凭证类型", data.voucherType || "普通凭证");
+    html += _infoItem("用户", data.userId || data.title || (issue.user && issue.user.login) || "—");
+    html += _infoItem("凭证类型", isElectric ? ("🎁 " + (data.voucherType || "电器凭证（大额补贴）")) : (data.voucherType || "普通凭证"));
     html += _infoItem("店铺名称", data.shopName || "—");
     html += _infoItem("消费日期", data.date || data.createTime || "—");
-    html += _infoItem("消费金额", data.amount || "—");
-    html += _infoItem("中奖折扣", data.discount || "未抽奖");
-    html += _infoItem("支付方式", data.paymentMethod || "—");
+    var applyAmt = data.electricApplyAmount || "";
+    var amt = data.amount || applyAmt || "—";
+    if (applyAmt) {
+      try { var n = parseFloat(applyAmt); if (!isNaN(n)) amt = n.toFixed(2) + " 元（申请基数 ≥ 3000 元）"; } catch(e) {}
+    }
+    html += _infoItem("消费金额", amt);
+    if (isElectric) {
+      html += _infoItem("电器分类", data.electricCategory || "—");
+      html += _infoItem("品牌", data.electricBrand || "—");
+      if (data.electricSubsidyRate) {
+        var txt = "补贴 " + data.electricSubsidyRate + "%";
+        if (data.electricSubsidyAmount) txt += " （≈ " + data.electricSubsidyAmount + " 元）";
+        html += _infoItem("🎁 审核补贴比例", txt, false, "color:#ff7043;font-weight:700;");
+      } else {
+        html += _infoItem("补贴状态", (status === "pending") ? "待审核设置" : "—", false, "color:#ffb74d;");
+      }
+      html += _infoItem("最终实付", data.finalPrice || data.originalPrice || "—");
+    } else {
+      html += _infoItem("中奖折扣", data.discount || "未抽奖");
+    }
+    html += _infoItem("支付方式", data.paymentMethodText || data.paymentMethod || "—");
     html += _infoItem("定位", data.location || "未提供");
     html += _infoItem("创建时间", data.createTime || "—");
     // 线上购物额外字段
@@ -244,7 +318,7 @@ var JITAdmin = (function() {
       html += _infoItem("购物平台", data.platform || "—");
       html += _infoItem("订单号", data.orderNo || "—");
     }
-    if (data.note) html += _infoItem("备注", data.note, true);
+    if (data.note || data.remark) html += _infoItem("备注", data.remark || data.note, true);
     if (data.rejectReason && status === "rejected") html += _infoItem("不通过原因", data.rejectReason, true, "color:#f44336;");
     html += '</div>';
 
@@ -267,18 +341,20 @@ var JITAdmin = (function() {
         }
       }
     } else {
-      // 普通凭证：店铺照片 + 订单照片
+      // 普通 / 电器凭证：店铺照片(或商品实物照) + 订单照片
+      var shopLabel = isElectric ? "商品实物照片" : "店铺照片";
       if (data.shopPhoto) {
-        html += '<div class="review-images-title">店铺照片</div>';
-        html += '<div class="review-image-grid"><div class="review-image-wrap"><img src="' + _escapeHtml(encodeURI(data.shopPhoto)) + '" onclick="JITAdmin._previewImage(this.src)" loading="lazy"><div class="review-image-label">店铺照片</div></div></div>';
+        html += '<div class="review-images-title">' + shopLabel + '</div>';
+        html += '<div class="review-image-grid"><div class="review-image-wrap"><img src="' + _escapeHtml(encodeURI(data.shopPhoto)) + '" onclick="JITAdmin._previewImage(this.src)" loading="lazy"><div class="review-image-label">' + shopLabel + '</div></div></div>';
       }
-      var orderPhotoStr = data.orderPhotos || "";
-      if (orderPhotoStr) {
-        var orderUrls = orderPhotoStr.split("|").map(function(s) { return s.trim(); }).filter(Boolean);
-        if (orderUrls.length > 0) {
-          html += '<div class="review-images-title">订单照片</div><div class="review-image-grid">';
-          orderUrls.forEach(function(url, idx) {
-            html += '<div class="review-image-wrap"><img src="' + _escapeHtml(encodeURI(url)) + '" onclick="JITAdmin._previewImage(this.src)" loading="lazy"><div class="review-image-label">订单照片 ' + (idx + 1) + '</div></div>';
+      var orderPhotoStr2 = data.orderPhotos || "";
+      if (orderPhotoStr2) {
+        var orderUrls2 = orderPhotoStr2.split("|").map(function(s) { return s.trim(); }).filter(Boolean);
+        var orderLabel = isElectric ? "订单 / 付款截图" : "订单照片";
+        if (orderUrls2.length > 0) {
+          html += '<div class="review-images-title">' + orderLabel + '</div><div class="review-image-grid">';
+          orderUrls2.forEach(function(url, idx) {
+            html += '<div class="review-image-wrap"><img src="' + _escapeHtml(encodeURI(url)) + '" onclick="JITAdmin._previewImage(this.src)" loading="lazy"><div class="review-image-label">' + orderLabel + ' ' + (idx + 1) + '</div></div>';
           });
           html += '</div>';
         }
@@ -296,7 +372,37 @@ var JITAdmin = (function() {
     document.getElementById("btnApprove").style.display = (status === "pending") ? "inline-block" : "none";
     document.getElementById("btnReject").style.display = (status === "pending") ? "inline-block" : "none";
     document.getElementById("btnDelete").style.display = "inline-block";
+    // 电器补贴：打开/关闭补贴比例选择器
+    var subWrap = document.getElementById("subsidyRateWrap");
+    var subInput = document.getElementById("inputSubsidyRate");
+    var subHint = document.getElementById("subsidyAmountHint");
+    if (subWrap) {
+      if (isElectric && status === "pending") {
+        subWrap.style.display = "block";
+        // 计算申请金额
+        var applyN = parseFloat(applyAmt || (amt || "").replace(/元|,/g, ""));
+        if (isNaN(applyN)) applyN = 0;
+        // 回填已有比例（如果有）
+        subInput.value = data.electricSubsidyRate || "";
+        _updateSubsidyHint(applyN);
+      } else {
+        subWrap.style.display = "none";
+        if (subInput) subInput.value = "";
+        if (subHint) subHint.textContent = "";
+      }
+    }
     document.getElementById("reviewOverlay").classList.add("active");
+  };
+
+  var _updateSubsidyHint = function(applyN) {
+    var input = document.getElementById("inputSubsidyRate");
+    var hint = document.getElementById("subsidyAmountHint");
+    if (!hint) return;
+    if (!applyN) { hint.textContent = "（无法识别申请金额）"; return; }
+    var rate = parseFloat(input ? input.value : "");
+    if (isNaN(rate) || rate <= 0) { hint.textContent = "申请基数：¥" + applyN.toFixed(2); return; }
+    var amount = applyN * rate / 100;
+    hint.innerHTML = '¥' + applyN.toFixed(2) + ' × <b style="color:#ff7043;">' + rate.toFixed(1).replace(/\.0$/,"") + '%</b><br>≈ 补贴 <b style="color:#ff7043;">¥' + amount.toFixed(2) + "</b>";
   };
 
   var _infoItem = function(label, value, fullWidth, style) {
@@ -320,7 +426,8 @@ var JITAdmin = (function() {
     });
   };
 
-  var _updateIssueStatus = function(issue, action, reason) {
+  var _updateIssueStatus = function(issue, action, reason, extra) {
+    extra = extra || {};
     var labels = (issue.labels || []).map(function(l) { return l.name; });
     labels = labels.filter(function(l) { return l !== "pending" && l !== "approved" && l !== "rejected" && l !== "paid" && l !== "completed"; });
     labels.push(action);
@@ -329,6 +436,29 @@ var JITAdmin = (function() {
       if (newBody.indexOf("不通过原因：") === -1) {
         newBody += "\n｜     不通过原因：" + reason;
       }
+    }
+    // 电器凭证通过 → 写入补贴比例 / 金额 / 结果字段
+    if (action === "approved" && extra.isElectric) {
+      var rate = extra.subsidyRate || 0;
+      var amt = extra.subsidyAmount || 0;
+      var rateStr = String(rate);
+      var amtStr = amt.toFixed(2) + "元";
+      function upsert(key, val) {
+        var pat = new RegExp("｜\\s*" + key + "：.*");
+        if (pat.test(newBody)) newBody = newBody.replace(pat, "｜     " + key + "：" + val);
+        else newBody += "\n｜     " + key + "：" + val;
+      }
+      upsert("补贴比例", rateStr + "%");
+      upsert("补贴金额", amtStr);
+      upsert("补贴结果", "补贴 " + rateStr + "%，实得 ¥" + amt.toFixed(2));
+      // 同时更新 finalPrice：实付金额 = 原金额 - 补贴金额
+      var m = newBody.match(/｜\s*申请基数金额：\s*([0-9.]+)/);
+      var applyN = m ? parseFloat(m[1]) : 0;
+      if (applyN > 0) {
+        var finalN = Math.max(0, applyN - amt);
+        upsert("最终实付", finalN.toFixed(2) + "元（已减补贴 ¥" + amt.toFixed(2) + "）");
+      }
+      upsert("审核结果", "🎁 补贴 " + rateStr + "%，非抽奖模式");
     }
     var statusText = action === "approved" ? "已通过" : (action === "rejected" ? "已拒绝" : (action === "completed" ? "已完成交易" : "待审核"));
     newBody = newBody.replace(/｜\s*状态：.*/, "｜     状态：" + statusText);
@@ -1095,10 +1225,28 @@ var JITAdmin = (function() {
 
     document.getElementById("btnApprove").addEventListener("click", function() {
       if (!currentIssue) return;
-      _updateIssueStatus(currentIssue, "approved").then(function() {
-        _showToast("已通过该凭证");
+      var data = _parseIssueBody(currentIssue.body);
+      var isElectric = !!(data.electric || data.voucherType === "电器凭证" || data.electricCategory || data.electricBrand);
+      var rateVal = null, amtVal = null;
+      if (isElectric) {
+        var rateRaw = document.getElementById("inputSubsidyRate").value.trim();
+        rateVal = parseFloat(rateRaw);
+        if (!rateRaw || isNaN(rateVal) || rateVal <= 0 || rateVal > 100) {
+          _showToast("请设置有效的补贴比例（0% ~ 100%）！", "error");
+          document.getElementById("subsidyRateWrap").scrollIntoView({behavior:"smooth",block:"center"});
+          return;
+        }
+        var applyN = parseFloat(data.electricApplyAmount || (data.amount || "").replace(/元|,/g, ""));
+        if (isNaN(applyN)) applyN = 0;
+        amtVal = applyN * rateVal / 100;
+      }
+      _updateIssueStatus(currentIssue, "approved", null, {
+        isElectric: isElectric,
+        subsidyRate: rateVal,
+        subsidyAmount: amtVal
+      }).then(function() {
+        _showToast("已通过该凭证" + (isElectric ? ("，补贴 " + rateVal + "% ≈ ¥" + amtVal.toFixed(2)) : ""));
         // 审核通过后给该用户 +25 积分
-        var data = _parseIssueBody(currentIssue.body);
         var uid = data.userId || data.title || (currentIssue.user && currentIssue.user.login);
         if (uid && typeof JITPoints !== "undefined" && JITPoints.changePoints) {
           JITPoints.ensureLabel().catch(function() {});
@@ -1110,9 +1258,34 @@ var JITAdmin = (function() {
         }
         document.getElementById("reviewOverlay").classList.remove("active");
         document.getElementById("rejectReasonWrap").style.display = "none";
+        var subWrap = document.getElementById("subsidyRateWrap");
+        if (subWrap) subWrap.style.display = "none";
         loadIssues();
       }).catch(function(e) { _showToast("操作失败: " + e.message); });
     });
+
+    // ===== 补贴比例预设按钮 + 输入框实时换算 =====
+    document.querySelectorAll(".subsidy-preset").forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        var r = this.getAttribute("data-rate");
+        var input = document.getElementById("inputSubsidyRate");
+        if (input) {
+          input.value = r;
+          input.dispatchEvent(new Event("input", {bubbles:true}));
+        }
+        document.querySelectorAll(".subsidy-preset").forEach(function(b){ b.classList.remove("active"); });
+        this.classList.add("active");
+      });
+    });
+    var subRateInput = document.getElementById("inputSubsidyRate");
+    if (subRateInput) {
+      subRateInput.addEventListener("input", function() {
+        var data = currentIssue ? _parseIssueBody(currentIssue.body) : {};
+        var applyN = parseFloat(data.electricApplyAmount || (data.amount || "").replace(/元|,/g, ""));
+        if (isNaN(applyN)) applyN = 0;
+        _updateSubsidyHint(applyN);
+      });
+    }
 
     document.getElementById("btnDelete").addEventListener("click", function() {
       if (!currentIssue) return;
@@ -1158,6 +1331,7 @@ var JITAdmin = (function() {
         if (tab === "registrations") loadRegistrations();
         if (tab === "points") loadPointsList();
         if (tab === "blacklist") loadBlacklist();
+        if (tab === "notifications") loadNotifications();
         if (tab === "settings") loadSettings();
         if (tab === "developer") loadSystemInfo();
       });
@@ -1245,6 +1419,30 @@ var JITAdmin = (function() {
         loadBlacklist();
       });
     }
+
+    // ===== 通知管理事件 =====
+    var btnNewNotif = document.getElementById("btnNewNotification");
+    if (btnNewNotif) btnNewNotif.addEventListener("click", function() {
+      document.getElementById("inputNotifTitle").value = "";
+      document.getElementById("inputNotifContent").value = "";
+      document.getElementById("inputNotifTarget").value = "all";
+      document.getElementById("notifCustomUsersWrap").style.display = "none";
+      document.getElementById("notifSendOverlay").style.display = "flex";
+    });
+    var btnNotifSendClose = document.getElementById("btnNotifSendClose");
+    if (btnNotifSendClose) btnNotifSendClose.addEventListener("click", function() {
+      document.getElementById("notifSendOverlay").style.display = "none";
+    });
+    var notifTargetSel = document.getElementById("inputNotifTarget");
+    if (notifTargetSel) notifTargetSel.addEventListener("change", function() {
+      document.getElementById("notifCustomUsersWrap").style.display = (this.value === "custom") ? "block" : "none";
+    });
+    var btnNotifSendConfirm = document.getElementById("btnNotifSendConfirm");
+    if (btnNotifSendConfirm) btnNotifSendConfirm.addEventListener("click", _confirmSendNotification);
+    var btnNotifDetailClose = document.getElementById("btnNotifDetailClose");
+    if (btnNotifDetailClose) btnNotifDetailClose.addEventListener("click", function() {
+      document.getElementById("notifDetailOverlay").style.display = "none";
+    });
   };
 
   init();
@@ -1316,6 +1514,101 @@ var JITAdmin = (function() {
       _showToast("已拒绝注册申请");
       loadRegistrations();
     }).catch(function(e) { _showToast("操作失败: " + e.message); });
+  };
+
+  // ======= 通知管理 =======
+  var loadNotifications = function() {
+    var tbody = document.getElementById("notificationsTable");
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">加载中...</td></tr>';
+    JITApi.getAllNotifications().then(function(list) {
+      if (!list || list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">暂无通知</td></tr>';
+        return;
+      }
+      var html = "";
+      list.forEach(function(n) {
+        var targetText = n.targetUsers === "all" ? "全部用户" : n.targetUsers;
+        html += '<tr>';
+        html += '<td style="font-weight:600;">' + _escapeHtml(n.title) + '</td>';
+        html += '<td>' + _escapeHtml(targetText) + '</td>';
+        html += '<td style="font-size:12px;">' + _escapeHtml(n.sendTime) + '</td>';
+        html += '<td><span class="status-badge pending">' + n.comments + '</span></td>';
+        html += '<td><button class="action-btn" data-notif="' + n.issueNumber + '">查看</button></td>';
+        html += '</tr>';
+      });
+      tbody.innerHTML = html;
+      tbody.querySelectorAll(".action-btn").forEach(function(btn) {
+        btn.addEventListener("click", function() {
+          _viewNotificationDetail(parseInt(this.getAttribute("data-notif")));
+        });
+      });
+    }).catch(function(e) {
+      tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">加载失败: ' + _escapeHtml(e.message) + '</td></tr>';
+    });
+  };
+
+  var _confirmSendNotification = function() {
+    var title = document.getElementById("inputNotifTitle").value.trim();
+    var content = document.getElementById("inputNotifContent").value.trim();
+    var target = document.getElementById("inputNotifTarget").value;
+    var targetUsers = "all";
+    if (target === "custom") {
+      var users = document.getElementById("inputNotifUsers").value.trim();
+      if (!users) { _showToast("请填写指定用户名"); return; }
+      targetUsers = users;
+    }
+    if (!title) { _showToast("请输入通知标题"); return; }
+    if (!content) { _showToast("请输入通知内容"); return; }
+    var btn = document.getElementById("btnNotifSendConfirm");
+    btn.disabled = true; btn.textContent = "发送中...";
+    JITApi.sendNotification(title, content, targetUsers).then(function() {
+      _showToast("通知发送成功！");
+      document.getElementById("notifSendOverlay").style.display = "none";
+      loadNotifications();
+    }).catch(function(e) {
+      _showToast("发送失败: " + e.message);
+    }).finally(function() {
+      btn.disabled = false; btn.textContent = "发送通知";
+    });
+  };
+
+  var _viewNotificationDetail = function(issueNumber) {
+    JITApi.getAllNotifications().then(function(list) {
+      var n = list.find(function(x) { return x.issueNumber === issueNumber; });
+      if (!n) { _showToast("通知不存在"); return; }
+      document.getElementById("notifDetailTitle").textContent = "🔔 " + n.title;
+      var bodyHtml = '<div style="padding:12px;border-radius:8px;background:rgba(255,255,255,0.05);margin-bottom:12px;">';
+      bodyHtml += '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">发送时间：' + _escapeHtml(n.sendTime) + ' ｜ 目标：' + _escapeHtml(n.targetUsers === "all" ? "全部用户" : n.targetUsers) + '</div>';
+      bodyHtml += '<div style="white-space:pre-wrap;line-height:1.7;">' + _escapeHtml(n.content) + '</div>';
+      bodyHtml += '</div>';
+      document.getElementById("notifDetailBody").innerHTML = bodyHtml;
+      document.getElementById("notifRepliesList").innerHTML = '<div style="text-align:center;color:#999;padding:20px;">加载回复中...</div>';
+      document.getElementById("notifDetailOverlay").style.display = "flex";
+      // 加载回复
+      JITApi.getNotificationReplies(issueNumber).then(function(replies) {
+        var listEl = document.getElementById("notifRepliesList");
+        if (replies.length === 0) {
+          listEl.innerHTML = '<div style="text-align:center;color:#999;padding:20px;">暂无回复</div>';
+          return;
+        }
+        var html = "";
+        replies.forEach(function(r) {
+          html += '<div style="padding:10px 12px;margin-bottom:8px;border-radius:8px;background:rgba(255,255,255,0.05);">';
+          html += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">';
+          html += '<span style="font-weight:600;color:var(--accent);">' + _escapeHtml(r.username) + '</span>';
+          html += '<span style="font-size:11px;color:#999;">' + new Date(r.time).toLocaleString("zh-CN") + '</span>';
+          html += '</div>';
+          html += '<div style="white-space:pre-wrap;">' + _escapeHtml(r.message) + '</div>';
+          html += '</div>';
+        });
+        listEl.innerHTML = html;
+      }).catch(function() {
+        document.getElementById("notifRepliesList").innerHTML = '<div style="text-align:center;color:#f44336;padding:20px;">加载失败</div>';
+      });
+    }).catch(function(e) {
+      _showToast("加载失败: " + e.message);
+    });
   };
 
   return {

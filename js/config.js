@@ -24,7 +24,9 @@ var JITConfig = (function() {
     points: "points",
     registeredUser: "registered-user",
     registrationRequest: "registration-request",
-    blacklist: "blacklist"
+    blacklist: "blacklist",
+    notification: "notification",
+    urgent: "urgent"
   };
 
   var _users = {
