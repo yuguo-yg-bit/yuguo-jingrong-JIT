@@ -72,6 +72,73 @@ var JITConfig = (function() {
     return "https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=8&data=" + encodeURIComponent(_unionPayLink);
   };
 
+  // ======= 加急黑名单(申请加急专用) =======
+  var _UB_LOCAL_KEY = "jit_urgent_blacklist";
+  function _getUrgentBlacklist() {
+    try {
+      var raw = localStorage.getItem(_UB_LOCAL_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+  }
+  function _setUrgentBlacklist(obj) {
+    localStorage.setItem(_UB_LOCAL_KEY, JSON.stringify(obj || {}));
+  }
+  function _nowIso() {
+    var d = new Date();
+    var pad = function(n) { return n < 10 ? "0" + n : "" + n; };
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
+      + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+  }
+  function _isUrgentBanned(username) {
+    if (!username) return { banned: false };
+    var list = _getUrgentBlacklist();
+    var entry = list[username];
+    if (!entry) return { banned: false };
+    if (entry.until === "permanent" || !entry.until) {
+      return { banned: true, permanent: true, entry: entry };
+    }
+    if (entry.until > _nowIso()) {
+      return { banned: true, permanent: false, until: entry.until, entry: entry };
+    }
+    // 已过期, 自动清除
+    delete list[username];
+    _setUrgentBlacklist(list);
+    return { banned: false };
+  }
+  function _addUrgentBlacklist(username, options) {
+    if (!username) return false;
+    options = options || {};
+    var list = _getUrgentBlacklist();
+    list[username] = {
+      reason: options.reason || "",
+      from: options.from || _nowIso(),
+      until: options.until || "permanent",
+      operator: options.operator || "admin"
+    };
+    _setUrgentBlacklist(list);
+    return true;
+  }
+  function _removeUrgentBlacklist(username) {
+    if (!username) return false;
+    var list = _getUrgentBlacklist();
+    if (!list[username]) return false;
+    delete list[username];
+    _setUrgentBlacklist(list);
+    return true;
+  }
+  function _addDurationIso(hours, days, months, permanent) {
+    if (permanent) return "permanent";
+    var h = parseFloat(hours) || 0;
+    var d = parseFloat(days) || 0;
+    var m = parseFloat(months) || 0;
+    var ms = (h * 3600 + d * 86400 + m * 30 * 86400) * 1000;
+    if (ms <= 0) return "permanent";
+    var d2 = new Date(Date.now() + ms);
+    var pad = function(n) { return n < 10 ? "0" + n : "" + n; };
+    return d2.getFullYear() + "-" + pad(d2.getMonth() + 1) + "-" + pad(d2.getDate())
+      + "T" + pad(d2.getHours()) + ":" + pad(d2.getMinutes()) + ":" + pad(d2.getSeconds());
+  }
+
   return {
     getTokenPart1: _getTokenPart1,
     getTokenPart3: function() { return "6eIA6D3k79u4L32V4"; },
@@ -133,6 +200,12 @@ var JITConfig = (function() {
     },
     getRepoFull: function() { return _repoOwner + "/" + _repoName; },
     getImageRepoFull: function() { return _repoOwner + "/" + _imageRepoName; },
-    getUnionPayQrUrl: _getUnionPayQrUrl
+    getUnionPayQrUrl: _getUnionPayQrUrl,
+    getUrgentBlacklist: function() { return _getUrgentBlacklist(); },
+    setUrgentBlacklist: _setUrgentBlacklist,
+    isUrgentBanned: _isUrgentBanned,
+    addUrgentBlacklist: _addUrgentBlacklist,
+    removeUrgentBlacklist: _removeUrgentBlacklist,
+    addUrgentDurationIso: _addDurationIso
   };
 })();

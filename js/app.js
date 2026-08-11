@@ -1126,9 +1126,43 @@ var JITApp = (function() {
     var btnSendNotifReply = document.getElementById("btnSendNotifReply");
     if (btnSendNotifReply) btnSendNotifReply.addEventListener("click", _submitNotifReply);
 
+    // ===== 申请加急弹窗事件 =====
+    var uClose = document.getElementById("btnUrgentApplyClose");
+    if (uClose) uClose.addEventListener("click", _closeUrgentApplyModal);
+    var uCancel = document.getElementById("btnUrgentApplyCancel");
+    if (uCancel) uCancel.addEventListener("click", _closeUrgentApplyModal);
+    var uOverlay = document.getElementById("urgentApplyOverlay");
+    if (uOverlay) {
+      uOverlay.addEventListener("click", function(e) {
+        if (e.target === uOverlay) _closeUrgentApplyModal();
+      });
+    }
+    var uConfirm = document.getElementById("btnUrgentApplyConfirm");
+    if (uConfirm) uConfirm.addEventListener("click", _submitUrgentApply);
+    var uReason = document.getElementById("inputUrgentReason");
+    if (uReason) {
+      uReason.addEventListener("input", function() {
+        var countEl = document.getElementById("urgentReasonCount");
+        if (countEl) countEl.textContent = this.value.length;
+        if (this.value.length > 500) {
+          this.value = this.value.slice(0, 500);
+          if (countEl) countEl.textContent = 500;
+        }
+      });
+    }
+
     var ordersTableBody = document.getElementById("ordersTableBody");
     if (ordersTableBody) {
       ordersTableBody.addEventListener("click", function(e) {
+        var urgentBtn = e.target.closest(".urgent-row-btn");
+        if (urgentBtn) {
+          var issueNum = urgentBtn.getAttribute("data-issue-number");
+          var uv = _allVouchers.find(function(item) {
+            return String(item._issueNumber) === String(issueNum);
+          });
+          if (uv) _openUrgentApplyModal(uv);
+          return;
+        }
         var lotteryBtn = e.target.closest(".lottery-order-btn");
         if (lotteryBtn) {
           var issueNumber = lotteryBtn.getAttribute("data-issue-number");
@@ -1759,6 +1793,15 @@ var JITApp = (function() {
       var actions = "";
       if (v.statusType === "pending") {
         actions += "<button class=\"edit-order-btn\" data-issue-number=\"" + _escapeHtml(v._issueNumber || "") + "\">编辑</button>";
+      }
+      // ===== 加急按钮：仅 pending 且未加急时 =====
+      var hasUrgent = (v._labels || []).indexOf("urgent") > -1;
+      if (v.statusType === "pending") {
+        if (hasUrgent) {
+          actions += '<button class="pay-order-btn" disabled style="background:rgba(244,67,54,0.15);color:#f44336;border:1px solid rgba(244,67,54,0.3);cursor:not-allowed;opacity:.8;">⚡已申请加急</button>';
+        } else {
+          actions += '<button class="pay-order-btn urgent-row-btn" data-issue-number="' + _escapeHtml(v._issueNumber || "") + '" style="background:linear-gradient(135deg,#ff7043,#f44336);color:#fff;border-color:#ff7043;">⚡申请加急</button>';
+        }
       }
       // ===== 电器凭证不显示抽奖按钮（非抽奖模式）=====
       if (!isElectric && !v.discount) {
@@ -3326,9 +3369,30 @@ var JITApp = (function() {
     });
   };
 
-  // ========= 申请加急审核 =========
-  var _applyUrgentReview = function(voucher) {
+  // ========= 申请加急审核（列表 / 详情页统一走带理由弹窗）=========
+  var _currentUrgentVoucher = null;
+
+  var _formatUntilDisplay = function(until) {
+    if (!until) return "";
+    if (until === "permanent") return "永久";
+    var pad = function(n) { return n < 10 ? "0" + n : "" + n; };
+    try {
+      var t = until.replace("T", " ");
+      return t.substring(0, 16);
+    } catch (e) { return until; }
+  };
+
+  var _openUrgentApplyModal = function(voucher) {
     if (!voucher) return;
+    if (!_currentUser) { _showToast("请先登录", "error"); return; }
+    // 加急黑名单校验
+    var ban = JITConfig.isUrgentBanned(_currentUser);
+    if (ban && ban.banned) {
+      var untilText = ban.permanent ? "永久" : _formatUntilDisplay(ban.until);
+      var reasonText = (ban.entry && ban.entry.reason) ? ("封禁理由：" + ban.entry.reason + "。\n") : "";
+      _showToast("⚠️ 您已被加入加急黑名单，" + untilText + "内不可申请加急。\n" + reasonText, "error");
+      return;
+    }
     if (voucher.statusType && voucher.statusType !== "pending") {
       _showToast("只能对未审核的凭证申请加急", "error");
       return;
@@ -3338,20 +3402,75 @@ var JITApp = (function() {
       _showToast("该凭证已申请过加急，请耐心等待管理员审核", "");
       return;
     }
-    if (!confirm("确定申请加急审核吗？\n\n加急后管理员将优先处理此凭证。\n（请勿滥用，恶意加急可能影响后续审核）")) return;
-    JITApi.markUrgent(voucher._issueNumber).then(function() {
-      _showToast("⚡ 加急申请已提交，管理员将优先审核", "success");
-      // 关闭详情弹窗
+    _currentUrgentVoucher = voucher;
+    // 填凭证信息
+    var infoEl = document.getElementById("urgentApplyVoucherInfo");
+    if (infoEl) {
+      var txt = (voucher.voucherType || "凭证") + " · " + (voucher.shopName || "未知")
+        + " · 金额 " + (voucher.originalPrice || "-");
+      infoEl.textContent = txt;
+    }
+    var inputEl = document.getElementById("inputUrgentReason");
+    if (inputEl) { inputEl.value = ""; inputEl.focus(); }
+    var countEl = document.getElementById("urgentReasonCount");
+    if (countEl) countEl.textContent = "0";
+    var overlay = document.getElementById("urgentApplyOverlay");
+    if (overlay) overlay.classList.add("active");
+  };
+
+  var _closeUrgentApplyModal = function() {
+    var overlay = document.getElementById("urgentApplyOverlay");
+    if (overlay) overlay.classList.remove("active");
+    _currentUrgentVoucher = null;
+  };
+
+  var _submitUrgentApply = function() {
+    if (!_currentUrgentVoucher) { _showToast("未选择凭证", "error"); return; }
+    if (!_currentUser) { _showToast("请先登录", "error"); return; }
+    // 再校一次黑名单（防止被管理员加入后不刷新）
+    var ban = JITConfig.isUrgentBanned(_currentUser);
+    if (ban && ban.banned) {
+      _showToast("您已被加入加急黑名单，不可申请加急", "error");
+      _closeUrgentApplyModal();
+      return;
+    }
+    var inputEl = document.getElementById("inputUrgentReason");
+    var reason = inputEl ? (inputEl.value || "").trim() : "";
+    if (reason.length < 10) {
+      _showToast("加急理由至少 10 个字，请详细说明紧急原因", "error");
+      if (inputEl) inputEl.focus();
+      return;
+    }
+    if (reason.length > 500) {
+      _showToast("加急理由不能超过 500 字", "error");
+      return;
+    }
+    var btn = document.getElementById("btnUrgentApplyConfirm");
+    if (btn) btn.disabled = true;
+    JITApi.markUrgent(_currentUrgentVoucher._issueNumber, reason, _currentUser).then(function() {
+      _showToast("⚡ 加急申请已提交！管理员将优先审核", "success");
+      _closeUrgentApplyModal();
+      // 刷新详情弹窗（若打开了凭证详情）
       var overlays = document.querySelectorAll('.modal-overlay[style*="z-index:9999"]');
       overlays.forEach(function(o) {
         if (o.parentNode) o.parentNode.removeChild(o);
       });
-      // 刷新本地数据
-      if (voucher._labels) voucher._labels.push("urgent");
+      if (_currentUrgentVoucher && _currentUrgentVoucher._labels) {
+        if (_currentUrgentVoucher._labels.indexOf("urgent") === -1) {
+          _currentUrgentVoucher._labels.push("urgent");
+        }
+      }
       _loadData();
     }).catch(function(err) {
-      _showToast("申请失败: " + err.message, "error");
+      _showToast("加急申请失败: " + err.message, "error");
+    }).finally(function() {
+      if (btn) btn.disabled = false;
     });
+  };
+
+  // 兼容旧的凭证详情页按钮（也走带理由弹窗）
+  var _applyUrgentReview = function(voucher) {
+    _openUrgentApplyModal(voucher);
   };
 
   var _initChatEvents = function() {

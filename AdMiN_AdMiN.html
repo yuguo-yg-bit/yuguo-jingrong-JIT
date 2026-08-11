@@ -22,6 +22,7 @@
       <a class="admin-nav-item" data-tab="registrations">📝 注册审核</a>
       <a class="admin-nav-item" data-tab="points">🏆 积分管理</a>
       <a class="admin-nav-item" data-tab="blacklist">🚫 黑名单</a>
+      <a class="admin-nav-item" data-tab="urgentBl">⚡ 加急黑名单</a>
       <a class="admin-nav-item" data-tab="notifications">🔔 通知管理</a>
       <a class="admin-nav-item" data-tab="settings">⚙️ 系统设置</a>
       <a class="admin-nav-item" data-tab="developer">🔧 开发者</a>
@@ -266,6 +267,102 @@
       </div>
     </div>
 
+    <!-- ===== 加急黑名单管理 ===== -->
+    <div class="admin-tab" id="tabUrgentBl">
+      <div class="admin-card">
+        <div class="admin-card-header">
+          <h3>⚡ 加急黑名单</h3>
+          <p class="admin-card-desc">被列入此名单的用户在指定时间内（或永久）不可申请加急审核。支持按小时/天/月设置封禁时长。</p>
+        </div>
+        <div class="admin-card-body">
+          <div class="form-group" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+            <div style="flex:1;min-width:160px;">
+              <label class="form-label">添加用户</label>
+              <input type="text" class="form-input" id="urgentBlNewUser" placeholder="输入用户名">
+            </div>
+            <div style="width:100px;">
+              <label class="form-label">小时</label>
+              <input type="number" class="form-input" id="urgentBlHours" min="0" placeholder="0">
+            </div>
+            <div style="width:100px;">
+              <label class="form-label">天</label>
+              <input type="number" class="form-input" id="urgentBlDays" min="0" placeholder="0">
+            </div>
+            <div style="width:100px;">
+              <label class="form-label">月</label>
+              <input type="number" class="form-input" id="urgentBlMonths" min="0" placeholder="0">
+            </div>
+            <div style="padding-bottom:8px;">
+              <label class="form-label" style="display:inline-block;margin-right:10px;">
+                <input type="checkbox" id="urgentBlPermanent" style="vertical-align:middle;"> 永久
+              </label>
+            </div>
+            <div style="flex:1;min-width:200px;">
+              <label class="form-label">理由（建议填写）</label>
+              <input type="text" class="form-input" id="urgentBlNewReason" placeholder="如：加急理由不合理、滥用加急">
+            </div>
+            <button class="btn btn-reject" id="btnUrgentBlAdd">🚫 加入加急黑名单</button>
+          </div>
+          <div style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <h4 style="margin:0;">当前黑名单列表</h4>
+            <button class="action-btn" id="btnRefreshUrgentBl">🔄 刷新</button>
+          </div>
+          <table class="admin-table" style="margin-top:0;">
+            <thead>
+              <tr><th>用户名</th><th>理由</th><th>加入时间</th><th>到期时间</th><th>类型</th><th>操作</th></tr>
+            </thead>
+            <tbody id="urgentBlTable">
+              <tr><td colspan="6" class="loading-cell">加载中...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 加入加急黑名单弹窗（审核页快捷调用） ===== -->
+    <div class="modal-overlay" id="urgentBlacklistOverlay" style="display:none;">
+      <div class="modal-container" style="max-width:460px;">
+        <div class="modal-header">
+          <h3 class="modal-title">🚫 加入加急黑名单</h3>
+          <button class="modal-close" id="btnUrgentBlacklistClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div style="padding:10px 12px;border-radius:8px;background:rgba(244,67,54,0.08);border:1px solid rgba(244,67,54,0.2);margin-bottom:14px;font-size:13px;color:#f44336;">
+            用户：<b id="urgentBlacklistUser">—</b><br>
+            凭证：<span id="urgentBlacklistVoucher" style="color:var(--text-secondary);">—</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">封禁时长</label>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <div style="width:80px;">
+                <input type="number" class="form-input" id="ubuHours" min="0" placeholder="小时">
+              </div>
+              <span style="color:var(--text-muted);">小时</span>
+              <div style="width:80px;">
+                <input type="number" class="form-input" id="ubuDays" min="0" placeholder="天数">
+              </div>
+              <span style="color:var(--text-muted);">天</span>
+              <div style="width:80px;">
+                <input type="number" class="form-input" id="ubuMonths" min="0" placeholder="月数">
+              </div>
+              <span style="color:var(--text-muted);">月</span>
+              <label style="margin-left:8px;white-space:nowrap;">
+                <input type="checkbox" id="ubuPermanent"> 永久
+              </label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">理由</label>
+            <textarea class="form-textarea" id="ubuReason" rows="3" placeholder="例如：加急理由明显不合理、恶意刷加急、多次滥用"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-cancel" id="btnUrgentBlacklistCancel">取消</button>
+          <button class="btn btn-reject" id="btnUrgentBlacklistConfirm">确认加入黑名单</button>
+        </div>
+      </div>
+    </div>
+
     <div class="admin-tab" id="tabSettings">
       <div class="admin-card">
         <div class="admin-card-header">
@@ -358,6 +455,7 @@
         <textarea class="form-input reject-reason" id="rejectReason" placeholder="请填写不通过原因，将显示给用户"></textarea>
       </div>
       <div class="review-actions">
+        <button class="btn" id="btnUrgentBlackBan" style="background:rgba(244,67,54,0.12);color:#f44336;border:1px solid rgba(244,67,54,0.35);display:none;">🚫 加入加急黑名单</button>
         <button class="btn btn-reject" id="btnReject">不通过</button>
         <button class="btn btn-approve" id="btnApprove">通过</button>
         <button class="btn btn-delete" id="btnDelete">删除凭证</button>

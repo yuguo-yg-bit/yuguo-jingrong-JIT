@@ -995,12 +995,41 @@ var JITApi = (function() {
   };
 
   // ======= 加急审核 =======
-  var _markUrgent = function(issueNumber) {
+  var _markUrgent = function(issueNumber, reason, username) {
     var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber + "/labels";
     return _safeRequest(url, {
       method: "POST",
       headers: _headers(),
       body: JSON.stringify({ labels: [JITConfig.getLabels().urgent] })
+    }).then(function(res) {
+      // 加完标签后再追加一条加急理由的 Comment
+      if (reason || username) {
+        var body = "｜URGENT_REASON｜"
+          + (username ? (username + "：") : "")
+          + (reason || "无理由");
+        return _addIssueComment(issueNumber, body).then(function() { return res; });
+      }
+      return res;
+    });
+  };
+
+  var _getUrgentReason = function(issueNumber) {
+    return _getIssueComments(issueNumber).then(function(comments) {
+      var latest = null;
+      (comments || []).forEach(function(c) {
+        if (c.body && c.body.indexOf("｜URGENT_REASON｜") === 0) {
+          latest = c;
+        }
+      });
+      if (!latest) return null;
+      var rest = latest.body.replace("｜URGENT_REASON｜", "");
+      var idx = rest.indexOf("：");
+      return {
+        username: idx > -1 ? rest.substring(0, idx) : "unknown",
+        reason: idx > -1 ? rest.substring(idx + 1) : rest,
+        time: latest.created_at,
+        commenter: latest.user ? latest.user.login : ""
+      };
     });
   };
 
@@ -1050,6 +1079,7 @@ var JITApi = (function() {
     replyNotification: _replyNotification,
     getNotificationReplies: _getNotificationReplies,
     markUrgent: _markUrgent,
-    removeUrgent: _removeUrgent
+    removeUrgent: _removeUrgent,
+    getUrgentReason: _getUrgentReason
   };
 })();

@@ -372,6 +372,40 @@ var JITAdmin = (function() {
     document.getElementById("btnApprove").style.display = (status === "pending") ? "inline-block" : "none";
     document.getElementById("btnReject").style.display = (status === "pending") ? "inline-block" : "none";
     document.getElementById("btnDelete").style.display = "inline-block";
+    // ===== 加急标识 / 加急理由 / 加入黑名单按钮 =====
+    var isUrgentIssue = (issue.labels || []).some(function(l) { return l.name === "urgent"; });
+    var banBtn = document.getElementById("btnUrgentBlackBan");
+    var userId = (data.userId || data.title || (issue.user && issue.user.login) || "");
+    // 存储用于加黑弹窗的上下文
+    window.__currentUrgentBanTarget = {
+      username: userId,
+      issueNumber: issue.number,
+      voucherDesc: (data.shopName || "—") + " · " + (data.date || "—")
+    };
+    if (banBtn) {
+      // 只要有用户名就可以加黑（但加急时更显眼）
+      banBtn.style.display = userId ? "inline-block" : "none";
+    }
+    if (isUrgentIssue) {
+      // 在 body 最后插入醒目的加急区块
+      JITApi.getUrgentReason(issue.number).then(function(reasonInfo) {
+        var rHtml = '<div style="margin-top:16px;padding:14px 16px;border-radius:12px;background:linear-gradient(90deg,rgba(244,67,54,0.12),rgba(255,152,0,0.12));border:1.5px solid rgba(244,67,54,0.4);animation:pulse 1.5s infinite;">';
+        rHtml += '<div style="font-size:15px;font-weight:800;color:#f44336;margin-bottom:6px;">⚡ 该凭证已申请加急审核，请优先处理</div>';
+        if (reasonInfo) {
+          rHtml += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">申请人：' + _escapeHtml(reasonInfo.username || "—") + ' · 时间：' + _escapeHtml((reasonInfo.time || "").replace("T"," ").slice(0,16)) + '</div>';
+          rHtml += '<div style="padding:10px 12px;border-radius:8px;background:rgba(0,0,0,0.04);border:1px solid var(--border-color);font-size:13px;line-height:1.6;color:var(--text-primary);white-space:pre-wrap;word-break:break-word;">💬 ' + _escapeHtml(reasonInfo.reason || "") + '</div>';
+        } else {
+          rHtml += '<div style="font-size:13px;color:var(--text-secondary);">（未获取到加急理由，可能为旧版申请）</div>';
+        }
+        rHtml += '</div>';
+        var existing = document.getElementById("__urgentBanner");
+        if (existing) existing.remove();
+        var wrap = document.createElement("div");
+        wrap.id = "__urgentBanner";
+        wrap.innerHTML = rHtml;
+        body.appendChild(wrap.firstChild);
+      }).catch(function() {});
+    }
     // 电器补贴：打开/关闭补贴比例选择器
     var subWrap = document.getElementById("subsidyRateWrap");
     var subInput = document.getElementById("inputSubsidyRate");
@@ -1331,6 +1365,7 @@ var JITAdmin = (function() {
         if (tab === "registrations") loadRegistrations();
         if (tab === "points") loadPointsList();
         if (tab === "blacklist") loadBlacklist();
+        if (tab === "urgentBl") loadUrgentBlacklist();
         if (tab === "notifications") loadNotifications();
         if (tab === "settings") loadSettings();
         if (tab === "developer") loadSystemInfo();
@@ -1442,6 +1477,26 @@ var JITAdmin = (function() {
     var btnNotifDetailClose = document.getElementById("btnNotifDetailClose");
     if (btnNotifDetailClose) btnNotifDetailClose.addEventListener("click", function() {
       document.getElementById("notifDetailOverlay").style.display = "none";
+    });
+
+    // ===== 加急黑名单管理事件 =====
+    var btnUrgentBlAdd = document.getElementById("btnUrgentBlAdd");
+    if (btnUrgentBlAdd) btnUrgentBlAdd.addEventListener("click", _addUrgentBlFromTab);
+    var btnRefreshUrgentBl = document.getElementById("btnRefreshUrgentBl");
+    if (btnRefreshUrgentBl) btnRefreshUrgentBl.addEventListener("click", loadUrgentBlacklist);
+
+    // 审核弹窗：加入加急黑名单
+    var btnUrgentBlackBan = document.getElementById("btnUrgentBlackBan");
+    if (btnUrgentBlackBan) btnUrgentBlackBan.addEventListener("click", _openUrgentBlacklistModal);
+    var btnUBClose = document.getElementById("btnUrgentBlacklistClose");
+    if (btnUBClose) btnUBClose.addEventListener("click", _closeUrgentBlacklistModal);
+    var btnUBCancel = document.getElementById("btnUrgentBlacklistCancel");
+    if (btnUBCancel) btnUBCancel.addEventListener("click", _closeUrgentBlacklistModal);
+    var btnUBConfirm = document.getElementById("btnUrgentBlacklistConfirm");
+    if (btnUBConfirm) btnUBConfirm.addEventListener("click", _confirmUrgentBlacklist);
+    var ubOverlay = document.getElementById("urgentBlacklistOverlay");
+    if (ubOverlay) ubOverlay.addEventListener("click", function(e) {
+      if (e.target === ubOverlay) _closeUrgentBlacklistModal();
     });
   };
 
@@ -1610,6 +1665,150 @@ var JITAdmin = (function() {
       _showToast("加载失败: " + e.message);
     });
   };
+
+  // ========= 加急黑名单管理 =========
+  function _fmtIsoShort(iso) {
+    if (!iso) return "—";
+    if (iso === "permanent") return "永久";
+    try { return iso.replace("T", " ").substring(0, 16); } catch(e) { return iso; }
+  }
+
+  var loadUrgentBlacklist = function() {
+    var tbody = document.getElementById("urgentBlTable");
+    if (!tbody) return;
+    var list = JITConfig.getUrgentBlacklist() || {};
+    var usernames = Object.keys(list);
+    if (usernames.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="loading-cell">加急黑名单为空</td></tr>';
+      return;
+    }
+    var now = new Date().toISOString().slice(0, 19).replace("T", " ");
+    // 先自动清理已过期的
+    var changed = false;
+    usernames.forEach(function(u) {
+      var entry = list[u];
+      if (entry && entry.until && entry.until !== "permanent") {
+        if (entry.until.replace("T"," ") <= now) {
+          delete list[u];
+          changed = true;
+        }
+      }
+    });
+    if (changed) JITConfig.setUrgentBlacklist(list);
+    usernames = Object.keys(list);
+    if (usernames.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="loading-cell">加急黑名单为空</td></tr>';
+      return;
+    }
+    var html = "";
+    usernames.forEach(function(u) {
+      var e = list[u] || {};
+      var isPerm = (e.until === "permanent" || !e.until);
+      var expSoon = false;
+      if (!isPerm) {
+        var ms = new Date(e.until.replace(" ","T")).getTime() - Date.now();
+        expSoon = ms < 86400000;  // 24小时内到期标红
+      }
+      html += '<tr>';
+      html += '<td>' + _escapeHtml(u) + '</td>';
+      html += '<td>' + _escapeHtml(e.reason || "—") + '</td>';
+      html += '<td>' + _fmtIsoShort(e.from) + '</td>';
+      var untilStyle = expSoon ? ' style="color:#f44336;font-weight:600;"' : "";
+      html += '<td' + untilStyle + '>' + _fmtIsoShort(e.until) + '</td>';
+      html += '<td>' + (isPerm ? '<span style="color:#f44336;font-weight:600;">永久封禁</span>' : '<span style="color:#ff9800;">限时</span>') + '</td>';
+      html += '<td><button class="action-btn urgentbl-remove" data-user="' + _escapeHtml(u) + '">解除</button></td>';
+      html += '</tr>';
+    });
+    tbody.innerHTML = html;
+    tbody.querySelectorAll(".urgentbl-remove").forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        var u = this.getAttribute("data-user");
+        if (!u) return;
+        if (!confirm("确认解除用户 [" + u + "] 的加急黑名单吗？")) return;
+        if (JITConfig.removeUrgentBlacklist(u)) {
+          _showToast("已解除 " + u + " 的加急黑名单", "success");
+          loadUrgentBlacklist();
+        } else {
+          _showToast("移除失败，该用户可能不在名单中");
+        }
+      });
+    });
+  };
+
+  // 加急黑名单tab: 添加按钮
+  function _addUrgentBlFromTab() {
+    var userEl = document.getElementById("urgentBlNewUser");
+    var reasonEl = document.getElementById("urgentBlNewReason");
+    var hEl = document.getElementById("urgentBlHours");
+    var dEl = document.getElementById("urgentBlDays");
+    var mEl = document.getElementById("urgentBlMonths");
+    var pEl = document.getElementById("urgentBlPermanent");
+    var username = (userEl && userEl.value || "").trim();
+    var reason = (reasonEl && reasonEl.value || "").trim();
+    if (!username) { _showToast("请填写用户名"); return; }
+    var h = hEl ? parseFloat(hEl.value || 0) : 0;
+    var d = dEl ? parseFloat(dEl.value || 0) : 0;
+    var m = mEl ? parseFloat(mEl.value || 0) : 0;
+    var permanent = !!(pEl && pEl.checked);
+    var until = JITConfig.addUrgentDurationIso(h, d, m, permanent);
+    var ok = JITConfig.addUrgentBlacklist(username, { reason: reason, until: until, operator: "admin" });
+    if (ok) {
+      _showToast("已将 [" + username + "] 加入加急黑名单（" + (until === "permanent" ? "永久" : ("至 " + _fmtIsoShort(until))) + "）", "success");
+      if (userEl) userEl.value = "";
+      if (reasonEl) reasonEl.value = "";
+      if (hEl) hEl.value = "";
+      if (dEl) dEl.value = "";
+      if (mEl) mEl.value = "";
+      if (pEl) pEl.checked = false;
+      loadUrgentBlacklist();
+    } else {
+      _showToast("添加失败");
+    }
+  }
+
+  // 审核页「加入加急黑名单」按钮 -> 打开弹窗
+  function _openUrgentBlacklistModal() {
+    var t = window.__currentUrgentBanTarget || {};
+    if (!t.username) { _showToast("无法获取当前用户"); return; }
+    var userEl = document.getElementById("urgentBlacklistUser");
+    if (userEl) userEl.textContent = t.username || "—";
+    var vEl = document.getElementById("urgentBlacklistVoucher");
+    if (vEl) vEl.textContent = t.voucherDesc || "—";
+    // 清空输入
+    var clearIds = ["ubuHours","ubuDays","ubuMonths","ubuReason"];
+    clearIds.forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ""; });
+    var p = document.getElementById("ubuPermanent"); if (p) p.checked = false;
+    var overlay = document.getElementById("urgentBlacklistOverlay");
+    if (overlay) overlay.style.display = "flex";
+  }
+  function _closeUrgentBlacklistModal() {
+    var overlay = document.getElementById("urgentBlacklistOverlay");
+    if (overlay) overlay.style.display = "none";
+  }
+  function _confirmUrgentBlacklist() {
+    var t = window.__currentUrgentBanTarget || {};
+    if (!t.username) { _showToast("无法获取当前用户"); return; }
+    var h = parseFloat((document.getElementById("ubuHours") || {}).value || 0);
+    var d = parseFloat((document.getElementById("ubuDays") || {}).value || 0);
+    var m = parseFloat((document.getElementById("ubuMonths") || {}).value || 0);
+    var permanent = !!(document.getElementById("ubuPermanent") || {}).checked;
+    var reason = ((document.getElementById("ubuReason") || {}).value || "").trim();
+    if (!permanent && h <= 0 && d <= 0 && m <= 0) {
+      _showToast("请选择封禁时长，或勾选「永久」");
+      return;
+    }
+    if (!reason) {
+      if (!confirm("未填写封禁理由，确定仍然加入黑名单吗？")) return;
+    }
+    var until = JITConfig.addUrgentDurationIso(h, d, m, permanent);
+    var ok = JITConfig.addUrgentBlacklist(t.username, { reason: reason, until: until, operator: "admin" });
+    if (ok) {
+      _showToast("已将 [" + t.username + "] 加入加急黑名单（" + (until === "permanent" ? "永久" : ("至 " + _fmtIsoShort(until))) + "）", "success");
+      _closeUrgentBlacklistModal();
+    } else {
+      _showToast("加入黑名单失败");
+    }
+  }
 
   return {
     _previewImage: _previewImage,
