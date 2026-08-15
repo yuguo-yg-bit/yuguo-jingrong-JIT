@@ -3455,11 +3455,15 @@ var JITApp = (function() {
       overlays.forEach(function(o) {
         if (o.parentNode) o.parentNode.removeChild(o);
       });
-      if (_currentUrgentVoucher && _currentUrgentVoucher._labels) {
+      if (_currentUrgentVoucher) {
+        if (!_currentUrgentVoucher._labels) _currentUrgentVoucher._labels = [];
         if (_currentUrgentVoucher._labels.indexOf("urgent") === -1) {
           _currentUrgentVoucher._labels.push("urgent");
         }
       }
+      // 先就地重渲染列表, 让按钮立刻变成"已申请加急"
+      _renderOrders();
+      // 后台再异步拉取最新数据保证一致性
       _loadData();
     }).catch(function(err) {
       _showToast("加急申请失败: " + err.message, "error");
