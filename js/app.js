@@ -1794,7 +1794,11 @@ var JITApp = (function() {
       if (v.statusType === "pending") {
         actions += "<button class=\"edit-order-btn\" data-issue-number=\"" + _escapeHtml(v._issueNumber || "") + "\">编辑</button>";
       }
-      // ===== 加急按钮：仅 pending 且未加急时 =====
+      // ===== 电器凭证不显示抽奖按钮（非抽奖模式）=====
+      if (!isElectric && !v.discount && v.statusType === "pending") {
+        actions += "<button class=\"lottery-order-btn\" data-issue-number=\"" + _escapeHtml(v._issueNumber || "") + "\">🎰 抽奖</button>";
+      }
+      // ===== 加急按钮：仅 pending 且未加急时（放最右边，最后一个按钮）=====
       var hasUrgent = (v._labels || []).indexOf("urgent") > -1;
       if (v.statusType === "pending") {
         if (hasUrgent) {
@@ -1802,10 +1806,6 @@ var JITApp = (function() {
         } else {
           actions += '<button class="pay-order-btn urgent-row-btn" data-issue-number="' + _escapeHtml(v._issueNumber || "") + '" style="background:linear-gradient(135deg,#ff7043,#f44336);color:#fff;border-color:#ff7043;">⚡申请加急</button>';
         }
-      }
-      // ===== 电器凭证不显示抽奖按钮（非抽奖模式）=====
-      if (!isElectric && !v.discount) {
-        actions += "<button class=\"lottery-order-btn\" data-issue-number=\"" + _escapeHtml(v._issueNumber || "") + "\">🎰 抽奖</button>";
       }
       // 审核通过且未完成交易时显示去支付
       if (v.statusType === "approved") {
