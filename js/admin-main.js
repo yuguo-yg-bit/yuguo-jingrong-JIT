@@ -1761,36 +1761,124 @@ var JITAdmin = (function() {
     });
   };
 
-  // ========= 加急黑名单管理 =========
+  // ========= 加急黑名单管理（GitHub Issues 后端存储） =========
   function _fmtIsoShort(iso) {
     if (!iso) return "—";
     if (iso === "permanent") return "永久";
     try { return iso.replace("T", " ").substring(0, 16); } catch(e) { return iso; }
   }
 
+  var _ubIssueCache = null;
+  var _UB_LABEL = "urgent-blacklist";
+
+  var _formatUrgentBlBody = function(map) {
+    var lines = ["【加急黑名单】此文件由系统自动生成，请勿手动编辑。"];
+    Object.keys(map || {}).forEach(function(u) {
+      var e = map[u] || {};
+      lines.push("｜用户名：" + u);
+      lines.push("｜理由：" + (e.reason || "—"));
+      lines.push("｜开始：" + (e.from || "—"));
+      lines.push("｜到期：" + (e.until || "permanent"));
+      lines.push("｜操作员：" + (e.operator || "admin"));
+      lines.push("");
+    });
+    return lines.join("\n");
+  };
+
+  var _parseUrgentBlBody = function(body) {
+    var map = {};
+    if (!body) return map;
+    var blocks = body.split(/\n(?=｜用户名：)/);
+    blocks.forEach(function(block) {
+      var u = (block.match(/｜用户名：(.+)/) || [])[1];
+      if (!u) return;
+      u = u.trim();
+      map[u] = {
+        reason: ((block.match(/｜理由：(.+)/) || [])[1] || "").trim(),
+        from: ((block.match(/｜开始：(.+)/) || [])[1] || "").trim(),
+        until: ((block.match(/｜到期：(.+)/) || [])[1] || "permanent").trim(),
+        operator: ((block.match(/｜操作员：(.+)/) || [])[1] || "admin").trim()
+      };
+    });
+    return map;
+  };
+
+  var _ensureUrgentBlLabel = function() {
+    return _apiGet(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/labels/" + encodeURIComponent(_UB_LABEL)).catch(function() {
+      return _apiPost(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/labels", { name: _UB_LABEL, color: "6a1b9a" }).catch(function(){});
+    });
+  };
+
+  var _findUrgentBlIssue = function() {
+    if (_ubIssueCache) return Promise.resolve(_ubIssueCache);
+    return _apiGet(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues?state=open&labels=" + encodeURIComponent(_UB_LABEL) + "&per_page=5").then(function(issues) {
+      if (issues && issues.length > 0) {
+        _ubIssueCache = issues[0];
+        return issues[0];
+      }
+      return _ensureUrgentBlLabel().then(function() {
+        return _apiPost(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues", {
+          title: "【系统】加急黑名单",
+          body: _formatUrgentBlBody({}),
+          labels: [_UB_LABEL]
+        }).then(function(issue) {
+          _ubIssueCache = issue;
+          return issue;
+        });
+      });
+    });
+  };
+
+  var _syncUrgentBlToCloud = function() {
+    var map = JITConfig.getUrgentBlacklist();
+    clearTimeout(_syncUrgentBlToCloud._t);
+    _syncUrgentBlToCloud._t = setTimeout(function() {
+      _findUrgentBlIssue().then(function(issue) {
+        if (!issue) return;
+        return _apiPatch(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues/" + issue.number, {
+          body: _formatUrgentBlBody(map)
+        });
+      }).then(function() {
+        console.log("加急黑名单已同步到云端");
+      }).catch(function(e) {
+        console.warn("加急黑名单同步失败：", e);
+        _showToast("加急黑名单同步云端失败");
+      });
+    }, 600);
+  };
+
   var loadUrgentBlacklist = function() {
+    var tbody = document.getElementById("urgentBlTable");
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="6" class="loading-cell">加载中...</td></tr>';
+    _findUrgentBlIssue().then(function(issue) {
+      var cloudMap = {};
+      if (issue && issue.body) {
+        cloudMap = _parseUrgentBlBody(issue.body);
+      }
+      // 清理过期
+      var nowIso = new Date().toISOString().slice(0,19);
+      var changed = false;
+      Object.keys(cloudMap).forEach(function(u) {
+        var e = cloudMap[u];
+        if (e && e.until && e.until !== "permanent" && e.until < nowIso) {
+          delete cloudMap[u];
+          changed = true;
+        }
+      });
+      JITConfig.setUrgentBlCache(cloudMap);
+      if (changed) _syncUrgentBlToCloud();
+      _renderUrgentBlTable();
+    }).catch(function(e) {
+      tbody.innerHTML = '<tr><td colspan="6" class="loading-cell">加载失败: ' + _escapeHtml(e.message || "") + '</td></tr>';
+    });
+  };
+
+  var _renderUrgentBlTable = function() {
     var tbody = document.getElementById("urgentBlTable");
     if (!tbody) return;
     var list = JITConfig.getUrgentBlacklist() || {};
     var usernames = Object.keys(list);
-    if (usernames.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" class="loading-cell">加急黑名单为空</td></tr>';
-      return;
-    }
-    var now = new Date().toISOString().slice(0, 19).replace("T", " ");
-    // 先自动清理已过期的
-    var changed = false;
-    usernames.forEach(function(u) {
-      var entry = list[u];
-      if (entry && entry.until && entry.until !== "permanent") {
-        if (entry.until.replace("T"," ") <= now) {
-          delete list[u];
-          changed = true;
-        }
-      }
-    });
-    if (changed) JITConfig.setUrgentBlacklist(list);
-    usernames = Object.keys(list);
     if (usernames.length === 0) {
       tbody.innerHTML = '<tr><td colspan="6" class="loading-cell">加急黑名单为空</td></tr>';
       return;
@@ -1801,8 +1889,10 @@ var JITAdmin = (function() {
       var isPerm = (e.until === "permanent" || !e.until);
       var expSoon = false;
       if (!isPerm) {
-        var ms = new Date(e.until.replace(" ","T")).getTime() - Date.now();
-        expSoon = ms < 86400000;  // 24小时内到期标红
+        try {
+          var ms = new Date(e.until.replace(" ","T")).getTime() - Date.now();
+          expSoon = ms < 86400000;
+        } catch(err) {}
       }
       html += '<tr>';
       html += '<td>' + _escapeHtml(u) + '</td>';
@@ -1821,8 +1911,9 @@ var JITAdmin = (function() {
         if (!u) return;
         if (!confirm("确认解除用户 [" + u + "] 的加急黑名单吗？")) return;
         if (JITConfig.removeUrgentBlacklist(u)) {
+          _syncUrgentBlToCloud();
           _showToast("已解除 " + u + " 的加急黑名单", "success");
-          loadUrgentBlacklist();
+          _renderUrgentBlTable();
         } else {
           _showToast("移除失败，该用户可能不在名单中");
         }
@@ -1848,6 +1939,7 @@ var JITAdmin = (function() {
     var until = JITConfig.addUrgentDurationIso(h, d, m, permanent);
     var ok = JITConfig.addUrgentBlacklist(username, { reason: reason, until: until, operator: "admin" });
     if (ok) {
+      _syncUrgentBlToCloud();
       _showToast("已将 [" + username + "] 加入加急黑名单（" + (until === "permanent" ? "永久" : ("至 " + _fmtIsoShort(until))) + "）", "success");
       if (userEl) userEl.value = "";
       if (reasonEl) reasonEl.value = "";
@@ -1855,7 +1947,7 @@ var JITAdmin = (function() {
       if (dEl) dEl.value = "";
       if (mEl) mEl.value = "";
       if (pEl) pEl.checked = false;
-      loadUrgentBlacklist();
+      _renderUrgentBlTable();
     } else {
       _showToast("添加失败");
     }
@@ -1898,6 +1990,7 @@ var JITAdmin = (function() {
     var until = JITConfig.addUrgentDurationIso(h, d, m, permanent);
     var ok = JITConfig.addUrgentBlacklist(t.username, { reason: reason, until: until, operator: "admin" });
     if (ok) {
+      _syncUrgentBlToCloud();
       _showToast("已将 [" + t.username + "] 加入加急黑名单（" + (until === "permanent" ? "永久" : ("至 " + _fmtIsoShort(until))) + "）", "success");
       _closeUrgentBlacklistModal();
     } else {

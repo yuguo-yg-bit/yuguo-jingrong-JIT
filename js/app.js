@@ -31,6 +31,7 @@ var JITApp = (function() {
   var _init = function() {
     _initBackgroundParticles();
     _syncBlacklistFromCloud(); // 启动时先同步云端黑名单（优先级高于自动登录检测）
+    _syncUrgentBlFromCloud(); // 启动时拉取加急黑名单到内存
     _initLogin();
     _bindEvents();
     // 确保积分 label 存在
@@ -184,6 +185,41 @@ var JITApp = (function() {
           _showLoginPrompt();
         }
       }).catch(function() { /* 静默失败，使用本地黑名单即可 */ });
+    } catch (e) {}
+  };
+
+  // 从 GitHub Issues 拉取加急黑名单到内存缓存（不存 localStorage）
+  var _syncUrgentBlFromCloud = function() {
+    try {
+      var TOKEN = JITConfig.getTokenPart1() + JITConfig.getTokenPart3() + JITConfig.getTokenPart4();
+      var BASE = JITConfig.getApiBase();
+      var REPO = JITConfig.getRepoFull();
+      var labels = JITConfig.getLabels() || {};
+      var lb = labels.urgentBlacklist || "urgent-blacklist";
+      fetch(BASE + "/repos/" + REPO + "/issues?state=open&labels=" + encodeURIComponent(lb) + "&per_page=5", {
+        headers: { Authorization: "token " + TOKEN, Accept: "application/vnd.github.v3+json" }
+      }).then(function(r) {
+        if (!r.ok) return null;
+        return r.json();
+      }).then(function(issues) {
+        var map = {};
+        if (issues && issues.length > 0) {
+          var body = issues[0].body || "";
+          var blocks = String(body).split(/\n(?=｜用户名：)/);
+          blocks.forEach(function(block) {
+            var u = (block.match(/｜用户名：(.+)/) || [])[1];
+            if (!u) return;
+            u = u.trim();
+            map[u] = {
+              reason: ((block.match(/｜理由：(.+)/) || [])[1] || "").trim(),
+              from: ((block.match(/｜开始：(.+)/) || [])[1] || "").trim(),
+              until: ((block.match(/｜到期：(.+)/) || [])[1] || "permanent").trim(),
+              operator: ((block.match(/｜操作员：(.+)/) || [])[1] || "admin").trim()
+            };
+          });
+        }
+        JITConfig.setUrgentBlCache(map);
+      }).catch(function() { /* 静默失败 */ });
     } catch (e) {}
   };
 

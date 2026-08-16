@@ -26,7 +26,8 @@ var JITConfig = (function() {
     registrationRequest: "registration-request",
     blacklist: "blacklist",
     notification: "notification",
-    urgent: "urgent"
+    urgent: "urgent",
+    urgentBlacklist: "urgent-blacklist"
   };
 
   var _users = {
@@ -73,16 +74,10 @@ var JITConfig = (function() {
   };
 
   // ======= 加急黑名单(申请加急专用) =======
-  var _UB_LOCAL_KEY = "jit_urgent_blacklist";
-  function _getUrgentBlacklist() {
-    try {
-      var raw = localStorage.getItem(_UB_LOCAL_KEY);
-      return raw ? JSON.parse(raw) : {};
-    } catch (e) { return {}; }
-  }
-  function _setUrgentBlacklist(obj) {
-    localStorage.setItem(_UB_LOCAL_KEY, JSON.stringify(obj || {}));
-  }
+  // 不用 localStorage，纯内存缓存，数据存储在 GitHub Issues
+  var _urgentBlCache = null; // null=未加载, {}=已加载
+  function _getUrgentBlacklist() { return _urgentBlCache || {}; }
+  function _setUrgentBlCache(obj) { _urgentBlCache = obj || {}; }
   function _nowIso() {
     var d = new Date();
     var pad = function(n) { return n < 10 ? "0" + n : "" + n; };
@@ -91,8 +86,8 @@ var JITConfig = (function() {
   }
   function _isUrgentBanned(username) {
     if (!username) return { banned: false };
-    var list = _getUrgentBlacklist();
-    var entry = list[username];
+    if (!_urgentBlCache) return { banned: false }; // 未加载完毕，先放行
+    var entry = _urgentBlCache[username];
     if (!entry) return { banned: false };
     if (entry.until === "permanent" || !entry.until) {
       return { banned: true, permanent: true, entry: entry };
@@ -100,30 +95,24 @@ var JITConfig = (function() {
     if (entry.until > _nowIso()) {
       return { banned: true, permanent: false, until: entry.until, entry: entry };
     }
-    // 已过期, 自动清除
-    delete list[username];
-    _setUrgentBlacklist(list);
     return { banned: false };
   }
   function _addUrgentBlacklist(username, options) {
     if (!username) return false;
+    if (!_urgentBlCache) _urgentBlCache = {};
     options = options || {};
-    var list = _getUrgentBlacklist();
-    list[username] = {
+    _urgentBlCache[username] = {
       reason: options.reason || "",
       from: options.from || _nowIso(),
       until: options.until || "permanent",
       operator: options.operator || "admin"
     };
-    _setUrgentBlacklist(list);
     return true;
   }
   function _removeUrgentBlacklist(username) {
-    if (!username) return false;
-    var list = _getUrgentBlacklist();
-    if (!list[username]) return false;
-    delete list[username];
-    _setUrgentBlacklist(list);
+    if (!username || !_urgentBlCache) return false;
+    if (!_urgentBlCache[username]) return false;
+    delete _urgentBlCache[username];
     return true;
   }
   function _addDurationIso(hours, days, months, permanent) {
@@ -202,7 +191,8 @@ var JITConfig = (function() {
     getImageRepoFull: function() { return _repoOwner + "/" + _imageRepoName; },
     getUnionPayQrUrl: _getUnionPayQrUrl,
     getUrgentBlacklist: function() { return _getUrgentBlacklist(); },
-    setUrgentBlacklist: _setUrgentBlacklist,
+    setUrgentBlCache: _setUrgentBlCache,
+    isUrgentBlLoaded: function() { return _urgentBlCache !== null; },
     isUrgentBanned: _isUrgentBanned,
     addUrgentBlacklist: _addUrgentBlacklist,
     removeUrgentBlacklist: _removeUrgentBlacklist,
