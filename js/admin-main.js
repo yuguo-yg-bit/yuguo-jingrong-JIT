@@ -317,12 +317,12 @@ var JITAdmin = (function() {
     if (setUrgent) {
       JITApi.markUrgent(issueNumber, "【管理员手动加急】从列表操作列直接标记", "admin").then(function() {
         _showToast("✅ 已设为加急");
-        loadVouchers();
+        loadIssues();
       }).catch(function(e) { _showToast("操作失败: " + e.message, "error"); });
     } else {
       JITApi.removeUrgent(issueNumber).then(function() {
         _showToast("已取消加急标记");
-        loadVouchers();
+        loadIssues();
       }).catch(function(e) { _showToast("操作失败: " + e.message, "error"); });
     }
   };
