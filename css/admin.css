@@ -879,3 +879,81 @@ body {
     width: 100%;
   }
 }
+
+/* 手机端管理员表格 / 卡片紧凑显示 */
+@media (max-width: 768px) {
+  .admin-card-header h3 {
+    font-size: 15px;
+  }
+  .admin-card-desc {
+    font-size: 12px;
+  }
+  .admin-card-body {
+    padding: 12px;
+  }
+  .admin-table-wrap,
+  .admin-card-body {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .admin-table {
+    min-width: 720px;
+  }
+  .admin-table th,
+  .admin-table td {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .admin-table .action-btn,
+  .admin-table .btn {
+    padding: 4px 8px;
+    font-size: 11px;
+    margin: 1px;
+  }
+  .admin-filter label,
+  .admin-filter input,
+  .admin-filter select {
+    font-size: 12px;
+  }
+  .modal-container {
+    margin: 20px 10px;
+    max-width: calc(100% - 20px);
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+  }
+  .modal-header h3 {
+    font-size: 15px;
+  }
+  .form-label {
+    font-size: 12px;
+  }
+  .form-input,
+  .form-textarea,
+  .form-select {
+    font-size: 14px; /* 避免 iOS 自动缩放(需>=16px才完全不缩, 14px 已基本稳定) */
+    padding: 8px 10px;
+  }
+  .btn,
+  .action-btn {
+    font-size: 13px;
+    padding: 8px 12px;
+  }
+}
+
+/* 超小屏 */
+@media (max-width: 380px) {
+  .admin-table th,
+  .admin-table td {
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+  .admin-table .action-btn,
+  .admin-table .btn {
+    padding: 3px 6px;
+    font-size: 10px;
+  }
+  .admin-sidebar-item {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+}

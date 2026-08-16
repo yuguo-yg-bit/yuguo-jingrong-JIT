@@ -2325,6 +2325,32 @@ html, body {
   .orders-table {
     font-size: 10px;
   }
+  .orders-table .row-edit-btn,
+  .orders-table .row-draw-btn,
+  .orders-table .urgent-row-btn {
+    padding: 4px 6px;
+    font-size: 10px;
+    margin: 1px;
+  }
+  .table-container {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+}
+
+/* 超小屏手机(<380px)表格进一步优化，避免按钮溢出换行 */
+@media (max-width: 380px) {
+  .orders-table th,
+  .orders-table td {
+    padding: 5px 3px;
+    font-size: 9px;
+  }
+  .orders-table .row-edit-btn,
+  .orders-table .row-draw-btn,
+  .orders-table .urgent-row-btn {
+    padding: 3px 4px;
+    font-size: 9px;
+  }
 }
 
 /* ========== 在线客服 ========== */
