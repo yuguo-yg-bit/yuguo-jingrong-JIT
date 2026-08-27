@@ -467,9 +467,9 @@
   </div>
 </div>
 
-<!-- ===== 管理员代用户添加凭证弹窗 ===== -->
+<!-- ===== 管理员代用户添加凭证弹窗（与用户端表单完全一致） ===== -->
 <div class="modal-overlay" id="adminAddVoucherOverlay">
-  <div class="review-modal" style="max-width:520px;">
+  <div class="review-modal" style="max-width:560px;">
     <div class="review-modal-header">
       <h3>➕ 代用户添加凭证</h3>
       <button class="modal-close" id="btnAdminAddVoucherClose">&times;</button>
@@ -482,66 +482,241 @@
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">凭证类型</label>
+        <label class="form-label">凭证类型 <span class="required">*</span></label>
         <select class="form-input" id="adminVoucherType">
           <option value="普通凭证">普通凭证</option>
           <option value="线上购物">线上购物</option>
           <option value="电器凭证">电器凭证（大额补贴）</option>
         </select>
       </div>
+
+      <!-- ===== 支付方式（与用户端一致） ===== -->
+      <div class="form-group">
+        <label class="form-label">支付方式 <span class="required">*</span></label>
+        <div class="payment-options" id="adminPaymentOptions">
+          <label class="payment-option">
+            <input type="radio" name="adminPaymentMethod" value="unionFirst">
+            <span>工会先代替支付，再让用户支付优惠差价</span>
+          </label>
+          <label class="payment-option">
+            <input type="radio" name="adminPaymentMethod" value="userFirst">
+            <span>用户先支付全额，工会再给用户差价</span>
+          </label>
+        </div>
+        <span class="form-error" id="errorAdminPaymentMethod"></span>
+      </div>
+
+      <!-- ===== 店铺名称 ===== -->
       <div class="form-group">
         <label class="form-label">店铺名称 <span class="required">*</span></label>
-        <input class="form-input" id="adminVoucherShop" placeholder="店铺名称">
+        <input type="text" class="form-input" id="adminVoucherShop" placeholder="请输入店铺名称">
+        <span class="form-error" id="errorAdminShopName"></span>
       </div>
-      <div class="form-group">
-        <label class="form-label">消费金额（元）<span class="required">*</span></label>
-        <input class="form-input" id="adminVoucherAmount" type="number" step="0.01" placeholder="消费金额">
+
+      <!-- ===== 普通凭证 专属字段 ===== -->
+      <div id="adminAddNormalFields">
+        <div class="form-group">
+          <label class="form-label">店铺照片 <span class="required">*</span></label>
+          <div class="upload-area" id="adminUploadShopPhoto">
+            <input type="file" class="upload-input" id="adminInputShopPhoto" accept="image/*" capture="environment">
+            <div class="upload-placeholder">
+              <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <span>点击拍照或上传店铺照片</span>
+            </div>
+            <img class="upload-preview" id="adminPreviewShopPhoto" style="display:none;">
+          </div>
+          <span class="form-error" id="errorAdminShopPhoto"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">商品订单 <span class="required">*</span></label>
+          <div class="upload-area" id="adminUploadOrderPhoto">
+            <input type="file" class="upload-input" id="adminInputOrderPhoto" accept="image/*" multiple>
+            <div class="upload-placeholder">
+              <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <span>点击上传商品订单截图（支持多张）</span>
+            </div>
+            <div class="upload-preview-list" id="adminPreviewOrderPhotos"></div>
+          </div>
+          <span class="form-error" id="errorAdminOrderPhoto"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">余额金额 <span class="required">*</span></label>
+          <input type="text" class="form-input" id="adminVoucherAmount" placeholder="xxx.xx元">
+          <span class="form-error" id="errorAdminAmount"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">手写签名 <span class="required">*</span></label>
+          <div class="signature-container">
+            <canvas class="signature-canvas" id="adminSignatureCanvasNormal"></canvas>
+            <div class="signature-actions">
+              <button type="button" class="btn-signature-action" id="btnAdminClearSignatureNormal">清除</button>
+            </div>
+          </div>
+          <span class="form-error" id="errorAdminSignatureNormal"></span>
+        </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">消费日期</label>
-        <input class="form-input" id="adminVoucherDate" type="date">
+
+      <!-- ===== 线上购物 专属字段 ===== -->
+      <div id="adminAddOnlineFields" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">选择购物平台 <span class="required">*</span></label>
+          <select class="form-input" id="adminOnlinePlatform">
+            <option value="">请选择购物平台</option>
+            <option value="淘宝">淘宝</option>
+            <option value="抖音">抖音</option>
+            <option value="京东">京东</option>
+            <option value="拼多多">拼多多</option>
+            <option value="其他">其他</option>
+          </select>
+          <span class="form-error" id="errorAdminOnlinePlatform"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">订单号 <span class="required">*</span></label>
+          <input type="text" class="form-input" id="adminOnlineOrderNo" placeholder="请输入订单号">
+          <span class="form-error" id="errorAdminOnlineOrderNo"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">商品截图 <span class="required">*</span></label>
+          <div class="upload-area" id="adminUploadOnlineProduct">
+            <input type="file" class="upload-input" id="adminInputOnlineProduct" accept="image/*">
+            <div class="upload-placeholder">
+              <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <span>点击拍照或上传商品截图</span>
+            </div>
+            <img class="upload-preview" id="adminPreviewOnlineProduct" style="display:none;">
+          </div>
+          <span class="form-error" id="errorAdminOnlineProduct"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">购物截图 <span class="required">*</span></label>
+          <div class="upload-area" id="adminUploadOnlineShopping">
+            <input type="file" class="upload-input" id="adminInputOnlineShopping" accept="image/*" multiple>
+            <div class="upload-placeholder">
+              <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <span>点击上传购物截图（支持多张）</span>
+            </div>
+            <div class="upload-preview-list" id="adminPreviewOnlineShopping"></div>
+          </div>
+          <span class="form-error" id="errorAdminOnlineShopping"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">余额金额 <span class="required">*</span></label>
+          <input type="text" class="form-input" id="adminOnlineAmount" placeholder="xxx.xx元">
+          <span class="form-error" id="errorAdminOnlineAmount"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">手写签名 <span class="required">*</span></label>
+          <div class="signature-container">
+            <canvas class="signature-canvas" id="adminSignatureCanvasOnline"></canvas>
+            <div class="signature-actions">
+              <button type="button" class="btn-signature-action" id="btnAdminClearSignatureOnline">清除</button>
+            </div>
+          </div>
+          <span class="form-error" id="errorAdminSignatureOnline"></span>
+        </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">支付方式</label>
-        <select class="form-input" id="adminVoucherPay">
-          <option value="微信支付">微信支付</option>
-          <option value="支付宝">支付宝</option>
-          <option value="银行卡">银行卡</option>
-          <option value="现金">现金</option>
-          <option value="信用卡">信用卡</option>
-          <option value="其他">其他</option>
-        </select>
+
+      <!-- ===== 电器凭证 专属字段 ===== -->
+      <div id="adminAddElectricFields" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">订单类型 <span class="required">*</span></label>
+          <select class="form-input" id="adminElectricOrderType">
+            <option value="">请选择订单类型</option>
+            <option value="电器凭证">电器凭证（大额补贴专用）</option>
+          </select>
+          <span class="form-error" id="errorAdminElectricOrderType"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">电器分类（共 18 类） <span class="required">*</span></label>
+          <select class="form-input" id="adminElectricCategory">
+            <option value="">请选择电器分类</option>
+            <optgroup label="📱 数码移动（6 类）">
+              <option value="手机">手机</option>
+              <option value="笔记本电脑">笔记本电脑</option>
+              <option value="平板电脑">平板电脑</option>
+              <option value="耳机音响">耳机 / 音响</option>
+              <option value="智能手表手环">智能手表 / 手环</option>
+              <option value="相机摄像机">相机 / 摄像机</option>
+            </optgroup>
+            <optgroup label="🏠 大家电（12 类）">
+              <option value="电视">电视</option>
+              <option value="冰箱">冰箱</option>
+              <option value="洗衣机">洗衣机</option>
+              <option value="空调">空调</option>
+              <option value="热水器">热水器</option>
+              <option value="油烟机燃气灶">油烟机 / 燃气灶</option>
+              <option value="洗碗机消毒柜">洗碗机 / 消毒柜</option>
+              <option value="微波炉烤箱">微波炉 / 烤箱</option>
+              <option value="破壁料理机">破壁机 / 料理机</option>
+              <option value="净化器加湿器">空气净化器 / 加湿器</option>
+              <option value="扫地机器人洗地机">扫地机器人 / 洗地机</option>
+              <option value="其他大家电">其他大家电</option>
+            </optgroup>
+          </select>
+          <span class="form-error" id="errorAdminElectricCategory"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">品牌名称 <span class="required">*</span></label>
+          <input type="text" class="form-input" id="adminElectricBrand" placeholder="如：Apple / 华为 / 小米 / 美的 / 海尔 / 索尼...">
+          <span class="form-error" id="errorAdminElectricBrand"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">电器商品实物照片 <span class="required">*</span></label>
+          <div class="upload-area" id="adminUploadElectricProduct">
+            <input type="file" class="upload-input" id="adminInputElectricProduct" accept="image/*" capture="environment">
+            <div class="upload-placeholder">
+              <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <span>点击拍照或选择商品实物照片</span>
+            </div>
+            <img class="upload-preview" id="adminPreviewElectricProduct" style="display:none;">
+          </div>
+          <span class="form-error" id="errorAdminElectricProduct"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">订单 / 付款截图 <span class="required">*</span></label>
+          <div class="upload-area" id="adminUploadElectricOrder">
+            <input type="file" class="upload-input" id="adminInputElectricOrder" accept="image/*" multiple>
+            <div class="upload-placeholder">
+              <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <span>点击上传订单 / 付款截图（支持多张）</span>
+            </div>
+            <div class="upload-preview-list" id="adminPreviewElectricOrder"></div>
+          </div>
+          <span class="form-error" id="errorAdminElectricOrder"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">消费金额 <span class="required">*</span> <small style="color:#ff8a65;font-weight:600;">（大额电器补贴必须 ≥ 3000 元）</small></label>
+          <input type="text" class="form-input" id="adminElectricAmount" placeholder="如：4999.00元">
+          <span class="form-error" id="errorAdminElectricAmount"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">手写签名 <span class="required">*</span></label>
+          <div class="signature-container">
+            <canvas class="signature-canvas" id="adminSignatureCanvasElectric"></canvas>
+            <div class="signature-actions">
+              <button type="button" class="btn-signature-action" id="btnAdminClearSignatureElectric">清除</button>
+            </div>
+          </div>
+          <span class="form-error" id="errorAdminSignatureElectric"></span>
+        </div>
       </div>
-      <div class="form-group" id="adminVoucherPlatformWrap" style="display:none;">
-        <label class="form-label">购物平台</label>
-        <input class="form-input" id="adminVoucherPlatform" placeholder="如：淘宝、京东、拼多多">
-      </div>
-      <div class="form-group" id="adminVoucherOrderNoWrap" style="display:none;">
-        <label class="form-label">订单号</label>
-        <input class="form-input" id="adminVoucherOrderNo" placeholder="订单号">
-      </div>
-      <div class="form-group" id="adminVoucherElecWrap" style="display:none;">
-        <label class="form-label">电器分类</label>
-        <select class="form-input" id="adminVoucherElecCat">
-          <optgroup label="数码产品">
-            <option>手机</option><option>笔记本</option><option>平板电脑</option>
-            <option>数码相机</option><option>智能手表</option><option>耳机</option>
-          </optgroup>
-          <optgroup label="大家电">
-            <option>电视</option><option>冰箱</option><option>洗衣机</option>
-            <option>空调</option><option>热水器</option><option>油烟机</option>
-            <option>燃气灶</option><option>洗碗机</option><option>微波炉</option>
-            <option>烤箱</option><option>扫地机器人</option><option>净水器</option>
-          </optgroup>
-        </select>
-      </div>
-      <div class="form-group" id="adminVoucherBrandWrap" style="display:none;">
-        <label class="form-label">品牌名称</label>
-        <input class="form-input" id="adminVoucherBrand" placeholder="品牌名称">
-      </div>
+
+      <!-- ===== 备注 ===== -->
       <div class="form-group">
         <label class="form-label">备注</label>
-        <textarea class="form-input" id="adminVoucherRemark" rows="2" placeholder="备注（可选）"></textarea>
+        <textarea class="form-textarea" id="adminVoucherRemark" placeholder="可选备注信息" rows="3"></textarea>
       </div>
     </div>
     <div class="review-actions">
@@ -551,9 +726,9 @@
   </div>
 </div>
 
-<!-- ===== 管理员编辑凭证弹窗 ===== -->
+<!-- ===== 管理员编辑凭证弹窗（与用户端表单完全一致） ===== -->
 <div class="modal-overlay" id="adminEditVoucherOverlay">
-  <div class="review-modal" style="max-width:520px;">
+  <div class="review-modal" style="max-width:560px;">
     <div class="review-modal-header">
       <h3>✏️ 修改凭证</h3>
       <button class="modal-close" id="btnAdminEditVoucherClose">&times;</button>
@@ -564,74 +739,241 @@
         <input class="form-input" id="editVoucherUser" readonly>
       </div>
       <div class="form-group">
-        <label class="form-label">凭证类型</label>
+        <label class="form-label">凭证类型 <span class="required">*</span></label>
         <select class="form-input" id="editVoucherType">
           <option value="普通凭证">普通凭证</option>
           <option value="线上购物">线上购物</option>
           <option value="电器凭证">电器凭证（大额补贴）</option>
         </select>
       </div>
+
+      <!-- ===== 支付方式（与用户端一致） ===== -->
       <div class="form-group">
-        <label class="form-label">店铺名称</label>
-        <input class="form-input" id="editVoucherShop" placeholder="店铺名称">
+        <label class="form-label">支付方式 <span class="required">*</span></label>
+        <div class="payment-options" id="editPaymentOptions">
+          <label class="payment-option">
+            <input type="radio" name="editPaymentMethod" value="unionFirst">
+            <span>工会先代替支付，再让用户支付优惠差价</span>
+          </label>
+          <label class="payment-option">
+            <input type="radio" name="editPaymentMethod" value="userFirst">
+            <span>用户先支付全额，工会再给用户差价</span>
+          </label>
+        </div>
+        <span class="form-error" id="errorEditPaymentMethod"></span>
       </div>
+
+      <!-- ===== 店铺名称 ===== -->
       <div class="form-group">
-        <label class="form-label">消费金额（元）</label>
-        <input class="form-input" id="editVoucherAmount" type="number" step="0.01" placeholder="消费金额">
+        <label class="form-label">店铺名称 <span class="required">*</span></label>
+        <input type="text" class="form-input" id="editVoucherShop" placeholder="请输入店铺名称">
+        <span class="form-error" id="errorEditShopName"></span>
       </div>
-      <div class="form-group">
-        <label class="form-label">消费日期</label>
-        <input class="form-input" id="editVoucherDate" type="date">
+
+      <!-- ===== 普通凭证 专属字段 ===== -->
+      <div id="editNormalFields">
+        <div class="form-group">
+          <label class="form-label">店铺照片</label>
+          <div class="upload-area" id="editUploadShopPhoto">
+            <input type="file" class="upload-input" id="editInputShopPhoto" accept="image/*" capture="environment">
+            <div class="upload-placeholder">
+              <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <span>点击更换店铺照片（留空则不修改）</span>
+            </div>
+            <img class="upload-preview" id="editPreviewShopPhoto" style="display:none;">
+          </div>
+          <span class="form-error" id="errorEditShopPhoto"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">商品订单截图</label>
+          <div class="upload-area" id="editUploadOrderPhoto">
+            <input type="file" class="upload-input" id="editInputOrderPhoto" accept="image/*" multiple>
+            <div class="upload-placeholder">
+              <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <span>点击上传新订单截图（留空则不修改）</span>
+            </div>
+            <div class="upload-preview-list" id="editPreviewOrderPhotos"></div>
+          </div>
+          <span class="form-error" id="errorEditOrderPhoto"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">余额金额 <span class="required">*</span></label>
+          <input type="text" class="form-input" id="editVoucherAmount" placeholder="xxx.xx元">
+          <span class="form-error" id="errorEditAmount"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">手写签名</label>
+          <div class="signature-container">
+            <canvas class="signature-canvas" id="editSignatureCanvasNormal"></canvas>
+            <div class="signature-actions">
+              <button type="button" class="btn-signature-action" id="btnEditClearSignatureNormal">清除</button>
+            </div>
+          </div>
+          <span class="form-error" id="errorEditSignatureNormal"></span>
+        </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">支付方式</label>
-        <select class="form-input" id="editVoucherPay">
-          <option value="微信支付">微信支付</option>
-          <option value="支付宝">支付宝</option>
-          <option value="银行卡">银行卡</option>
-          <option value="现金">现金</option>
-          <option value="信用卡">信用卡</option>
-          <option value="其他">其他</option>
-        </select>
+
+      <!-- ===== 线上购物 专属字段 ===== -->
+      <div id="editOnlineFields" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">选择购物平台 <span class="required">*</span></label>
+          <select class="form-input" id="editOnlinePlatform">
+            <option value="">请选择购物平台</option>
+            <option value="淘宝">淘宝</option>
+            <option value="抖音">抖音</option>
+            <option value="京东">京东</option>
+            <option value="拼多多">拼多多</option>
+            <option value="其他">其他</option>
+          </select>
+          <span class="form-error" id="errorEditOnlinePlatform"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">订单号 <span class="required">*</span></label>
+          <input type="text" class="form-input" id="editOnlineOrderNo" placeholder="请输入订单号">
+          <span class="form-error" id="errorEditOnlineOrderNo"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">商品截图</label>
+          <div class="upload-area" id="editUploadOnlineProduct">
+            <input type="file" class="upload-input" id="editInputOnlineProduct" accept="image/*">
+            <div class="upload-placeholder">
+              <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <span>点击更换商品截图（留空则不修改）</span>
+            </div>
+            <img class="upload-preview" id="editPreviewOnlineProduct" style="display:none;">
+          </div>
+          <span class="form-error" id="errorEditOnlineProduct"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">购物截图</label>
+          <div class="upload-area" id="editUploadOnlineShopping">
+            <input type="file" class="upload-input" id="editInputOnlineShopping" accept="image/*" multiple>
+            <div class="upload-placeholder">
+              <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <span>点击上传新购物截图（留空则不修改）</span>
+            </div>
+            <div class="upload-preview-list" id="editPreviewOnlineShopping"></div>
+          </div>
+          <span class="form-error" id="errorEditOnlineShopping"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">余额金额 <span class="required">*</span></label>
+          <input type="text" class="form-input" id="editOnlineAmount" placeholder="xxx.xx元">
+          <span class="form-error" id="errorEditOnlineAmount"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">手写签名</label>
+          <div class="signature-container">
+            <canvas class="signature-canvas" id="editSignatureCanvasOnline"></canvas>
+            <div class="signature-actions">
+              <button type="button" class="btn-signature-action" id="btnEditClearSignatureOnline">清除</button>
+            </div>
+          </div>
+          <span class="form-error" id="errorEditSignatureOnline"></span>
+        </div>
       </div>
-      <div class="form-group" id="editVoucherPlatformWrap" style="display:none;">
-        <label class="form-label">购物平台</label>
-        <input class="form-input" id="editVoucherPlatform" placeholder="购物平台">
+
+      <!-- ===== 电器凭证 专属字段 ===== -->
+      <div id="editElectricFields" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">订单类型 <span class="required">*</span></label>
+          <select class="form-input" id="editElectricOrderType">
+            <option value="">请选择订单类型</option>
+            <option value="电器凭证">电器凭证（大额补贴专用）</option>
+          </select>
+          <span class="form-error" id="errorEditElectricOrderType"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">电器分类（共 18 类） <span class="required">*</span></label>
+          <select class="form-input" id="editElectricCategory">
+            <option value="">请选择电器分类</option>
+            <optgroup label="📱 数码移动（6 类）">
+              <option value="手机">手机</option>
+              <option value="笔记本电脑">笔记本电脑</option>
+              <option value="平板电脑">平板电脑</option>
+              <option value="耳机音响">耳机 / 音响</option>
+              <option value="智能手表手环">智能手表 / 手环</option>
+              <option value="相机摄像机">相机 / 摄像机</option>
+            </optgroup>
+            <optgroup label="🏠 大家电（12 类）">
+              <option value="电视">电视</option>
+              <option value="冰箱">冰箱</option>
+              <option value="洗衣机">洗衣机</option>
+              <option value="空调">空调</option>
+              <option value="热水器">热水器</option>
+              <option value="油烟机燃气灶">油烟机 / 燃气灶</option>
+              <option value="洗碗机消毒柜">洗碗机 / 消毒柜</option>
+              <option value="微波炉烤箱">微波炉 / 烤箱</option>
+              <option value="破壁料理机">破壁机 / 料理机</option>
+              <option value="净化器加湿器">空气净化器 / 加湿器</option>
+              <option value="扫地机器人洗地机">扫地机器人 / 洗地机</option>
+              <option value="其他大家电">其他大家电</option>
+            </optgroup>
+          </select>
+          <span class="form-error" id="errorEditElectricCategory"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">品牌名称 <span class="required">*</span></label>
+          <input type="text" class="form-input" id="editElectricBrand" placeholder="如：Apple / 华为 / 小米 / 美的 / 海尔 / 索尼...">
+          <span class="form-error" id="errorEditElectricBrand"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">电器商品实物照片</label>
+          <div class="upload-area" id="editUploadElectricProduct">
+            <input type="file" class="upload-input" id="editInputElectricProduct" accept="image/*" capture="environment">
+            <div class="upload-placeholder">
+              <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <span>点击更换商品照片（留空则不修改）</span>
+            </div>
+            <img class="upload-preview" id="editPreviewElectricProduct" style="display:none;">
+          </div>
+          <span class="form-error" id="errorEditElectricProduct"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">订单 / 付款截图</label>
+          <div class="upload-area" id="editUploadElectricOrder">
+            <input type="file" class="upload-input" id="editInputElectricOrder" accept="image/*" multiple>
+            <div class="upload-placeholder">
+              <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <span>点击上传新截图（留空则不修改）</span>
+            </div>
+            <div class="upload-preview-list" id="editPreviewElectricOrder"></div>
+          </div>
+          <span class="form-error" id="errorEditElectricOrder"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">消费金额 <span class="required">*</span> <small style="color:#ff8a65;font-weight:600;">（大额电器补贴必须 ≥ 3000 元）</small></label>
+          <input type="text" class="form-input" id="editElectricAmount" placeholder="如：4999.00元">
+          <span class="form-error" id="errorEditElectricAmount"></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">手写签名</label>
+          <div class="signature-container">
+            <canvas class="signature-canvas" id="editSignatureCanvasElectric"></canvas>
+            <div class="signature-actions">
+              <button type="button" class="btn-signature-action" id="btnEditClearSignatureElectric">清除</button>
+            </div>
+          </div>
+          <span class="form-error" id="errorEditSignatureElectric"></span>
+        </div>
       </div>
-      <div class="form-group" id="editVoucherOrderNoWrap" style="display:none;">
-        <label class="form-label">订单号</label>
-        <input class="form-input" id="editVoucherOrderNo" placeholder="订单号">
-      </div>
-      <div class="form-group" id="editVoucherElecWrap" style="display:none;">
-        <label class="form-label">电器分类</label>
-        <select class="form-input" id="editVoucherElecCat">
-          <optgroup label="数码产品">
-            <option>手机</option><option>笔记本</option><option>平板电脑</option>
-            <option>数码相机</option><option>智能手表</option><option>耳机</option>
-          </optgroup>
-          <optgroup label="大家电">
-            <option>电视</option><option>冰箱</option><option>洗衣机</option>
-            <option>空调</option><option>热水器</option><option>油烟机</option>
-            <option>燃气灶</option><option>洗碗机</option><option>微波炉</option>
-            <option>烤箱</option><option>扫地机器人</option><option>净水器</option>
-          </optgroup>
-        </select>
-      </div>
-      <div class="form-group" id="editVoucherBrandWrap" style="display:none;">
-        <label class="form-label">品牌名称</label>
-        <input class="form-input" id="editVoucherBrand" placeholder="品牌名称">
-      </div>
+
+      <!-- ===== 备注 ===== -->
       <div class="form-group">
         <label class="form-label">备注</label>
-        <textarea class="form-input" id="editVoucherRemark" rows="2" placeholder="备注"></textarea>
-      </div>
-      <div class="form-group">
-        <label class="form-label">店铺照片 URL</label>
-        <input class="form-input" id="editVoucherShopPhoto" placeholder="图片URL（可修改）">
-      </div>
-      <div class="form-group">
-        <label class="form-label">订单照片 URL（多个用 | 分隔）</label>
-        <input class="form-input" id="editVoucherOrderPhotos" placeholder="图片URL">
+        <textarea class="form-textarea" id="editVoucherRemark" placeholder="可选备注信息" rows="3"></textarea>
       </div>
     </div>
     <div class="review-actions">

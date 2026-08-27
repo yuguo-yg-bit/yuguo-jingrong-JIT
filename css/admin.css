@@ -536,6 +536,219 @@ body {
   font-size: 12px;
 }
 
+.form-error.visible {
+  display: block;
+}
+
+.form-textarea {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-color);
+  font-size: 14px;
+  transition: border-color 0.3s ease;
+  outline: none;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.form-textarea:focus {
+  border-color: var(--ice-blue);
+  box-shadow: 0 0 0 3px var(--ice-blue-glow);
+}
+
+/* ===== 支付方式选项（与用户端一致） ===== */
+.payment-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.payment-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: var(--text-color);
+  font-size: 13px;
+}
+
+.payment-option:hover {
+  border-color: var(--ice-blue);
+  background: rgba(66, 165, 245, 0.08);
+  box-shadow: 0 0 10px var(--ice-blue-glow);
+}
+
+.payment-option input[type="radio"] {
+  accent-color: var(--ice-blue);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.payment-option input[type="radio"]:checked + span {
+  color: var(--ice-blue);
+  font-weight: 600;
+}
+
+/* ===== 图片上传区域（与用户端一致） ===== */
+.upload-area {
+  position: relative;
+  border: 2px dashed var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: var(--bg-panel);
+  min-height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.upload-area:hover {
+  border-color: var(--ice-blue);
+  background: rgba(66, 165, 245, 0.05);
+}
+
+.upload-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.upload-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.upload-placeholder .nav-icon {
+  width: 32px;
+  height: 32px;
+  color: rgba(66, 165, 245, 0.5);
+}
+
+.upload-preview {
+  max-width: 100%;
+  max-height: 200px;
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+}
+
+.upload-preview-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.upload-preview-item {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+}
+
+.upload-preview-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.upload-preview-item .remove-preview {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  background: rgba(244, 67, 54, 0.8);
+  border: none;
+  border-radius: 50%;
+  color: white;
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* ===== 手写签名（与用户端一致） ===== */
+.signature-container {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-panel);
+}
+
+.signature-canvas {
+  width: 100%;
+  height: 150px;
+  display: block;
+  cursor: crosshair;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.signature-actions {
+  display: flex;
+  justify-content: center;
+  padding: 8px;
+  border-top: 1px solid var(--border-color);
+}
+
+.btn-signature-action {
+  background: rgba(66, 165, 245, 0.1);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--ice-blue);
+  padding: 6px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-signature-action:hover {
+  background: rgba(66, 165, 245, 0.2);
+  box-shadow: 0 0 8px var(--ice-blue-glow);
+}
+
+/* ===== 取消按钮 ===== */
+.btn-cancel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  padding: 10px 24px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-cancel:hover {
+  background: rgba(244, 67, 54, 0.1);
+  border-color: var(--danger-red);
+  color: var(--danger-red);
+}
+
 .chat-layout {
   display: flex;
   height: calc(100vh - 60px);

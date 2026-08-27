@@ -548,177 +548,595 @@ var JITAdmin = (function() {
     }).catch(function() {});
   };
 
+  // ========= 管理员代用户添加凭证（与用户端表单完全一致） =========
+  var _adminAddShopPhoto = {file: null};
+  var _adminAddOrderPhotos = {files: []};
+  var _adminAddOnlineProduct = {file: null};
+  var _adminAddOnlineShopping = {files: []};
+  var _adminAddElectricProduct = {file: null};
+  var _adminAddElectricOrder = {files: []};
+  var _adminSignatureNormal = {data: null};
+  var _adminSignatureOnline = {data: null};
+  var _adminSignatureElectric = {data: null};
+
+  // ========= 管理员编辑凭证（与用户端表单完全一致） =========
+  var _editShopPhoto = {file: null};
+  var _editOrderPhotos = {files: []};
+  var _editOnlineProduct = {file: null};
+  var _editOnlineShopping = {files: []};
+  var _editElectricProduct = {file: null};
+  var _editElectricOrder = {files: []};
+  var _editSignatureNormal = {data: null};
+  var _editSignatureOnline = {data: null};
+  var _editSignatureElectric = {data: null};
+
+  // ===== 签名 Canvas 初始化 =====
+  var _initSignatureCanvas = function(canvasId, clearBtnId, storageRef) {
+    var canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    var parent = canvas.parentElement;
+    if (parent && parent.clientWidth > 0) {
+      canvas.width = parent.clientWidth;
+      canvas.height = 150;
+    }
+    var ctx = canvas.getContext("2d");
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#ffffff";
+    var drawing = false, lastX = 0, lastY = 0;
+    function pos(e) {
+      var rect = canvas.getBoundingClientRect();
+      var t = e.touches && e.touches[0] ? e.touches[0] : e;
+      return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+    }
+    function start(e) { e.preventDefault(); drawing = true; var p = pos(e); lastX = p.x; lastY = p.y; }
+    function move(e) {
+      if (!drawing) return; e.preventDefault();
+      var p = pos(e);
+      ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(p.x, p.y); ctx.stroke();
+      lastX = p.x; lastY = p.y;
+    }
+    function end() { if (drawing) { drawing = false; storageRef.data = canvas.toDataURL(); } }
+    canvas.onmousedown = start; canvas.onmousemove = move; canvas.onmouseup = end; canvas.onmouseleave = end;
+    canvas.ontouchstart = start; canvas.ontouchmove = move; canvas.ontouchend = end;
+
+    // 清除按钮
+    var clearBtn = document.getElementById(clearBtnId);
+    if (clearBtn) {
+      clearBtn.onclick = function() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        storageRef.data = null;
+      };
+    }
+
+    // 如果已有签名数据，加载
+    if (storageRef.data) {
+      var img = new Image();
+      img.onload = function() { ctx.drawImage(img, 0, 0); };
+      img.src = storageRef.data;
+    }
+  };
+
+  // ===== 上传区域事件绑定 =====
+  var _bindUploadArea = function(areaId, inputId, previewId, storageRef, isMulti) {
+    var area = document.getElementById(areaId);
+    var input = document.getElementById(inputId);
+    if (!area || !input) return;
+
+    var clickHandler = function(e) {
+      if (e.target === area || e.target.closest(".upload-placeholder") || e.target.closest(".upload-preview") || (isMulti && e.target.closest(".upload-preview-list"))) {
+        input.click();
+      }
+    };
+    area.addEventListener("click", clickHandler);
+
+    input.addEventListener("change", function(e) {
+      var files = Array.prototype.slice.call(e.target.files || []);
+      if (!files.length) return;
+      if (isMulti) {
+        storageRef.files = (storageRef.files || []).concat(files);
+        var list = document.getElementById(previewId);
+        if (!list) return;
+        files.forEach(function(f) {
+          var reader = new FileReader();
+          reader.onload = function(ev) {
+            var wrap = document.createElement("div");
+            wrap.className = "upload-preview-item";
+            var img = document.createElement("img");
+            img.src = ev.target.result;
+            var rm = document.createElement("button");
+            rm.className = "remove-preview";
+            rm.textContent = "×";
+            rm.onclick = function(ev2) {
+              ev2.stopPropagation();
+              var idx = Array.prototype.indexOf.call(list.children, wrap);
+              if (idx >= 0) storageRef.files.splice(idx, 1);
+              wrap.remove();
+            };
+            wrap.appendChild(img);
+            wrap.appendChild(rm);
+            list.appendChild(wrap);
+          };
+          reader.readAsDataURL(f);
+        });
+      } else {
+        storageRef.file = files[0];
+        var preview = document.getElementById(previewId);
+        if (!preview) return;
+        var reader = new FileReader();
+        reader.onload = function(ev) { preview.src = ev.target.result; preview.style.display = "block"; };
+        reader.readAsDataURL(files[0]);
+      }
+      input.value = "";
+    });
+  };
+
+  // ===== 清除上传区域 =====
+  var _clearUploadArea = function(previewId, storageRef, isMulti) {
+    if (isMulti) {
+      storageRef.files = [];
+      var list = document.getElementById(previewId);
+      if (list) list.innerHTML = "";
+    } else {
+      storageRef.file = null;
+      var preview = document.getElementById(previewId);
+      if (preview) { preview.src = ""; preview.style.display = "none"; }
+    }
+  };
+
+  // ===== 隐藏所有错误 =====
+  var _hideAllAdminErrors = function(prefix) {
+    var errors = document.querySelectorAll("#" + prefix + " .form-error, [id^='error" + prefix + "'], [id^='errorAdmin'], [id^='errorEdit']");
+    errors.forEach(function(el) {
+      el.classList.remove("visible");
+      el.textContent = "";
+    });
+  };
+
+  var _showAdminError = function(id, msg) {
+    var el = document.getElementById(id);
+    if (el) { el.textContent = msg; el.classList.add("visible"); }
+  };
+
+  // ===== 打开添加凭证弹窗 =====
   var _openAdminAddVoucherModal = function() {
     _loadRegisteredUsersForVoucher();
+
+    // 重置所有字段
     document.getElementById("adminVoucherType").value = "普通凭证";
     document.getElementById("adminVoucherShop").value = "";
     document.getElementById("adminVoucherAmount").value = "";
-    document.getElementById("adminVoucherDate").value = new Date().toISOString().split("T")[0];
-    document.getElementById("adminVoucherPay").value = "微信支付";
-    document.getElementById("adminVoucherPlatform").value = "";
-    document.getElementById("adminVoucherOrderNo").value = "";
-    document.getElementById("adminVoucherElecCat").value = "";
-    document.getElementById("adminVoucherBrand").value = "";
+    document.getElementById("adminOnlinePlatform").value = "";
+    document.getElementById("adminOnlineOrderNo").value = "";
+    document.getElementById("adminOnlineAmount").value = "";
+    document.getElementById("adminElectricOrderType").value = "";
+    document.getElementById("adminElectricCategory").value = "";
+    document.getElementById("adminElectricBrand").value = "";
+    document.getElementById("adminElectricAmount").value = "";
     document.getElementById("adminVoucherRemark").value = "";
+    document.querySelectorAll('input[name="adminPaymentMethod"]').forEach(function(r) { r.checked = false; });
+
+    // 清除上传
+    _adminAddShopPhoto.file = null;
+    _adminAddOrderPhotos.files = [];
+    _adminAddOnlineProduct.file = null;
+    _adminAddOnlineShopping.files = [];
+    _adminAddElectricProduct.file = null;
+    _adminAddElectricOrder.files = [];
+    _clearUploadArea("adminPreviewShopPhoto", _adminAddShopPhoto, false);
+    _clearUploadArea("adminPreviewOrderPhotos", _adminAddOrderPhotos, true);
+    _clearUploadArea("adminPreviewOnlineProduct", _adminAddOnlineProduct, false);
+    _clearUploadArea("adminPreviewOnlineShopping", _adminAddOnlineShopping, true);
+    _clearUploadArea("adminPreviewElectricProduct", _adminAddElectricProduct, false);
+    _clearUploadArea("adminPreviewElectricOrder", _adminAddElectricOrder, true);
+
+    // 清除签名
+    _adminSignatureNormal.data = null;
+    _adminSignatureOnline.data = null;
+    _adminSignatureElectric.data = null;
+
+    // 显示默认类型字段
     _toggleAdminVoucherFields();
     document.getElementById("adminAddVoucherOverlay").classList.add("active");
+
+    // 延迟初始化签名 canvas
+    setTimeout(function() {
+      _initSignatureCanvas("adminSignatureCanvasNormal", "btnAdminClearSignatureNormal", _adminSignatureNormal);
+    }, 200);
   };
 
+  // ===== 切换凭证类型字段 =====
   var _toggleAdminVoucherFields = function() {
     var type = document.getElementById("adminVoucherType").value;
+    var isNormal = (type === "普通凭证");
     var isOnline = (type === "线上购物");
     var isElec = (type === "电器凭证");
-    document.getElementById("adminVoucherPlatformWrap").style.display = isOnline ? "block" : "none";
-    document.getElementById("adminVoucherOrderNoWrap").style.display = isOnline ? "block" : "none";
-    document.getElementById("adminVoucherElecWrap").style.display = isElec ? "block" : "none";
-    document.getElementById("adminVoucherBrandWrap").style.display = isElec ? "block" : "none";
+
+    document.getElementById("adminAddNormalFields").style.display = isNormal ? "block" : "none";
+    document.getElementById("adminAddOnlineFields").style.display = isOnline ? "block" : "none";
+    document.getElementById("adminAddElectricFields").style.display = isElec ? "block" : "none";
+
+    // 隐藏所有错误
+    _hideAllAdminErrors("adminAddVoucherOverlay");
+
+    // 初始化对应类型的签名 canvas
+    setTimeout(function() {
+      if (isNormal) _initSignatureCanvas("adminSignatureCanvasNormal", "btnAdminClearSignatureNormal", _adminSignatureNormal);
+      if (isOnline) _initSignatureCanvas("adminSignatureCanvasOnline", "btnAdminClearSignatureOnline", _adminSignatureOnline);
+      if (isElec) _initSignatureCanvas("adminSignatureCanvasElectric", "btnAdminClearSignatureElectric", _adminSignatureElectric);
+    }, 200);
   };
 
+  // ===== 提交添加凭证 =====
   var _submitAdminAddVoucher = function() {
     var username = document.getElementById("adminVoucherUser").value;
     var type = document.getElementById("adminVoucherType").value;
+    var payRadio = document.querySelector('input[name="adminPaymentMethod"]:checked');
+    var payVal = payRadio ? payRadio.value : "";
+    var payText = payVal === "unionFirst" ? "工会先代替支付，再让用户支付优惠差价" : (payVal === "userFirst" ? "用户先支付全额，工会再给用户差价" : "");
     var shop = document.getElementById("adminVoucherShop").value.trim();
-    var amount = document.getElementById("adminVoucherAmount").value.trim();
-    var date = document.getElementById("adminVoucherDate").value || new Date().toISOString().split("T")[0];
-    var pay = document.getElementById("adminVoucherPay").value;
     var remark = document.getElementById("adminVoucherRemark").value.trim();
+
+    _hideAllAdminErrors("adminAddVoucherOverlay");
+    var hasError = false;
+
     if (!username) { _showToast("请选择用户"); return; }
-    if (!shop) { _showToast("请填写店铺名称"); return; }
-    if (!amount || parseFloat(amount) <= 0) { _showToast("请填写有效金额"); return; }
-    if (type === "电器凭证" && parseFloat(amount) < 3000) { _showToast("电器凭证金额需 ≥ 3000 元"); return; }
+    if (!payVal) { _showAdminError("errorAdminPaymentMethod", "请选择支付方式"); hasError = true; }
+    if (!shop) { _showAdminError("errorAdminShopName", "请输入店铺名称"); hasError = true; }
 
     var voucherData = {
       username: username,
-      voucherId: "V" + Date.now().toString().slice(-8),
       voucherType: type,
       shopName: shop,
-      amount: amount,
-      date: date,
-      paymentMethod: pay,
-      paymentMethodText: pay,
-      remark: remark,
-      status: "待审核"
+      date: new Date().toISOString().split("T")[0],
+      paymentMethod: payVal,
+      paymentMethodText: payText,
+      paymentNote: payText,
+      remark: remark || "",
+      status: "待审核",
+      statusType: "pending",
+      discount: "",
+      discountValue: 0,
+      shopPhoto: "",
+      orderPhotos: [],
+      signature: "",
+      _issueNumber: null,
+      _createdAt: Date.now()
     };
-    if (type === "线上购物") {
-      voucherData.platform = document.getElementById("adminVoucherPlatform").value.trim();
-      voucherData.orderNo = document.getElementById("adminVoucherOrderNo").value.trim();
-    }
-    if (type === "电器凭证") {
+
+    var amountVal = "";
+    var shopPhotoFile = null;
+    var orderPhotoFiles = [];
+    var productFile = null;
+    var shoppingFiles = [];
+
+    if (type === "普通凭证") {
+      amountVal = document.getElementById("adminVoucherAmount").value.trim();
+      shopPhotoFile = _adminAddShopPhoto.file;
+      orderPhotoFiles = _adminAddOrderPhotos.files.slice();
+      if (!amountVal) { _showAdminError("errorAdminAmount", "请输入余额金额"); hasError = true; }
+      if (!shopPhotoFile) { _showAdminError("errorAdminShopPhoto", "请上传店铺照片"); hasError = true; }
+      if (!orderPhotoFiles.length) { _showAdminError("errorAdminOrderPhoto", "请上传商品订单截图"); hasError = true; }
+      if (!_adminSignatureNormal.data) { _showAdminError("errorAdminSignatureNormal", "请手写签名"); hasError = true; }
+      voucherData.amount = amountVal.replace("元", "");
+      voucherData.originalPrice = voucherData.amount;
+      voucherData.finalPrice = voucherData.amount;
+      voucherData.signature = _adminSignatureNormal.data || "";
+    } else if (type === "线上购物") {
+      amountVal = document.getElementById("adminOnlineAmount").value.trim();
+      voucherData.platform = document.getElementById("adminOnlinePlatform").value;
+      voucherData.orderNo = document.getElementById("adminOnlineOrderNo").value.trim();
+      productFile = _adminAddOnlineProduct.file;
+      shoppingFiles = _adminAddOnlineShopping.files.slice();
+      if (!voucherData.platform) { _showAdminError("errorAdminOnlinePlatform", "请选择购物平台"); hasError = true; }
+      if (!voucherData.orderNo) { _showAdminError("errorAdminOnlineOrderNo", "请输入订单号"); hasError = true; }
+      if (!amountVal) { _showAdminError("errorAdminOnlineAmount", "请输入余额金额"); hasError = true; }
+      if (!productFile) { _showAdminError("errorAdminOnlineProduct", "请上传商品截图"); hasError = true; }
+      if (!shoppingFiles.length) { _showAdminError("errorAdminOnlineShopping", "请上传购物截图"); hasError = true; }
+      if (!_adminSignatureOnline.data) { _showAdminError("errorAdminSignatureOnline", "请手写签名"); hasError = true; }
+      voucherData.amount = amountVal.replace("元", "");
+      voucherData.originalPrice = voucherData.amount;
+      voucherData.finalPrice = voucherData.amount;
+      voucherData.signature = _adminSignatureOnline.data || "";
+      // 线上购物用 shopPhoto 存商品截图，orderPhotos 存购物截图
+      shopPhotoFile = productFile;
+      orderPhotoFiles = shoppingFiles;
+    } else if (type === "电器凭证") {
+      amountVal = document.getElementById("adminElectricAmount").value.trim();
       voucherData.electric = true;
-      voucherData.electricCategory = document.getElementById("adminVoucherElecCat").value;
-      voucherData.electricBrand = document.getElementById("adminVoucherBrand").value.trim();
-      voucherData.electricApplyAmount = amount;
+      voucherData.electricCategory = document.getElementById("adminElectricCategory").value;
+      voucherData.electricBrand = document.getElementById("adminElectricBrand").value.trim();
+      voucherData.electricSubsidyRate = "";
+      voucherData.electricSubsidyAmount = "";
+      var amtNum = parseFloat((amountVal || "").replace(/元|,/g, ""));
+      var orderType = document.getElementById("adminElectricOrderType").value;
+      shopPhotoFile = _adminAddElectricProduct.file;
+      orderPhotoFiles = _adminAddElectricOrder.files.slice();
+      if (!orderType) { _showAdminError("errorAdminElectricOrderType", "请选择订单类型"); hasError = true; }
+      if (!voucherData.electricCategory) { _showAdminError("errorAdminElectricCategory", "请选择电器分类"); hasError = true; }
+      if (!voucherData.electricBrand) { _showAdminError("errorAdminElectricBrand", "请填写品牌名称"); hasError = true; }
+      if (!amountVal) { _showAdminError("errorAdminElectricAmount", "请输入消费金额"); hasError = true; }
+      else if (isNaN(amtNum) || amtNum <= 0) { _showAdminError("errorAdminElectricAmount", "消费金额格式不正确"); hasError = true; }
+      else if (amtNum < 3000) { _showAdminError("errorAdminElectricAmount", "大额电器补贴仅支持金额 ≥ 3000 元"); hasError = true; }
+      if (!shopPhotoFile) { _showAdminError("errorAdminElectricProduct", "请上传商品实物照片"); hasError = true; }
+      if (!orderPhotoFiles.length) { _showAdminError("errorAdminElectricOrder", "请上传订单/付款截图"); hasError = true; }
+      if (!_adminSignatureElectric.data) { _showAdminError("errorAdminSignatureElectric", "请手写签名"); hasError = true; }
+      voucherData.amount = amtNum ? amtNum.toFixed(2) + "元" : "";
+      voucherData.originalPrice = voucherData.amount;
+      voucherData.finalPrice = voucherData.amount;
+      voucherData.electricApplyAmount = amtNum ? amtNum.toFixed(2) : "";
+      voucherData.signature = _adminSignatureElectric.data || "";
     }
+
+    if (hasError) return;
 
     var btn = document.getElementById("btnAdminAddVoucherConfirm");
     btn.textContent = "提交中...";
     btn.disabled = true;
 
     var body = JITApi.formatIssueBody(voucherData);
-    var title = username + voucherData.voucherId;
+    var title = username + "-" + (voucherData.voucherId || "V" + Date.now().toString().slice(-8));
+    // 生成 voucherId
+    if (!voucherData.voucherId) {
+      voucherData.voucherId = "V" + Date.now().toString().slice(-8);
+      title = username + "-" + voucherData.voucherId;
+      body = JITApi.formatIssueBody(voucherData);
+    }
     var labels = [JITConfig.getLabels().voucher, JITConfig.getLabels().pending];
     if (type === "电器凭证") labels.push(JITConfig.getLabels().electric || "electric");
 
-    _apiPost(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues", {
-      title: title, body: body, labels: labels
-    }).then(function() {
-      _showToast("已为用户 [" + username + "] 添加凭证", "success");
-      document.getElementById("adminAddVoucherOverlay").classList.remove("active");
-      loadIssues();
-    }).catch(function(e) {
-      _showToast("添加失败: " + e.message);
-    }).then(function() {
-      btn.textContent = "提交凭证";
-      btn.disabled = false;
-    });
+    // 使用图片上传
+    var hasShopPhoto = !!shopPhotoFile;
+    var hasOrderPhotos = orderPhotoFiles && orderPhotoFiles.length > 0;
+    if (hasShopPhoto || hasOrderPhotos) {
+      JITApi.submitVoucherWithImages(voucherData, shopPhotoFile, orderPhotoFiles, hasShopPhoto, hasOrderPhotos).then(function(result) {
+        _showToast("已为用户 [" + username + "] 添加凭证", "success");
+        document.getElementById("adminAddVoucherOverlay").classList.remove("active");
+        loadIssues();
+      }).catch(function(e) {
+        _showToast("添加失败: " + e.message);
+      }).then(function() {
+        btn.textContent = "提交凭证";
+        btn.disabled = false;
+      });
+    } else {
+      // 无图片时直接创建 issue
+      _apiPost(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues", {
+        title: title, body: body, labels: labels
+      }).then(function() {
+        _showToast("已为用户 [" + username + "] 添加凭证", "success");
+        document.getElementById("adminAddVoucherOverlay").classList.remove("active");
+        loadIssues();
+      }).catch(function(e) {
+        _showToast("添加失败: " + e.message);
+      }).then(function() {
+        btn.textContent = "提交凭证";
+        btn.disabled = false;
+      });
+    }
   };
 
-  // ========= 管理员编辑凭证 =========
+  // ========= 管理员编辑凭证（与用户端表单完全一致） =========
+  var _toggleEditVoucherFields = function() {
+    var type = document.getElementById("editVoucherType").value;
+    var isNormal = (type === "普通凭证");
+    var isOnline = (type === "线上购物");
+    var isElec = (type === "电器凭证");
+
+    document.getElementById("editNormalFields").style.display = isNormal ? "block" : "none";
+    document.getElementById("editOnlineFields").style.display = isOnline ? "block" : "none";
+    document.getElementById("editElectricFields").style.display = isElec ? "block" : "none";
+
+    _hideAllAdminErrors("adminEditVoucherOverlay");
+
+    setTimeout(function() {
+      if (isNormal) _initSignatureCanvas("editSignatureCanvasNormal", "btnEditClearSignatureNormal", _editSignatureNormal);
+      if (isOnline) _initSignatureCanvas("editSignatureCanvasOnline", "btnEditClearSignatureOnline", _editSignatureOnline);
+      if (isElec) _initSignatureCanvas("editSignatureCanvasElectric", "btnEditClearSignatureElectric", _editSignatureElectric);
+    }, 200);
+  };
+
   var _openEditVoucherModal = function() {
     if (!currentIssue) { _showToast("请先选择凭证"); return; }
     var data = _parseIssueBody(currentIssue.body);
     var isElectric = !!(data.electric || data.voucherType === "电器凭证" || data.electricCategory);
 
+    // 清除上传状态
+    _editShopPhoto.file = null;
+    _editOrderPhotos.files = [];
+    _editOnlineProduct.file = null;
+    _editOnlineShopping.files = [];
+    _editElectricProduct.file = null;
+    _editElectricOrder.files = [];
+    _editSignatureNormal.data = null;
+    _editSignatureOnline.data = null;
+    _editSignatureElectric.data = null;
+    _clearUploadArea("editPreviewShopPhoto", _editShopPhoto, false);
+    _clearUploadArea("editPreviewOrderPhotos", _editOrderPhotos, true);
+    _clearUploadArea("editPreviewOnlineProduct", _editOnlineProduct, false);
+    _clearUploadArea("editPreviewOnlineShopping", _editOnlineShopping, true);
+    _clearUploadArea("editPreviewElectricProduct", _editElectricProduct, false);
+    _clearUploadArea("editPreviewElectricOrder", _editElectricOrder, true);
+
+    // 基础字段
     document.getElementById("editVoucherUser").value = data.userId || data.username || (currentIssue.user && currentIssue.user.login) || "";
-    document.getElementById("editVoucherType").value = data.voucherType || "普通凭证";
+    var vType = data.voucherType || "普通凭证";
+    document.getElementById("editVoucherType").value = vType;
     document.getElementById("editVoucherShop").value = data.shopName || "";
-    document.getElementById("editVoucherAmount").value = data.amount || (data.electricApplyAmount || "").replace(/[元,]/g, "") || "";
-    document.getElementById("editVoucherDate").value = (data.date || data.createTime || "").split(" ")[0] || "";
-    document.getElementById("editVoucherPay").value = data.paymentMethod || "微信支付";
-    document.getElementById("editVoucherPlatform").value = data.platform || "";
-    document.getElementById("editVoucherOrderNo").value = data.orderNo || "";
-    document.getElementById("editVoucherElecCat").value = data.electricCategory || "";
-    document.getElementById("editVoucherBrand").value = data.electricBrand || "";
     document.getElementById("editVoucherRemark").value = data.remark || data.note || "";
-    document.getElementById("editVoucherShopPhoto").value = data.shopPhoto || "";
-    document.getElementById("editVoucherOrderPhotos").value = data.orderPhotos || "";
+
+    // 支付方式 radio
+    document.querySelectorAll('input[name="editPaymentMethod"]').forEach(function(r) { r.checked = false; });
+    var payMethod = data.paymentMethod || "";
+    if (payMethod === "unionFirst" || payMethod === "userFirst") {
+      var payRadio = document.querySelector('input[name="editPaymentMethod"][value="' + payMethod + '"]');
+      if (payRadio) payRadio.checked = true;
+    } else if (payMethod) {
+      // 旧格式的支付方式，尝试映射
+      if (payMethod.indexOf("工会先") !== -1) {
+        var r = document.querySelector('input[name="editPaymentMethod"][value="unionFirst"]');
+        if (r) r.checked = true;
+      } else if (payMethod.indexOf("用户先") !== -1) {
+        var r2 = document.querySelector('input[name="editPaymentMethod"][value="userFirst"]');
+        if (r2) r2.checked = true;
+      }
+    }
+
+    // 签名数据
+    _editSignatureNormal.data = data.signature || null;
+    _editSignatureOnline.data = data.signature || null;
+    _editSignatureElectric.data = data.signature || null;
+
+    // 普通凭证字段
+    document.getElementById("editVoucherAmount").value = (data.amount || "").replace(/[元,]/g, "") || "";
+
+    // 线上购物字段
+    document.getElementById("editOnlinePlatform").value = data.platform || "";
+    document.getElementById("editOnlineOrderNo").value = data.orderNo || "";
+    document.getElementById("editOnlineAmount").value = (data.amount || "").replace(/[元,]/g, "") || "";
+
+    // 电器凭证字段
+    document.getElementById("editElectricOrderType").value = (vType === "电器凭证" || isElectric) ? "电器凭证" : "";
+    document.getElementById("editElectricCategory").value = data.electricCategory || "";
+    document.getElementById("editElectricBrand").value = data.electricBrand || "";
+    document.getElementById("editElectricAmount").value = (data.amount || data.electricApplyAmount || "").replace(/[元,]/g, "") || "";
+
+    // 显示对应类型
     _toggleEditVoucherFields();
     document.getElementById("adminEditVoucherOverlay").classList.add("active");
-  };
-
-  var _toggleEditVoucherFields = function() {
-    var type = document.getElementById("editVoucherType").value;
-    var isOnline = (type === "线上购物");
-    var isElec = (type === "电器凭证");
-    document.getElementById("editVoucherPlatformWrap").style.display = isOnline ? "block" : "none";
-    document.getElementById("editVoucherOrderNoWrap").style.display = isOnline ? "block" : "none";
-    document.getElementById("editVoucherElecWrap").style.display = isElec ? "block" : "none";
-    document.getElementById("editVoucherBrandWrap").style.display = isElec ? "block" : "none";
   };
 
   var _submitEditVoucher = function() {
     if (!currentIssue) return;
     var data = _parseIssueBody(currentIssue.body);
-    var isElectric = !!(data.electric || data.voucherType === "电器凭证" || data.electricCategory);
+
+    var type = document.getElementById("editVoucherType").value;
+    var payRadio = document.querySelector('input[name="editPaymentMethod"]:checked');
+    var payVal = payRadio ? payRadio.value : "";
+    var payText = payVal === "unionFirst" ? "工会先代替支付，再让用户支付优惠差价" : (payVal === "userFirst" ? "用户先支付全额，工会再给用户差价" : "");
+    var shop = document.getElementById("editVoucherShop").value.trim();
+    var remark = document.getElementById("editVoucherRemark").value.trim();
+
+    _hideAllAdminErrors("adminEditVoucherOverlay");
+    var hasError = false;
+
+    if (!payVal) { _showAdminError("errorEditPaymentMethod", "请选择支付方式"); hasError = true; }
+    if (!shop) { _showAdminError("errorEditShopName", "请输入店铺名称"); hasError = true; }
 
     var voucherData = {
       username: document.getElementById("editVoucherUser").value,
-      voucherId: data.title ? data.title.replace(/^.*?(V\d+).*$/, "$1") : "",
-      voucherType: document.getElementById("editVoucherType").value,
-      shopName: document.getElementById("editVoucherShop").value.trim(),
-      amount: document.getElementById("editVoucherAmount").value.trim(),
-      date: document.getElementById("editVoucherDate").value || data.date || "",
-      paymentMethod: document.getElementById("editVoucherPay").value,
-      paymentMethodText: document.getElementById("editVoucherPay").value,
-      remark: document.getElementById("editVoucherRemark").value.trim(),
-      shopPhoto: document.getElementById("editVoucherShopPhoto").value.trim(),
-      orderPhotos: document.getElementById("editVoucherOrderPhotos").value.trim(),
-      signature: data.signature || "",
+      voucherId: data.voucherId || (data.title ? data.title.replace(/^.*?(V\d+).*$/, "$1") : ""),
+      voucherType: type,
+      shopName: shop,
+      date: data.date || data.createTime || "",
+      paymentMethod: payVal,
+      paymentMethodText: payText,
+      paymentNote: payText,
+      remark: remark || "",
       status: data.status || "待审核",
+      statusType: data.statusType || "pending",
       discount: data.discount || "",
-      _issueNumber: currentIssue.number
+      discountValue: data.discountValue || 0,
+      shopPhoto: data.shopPhoto || "",
+      orderPhotos: (data.orderPhotos || []).slice(),
+      signature: data.signature || "",
+      _issueNumber: currentIssue.number,
+      _createdAt: data._createdAt || Date.now()
     };
-    var type = voucherData.voucherType;
-    if (type === "线上购物") {
-      voucherData.platform = document.getElementById("editVoucherPlatform").value.trim();
-      voucherData.orderNo = document.getElementById("editVoucherOrderNo").value.trim();
-    }
-    if (type === "电器凭证" || isElectric) {
+
+    var amountVal = "";
+    var shopPhotoFile = null;
+    var orderPhotoFiles = [];
+
+    if (type === "普通凭证") {
+      amountVal = document.getElementById("editVoucherAmount").value.trim();
+      shopPhotoFile = _editShopPhoto.file;
+      orderPhotoFiles = (_editOrderPhotos.files || []).slice();
+      if (!amountVal) { _showAdminError("errorEditAmount", "请输入余额金额"); hasError = true; }
+      voucherData.signature = _editSignatureNormal.data || data.signature || "";
+      voucherData.amount = amountVal.replace("元", "");
+      voucherData.originalPrice = voucherData.amount;
+      voucherData.finalPrice = voucherData.amount;
+    } else if (type === "线上购物") {
+      amountVal = document.getElementById("editOnlineAmount").value.trim();
+      voucherData.platform = document.getElementById("editOnlinePlatform").value;
+      voucherData.orderNo = document.getElementById("editOnlineOrderNo").value.trim();
+      shopPhotoFile = _editOnlineProduct.file;
+      orderPhotoFiles = (_editOnlineShopping.files || []).slice();
+      if (!voucherData.platform) { _showAdminError("errorEditOnlinePlatform", "请选择购物平台"); hasError = true; }
+      if (!voucherData.orderNo) { _showAdminError("errorEditOnlineOrderNo", "请输入订单号"); hasError = true; }
+      if (!amountVal) { _showAdminError("errorEditOnlineAmount", "请输入余额金额"); hasError = true; }
+      voucherData.signature = _editSignatureOnline.data || data.signature || "";
+      voucherData.amount = amountVal.replace("元", "");
+      voucherData.originalPrice = voucherData.amount;
+      voucherData.finalPrice = voucherData.amount;
+    } else if (type === "电器凭证") {
+      amountVal = document.getElementById("editElectricAmount").value.trim();
       voucherData.electric = true;
-      voucherData.electricCategory = document.getElementById("editVoucherElecCat").value;
-      voucherData.electricBrand = document.getElementById("editVoucherBrand").value.trim();
-      voucherData.electricApplyAmount = voucherData.amount;
+      voucherData.electricCategory = document.getElementById("editElectricCategory").value;
+      voucherData.electricBrand = document.getElementById("editElectricBrand").value.trim();
+      shopPhotoFile = _editElectricProduct.file;
+      orderPhotoFiles = (_editElectricOrder.files || []).slice();
+      var amtNum = parseFloat((amountVal || "").replace(/元|,/g, ""));
+      var orderType = document.getElementById("editElectricOrderType").value;
+      if (!orderType) { _showAdminError("errorEditElectricOrderType", "请选择订单类型"); hasError = true; }
+      if (!voucherData.electricCategory) { _showAdminError("errorEditElectricCategory", "请选择电器分类"); hasError = true; }
+      if (!voucherData.electricBrand) { _showAdminError("errorEditElectricBrand", "请填写品牌名称"); hasError = true; }
+      if (!amountVal) { _showAdminError("errorEditElectricAmount", "请输入消费金额"); hasError = true; }
+      else if (isNaN(amtNum) || amtNum <= 0) { _showAdminError("errorEditElectricAmount", "消费金额格式不正确"); hasError = true; }
+      else if (amtNum < 3000) { _showAdminError("errorEditElectricAmount", "大额电器补贴仅支持金额 ≥ 3000 元"); hasError = true; }
+      voucherData.signature = _editSignatureElectric.data || data.signature || "";
+      voucherData.amount = amtNum ? amtNum.toFixed(2) + "元" : "";
+      voucherData.originalPrice = voucherData.amount;
+      voucherData.finalPrice = voucherData.amount;
+      voucherData.electricApplyAmount = amtNum ? amtNum.toFixed(2) : "";
       if (data.electricSubsidyRate) voucherData.electricSubsidyRate = data.electricSubsidyRate;
       if (data.electricSubsidyAmount) voucherData.electricSubsidyAmount = data.electricSubsidyAmount;
       if (data.finalPrice) voucherData.finalPrice = data.finalPrice;
       if (data.reviewResult) voucherData.reviewResult = data.reviewResult;
     }
 
+    if (hasError) return;
+
     var btn = document.getElementById("btnAdminEditVoucherConfirm");
     btn.textContent = "保存中...";
     btn.disabled = true;
 
     var body = JITApi.formatIssueBody(voucherData);
-    _apiPatch(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues/" + currentIssue.number, { body: body }).then(function() {
-      _showToast("凭证已修改", "success");
-      document.getElementById("adminEditVoucherOverlay").classList.remove("active");
-      loadIssues();
-    }).catch(function(e) {
-      _showToast("修改失败: " + e.message);
-    }).then(function() {
-      btn.textContent = "保存修改";
-      btn.disabled = false;
-    });
+
+    // 如果有新图片上传
+    var hasNewShopPhoto = !!shopPhotoFile;
+    var hasNewOrderPhotos = orderPhotoFiles && orderPhotoFiles.length > 0;
+    if (hasNewShopPhoto || hasNewOrderPhotos) {
+      // 保留旧图片，新图片追加
+      JITApi.submitVoucherWithImages(voucherData, shopPhotoFile, orderPhotoFiles, hasNewShopPhoto, hasNewOrderPhotos).then(function(result) {
+        // 更新 issue body
+        return _apiPatch(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues/" + currentIssue.number, {
+          body: JITApi.formatIssueBody(voucherData)
+        });
+      }).then(function() {
+        _showToast("凭证已修改", "success");
+        document.getElementById("adminEditVoucherOverlay").classList.remove("active");
+        loadIssues();
+      }).catch(function(e) {
+        _showToast("修改失败: " + e.message);
+      }).then(function() {
+        btn.textContent = "保存修改";
+        btn.disabled = false;
+      });
+    } else {
+      _apiPatch(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues/" + currentIssue.number, { body: body }).then(function() {
+        _showToast("凭证已修改", "success");
+        document.getElementById("adminEditVoucherOverlay").classList.remove("active");
+        loadIssues();
+      }).catch(function(e) {
+        _showToast("修改失败: " + e.message);
+      }).then(function() {
+        btn.textContent = "保存修改";
+        btn.disabled = false;
+      });
+    }
   };
 
   var _previewImage = function(src) {
@@ -1631,6 +2049,14 @@ var JITAdmin = (function() {
     document.getElementById("btnAdminAddVoucherConfirm").addEventListener("click", _submitAdminAddVoucher);
     document.getElementById("adminVoucherType").addEventListener("change", _toggleAdminVoucherFields);
 
+    // 绑定添加凭证的上传区域（使用正确的存储对象）
+    _bindUploadArea("adminUploadShopPhoto", "adminInputShopPhoto", "adminPreviewShopPhoto", _adminAddShopPhoto, false);
+    _bindUploadArea("adminUploadOrderPhoto", "adminInputOrderPhoto", "adminPreviewOrderPhotos", _adminAddOrderPhotos, true);
+    _bindUploadArea("adminUploadOnlineProduct", "adminInputOnlineProduct", "adminPreviewOnlineProduct", _adminAddOnlineProduct, false);
+    _bindUploadArea("adminUploadOnlineShopping", "adminInputOnlineShopping", "adminPreviewOnlineShopping", _adminAddOnlineShopping, true);
+    _bindUploadArea("adminUploadElectricProduct", "adminInputElectricProduct", "adminPreviewElectricProduct", _adminAddElectricProduct, false);
+    _bindUploadArea("adminUploadElectricOrder", "adminInputElectricOrder", "adminPreviewElectricOrder", _adminAddElectricOrder, true);
+
     // ===== 编辑凭证 =====
     document.getElementById("btnEditVoucher").addEventListener("click", function() {
       document.getElementById("reviewOverlay").classList.remove("active");
@@ -1644,6 +2070,14 @@ var JITAdmin = (function() {
     });
     document.getElementById("btnAdminEditVoucherConfirm").addEventListener("click", _submitEditVoucher);
     document.getElementById("editVoucherType").addEventListener("change", _toggleEditVoucherFields);
+
+    // 绑定编辑凭证的上传区域（使用正确的存储对象）
+    _bindUploadArea("editUploadShopPhoto", "editInputShopPhoto", "editPreviewShopPhoto", _editShopPhoto, false);
+    _bindUploadArea("editUploadOrderPhoto", "editInputOrderPhoto", "editPreviewOrderPhotos", _editOrderPhotos, true);
+    _bindUploadArea("editUploadOnlineProduct", "editInputOnlineProduct", "editPreviewOnlineProduct", _editOnlineProduct, false);
+    _bindUploadArea("editUploadOnlineShopping", "editInputOnlineShopping", "editPreviewOnlineShopping", _editOnlineShopping, true);
+    _bindUploadArea("editUploadElectricProduct", "editInputElectricProduct", "editPreviewElectricProduct", _editElectricProduct, false);
+    _bindUploadArea("editUploadElectricOrder", "editInputElectricOrder", "editPreviewElectricOrder", _editElectricOrder, true);
 
     var btnComplete = document.getElementById("btnComplete");
     if (btnComplete) {
