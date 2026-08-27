@@ -58,8 +58,16 @@ var JITAdmin = (function() {
   };
 
   var _apiGet = function(url) {
-    return fetch(url, {
-      headers: { Authorization: "token " + TOKEN, Accept: "application/vnd.github.v3+json" }
+    // 添加 cache-busting 防止浏览器/GitHub 返回缓存数据
+    var sep = url.indexOf("?") > -1 ? "&" : "?";
+    var cacheBustUrl = url + sep + "_t=" + Date.now();
+    return fetch(cacheBustUrl, {
+      headers: {
+        Authorization: "token " + TOKEN,
+        Accept: "application/vnd.github.v3+json",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache"
+      }
     }).then(function(r) {
       if (!r.ok) throw new Error("请求失败: " + r.status);
       return r.json();
@@ -822,6 +830,8 @@ var JITAdmin = (function() {
       shopPhoto: "",
       orderPhotos: [],
       signature: "",
+      latitude: "",
+      longitude: "",
       _issueNumber: null,
       _createdAt: Date.now()
     };
