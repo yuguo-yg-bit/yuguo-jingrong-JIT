@@ -533,17 +533,38 @@ var JITAdmin = (function() {
     var sel = document.getElementById("adminVoucherUser");
     if (!sel) return;
     sel.innerHTML = '<option value="">— 请选择用户 —</option>';
+
+    var seen = {};
+    var addOption = function(username) {
+      if (!username || seen[username]) return;
+      seen[username] = true;
+      var opt = document.createElement("option");
+      opt.value = username;
+      opt.textContent = username;
+      sel.appendChild(opt);
+    };
+
+    // 1. 从 allIssues（凭证issue）中提取用户，这是最可靠的来源
+    (allIssues || []).forEach(function(issue) {
+      var data = _parseIssueBody(issue.body);
+      var userId = data.userId || data.username;
+      if (!userId && data.title) userId = data.title.replace(/\d+$/, "");
+      if (!userId) userId = issue.user ? issue.user.login : "";
+      addOption(userId);
+    });
+
+    // 2. 从 registeredUser 标签的issue中补充（已审核通过的注册用户）
     _apiGet(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues?state=all&labels=" + encodeURIComponent(JITConfig.getLabels().registeredUser) + "&per_page=100").then(function(issues) {
       (issues || []).forEach(function(issue) {
         var body = issue.body || "";
-        var m = body.match(/｜?\s*用户名：(.+)/);
-        var username = m ? m[1].trim() : (issue.title || "");
-        if (username) {
-          var opt = document.createElement("option");
-          opt.value = username;
-          opt.textContent = username;
-          sel.appendChild(opt);
+        // 使用与 api.js _parseUserBody 相同的解析逻辑
+        var lines = body.split(/\r?\n/);
+        var username = "";
+        for (var i = 0; i < lines.length; i++) {
+          var m = lines[i].trim().match(/^｜?\s*用户名：(.+)$/);
+          if (m) { username = m[1].trim(); break; }
         }
+        addOption(username);
       });
     }).catch(function() {});
   };
