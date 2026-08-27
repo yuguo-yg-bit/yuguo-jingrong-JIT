@@ -528,6 +528,199 @@ var JITAdmin = (function() {
     return '<div class="review-info-item"' + col + '><div class="review-info-label">' + label + '</div><div class="review-info-value"' + vs + '>' + _escapeHtml(value) + '</div></div>';
   };
 
+  // ========= 管理员代用户添加凭证 =========
+  var _loadRegisteredUsersForVoucher = function() {
+    var sel = document.getElementById("adminVoucherUser");
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— 请选择用户 —</option>';
+    _apiGet(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues?state=all&labels=" + encodeURIComponent(JITConfig.getLabels().registeredUser) + "&per_page=100").then(function(issues) {
+      (issues || []).forEach(function(issue) {
+        var body = issue.body || "";
+        var m = body.match(/｜?\s*用户名：(.+)/);
+        var username = m ? m[1].trim() : (issue.title || "");
+        if (username) {
+          var opt = document.createElement("option");
+          opt.value = username;
+          opt.textContent = username;
+          sel.appendChild(opt);
+        }
+      });
+    }).catch(function() {});
+  };
+
+  var _openAdminAddVoucherModal = function() {
+    _loadRegisteredUsersForVoucher();
+    document.getElementById("adminVoucherType").value = "普通凭证";
+    document.getElementById("adminVoucherShop").value = "";
+    document.getElementById("adminVoucherAmount").value = "";
+    document.getElementById("adminVoucherDate").value = new Date().toISOString().split("T")[0];
+    document.getElementById("adminVoucherPay").value = "微信支付";
+    document.getElementById("adminVoucherPlatform").value = "";
+    document.getElementById("adminVoucherOrderNo").value = "";
+    document.getElementById("adminVoucherElecCat").value = "";
+    document.getElementById("adminVoucherBrand").value = "";
+    document.getElementById("adminVoucherRemark").value = "";
+    _toggleAdminVoucherFields();
+    document.getElementById("adminAddVoucherOverlay").classList.add("active");
+  };
+
+  var _toggleAdminVoucherFields = function() {
+    var type = document.getElementById("adminVoucherType").value;
+    var isOnline = (type === "线上购物");
+    var isElec = (type === "电器凭证");
+    document.getElementById("adminVoucherPlatformWrap").style.display = isOnline ? "block" : "none";
+    document.getElementById("adminVoucherOrderNoWrap").style.display = isOnline ? "block" : "none";
+    document.getElementById("adminVoucherElecWrap").style.display = isElec ? "block" : "none";
+    document.getElementById("adminVoucherBrandWrap").style.display = isElec ? "block" : "none";
+  };
+
+  var _submitAdminAddVoucher = function() {
+    var username = document.getElementById("adminVoucherUser").value;
+    var type = document.getElementById("adminVoucherType").value;
+    var shop = document.getElementById("adminVoucherShop").value.trim();
+    var amount = document.getElementById("adminVoucherAmount").value.trim();
+    var date = document.getElementById("adminVoucherDate").value || new Date().toISOString().split("T")[0];
+    var pay = document.getElementById("adminVoucherPay").value;
+    var remark = document.getElementById("adminVoucherRemark").value.trim();
+    if (!username) { _showToast("请选择用户"); return; }
+    if (!shop) { _showToast("请填写店铺名称"); return; }
+    if (!amount || parseFloat(amount) <= 0) { _showToast("请填写有效金额"); return; }
+    if (type === "电器凭证" && parseFloat(amount) < 3000) { _showToast("电器凭证金额需 ≥ 3000 元"); return; }
+
+    var voucherData = {
+      username: username,
+      voucherId: "V" + Date.now().toString().slice(-8),
+      voucherType: type,
+      shopName: shop,
+      amount: amount,
+      date: date,
+      paymentMethod: pay,
+      paymentMethodText: pay,
+      remark: remark,
+      status: "待审核"
+    };
+    if (type === "线上购物") {
+      voucherData.platform = document.getElementById("adminVoucherPlatform").value.trim();
+      voucherData.orderNo = document.getElementById("adminVoucherOrderNo").value.trim();
+    }
+    if (type === "电器凭证") {
+      voucherData.electric = true;
+      voucherData.electricCategory = document.getElementById("adminVoucherElecCat").value;
+      voucherData.electricBrand = document.getElementById("adminVoucherBrand").value.trim();
+      voucherData.electricApplyAmount = amount;
+    }
+
+    var btn = document.getElementById("btnAdminAddVoucherConfirm");
+    btn.textContent = "提交中...";
+    btn.disabled = true;
+
+    var body = JITApi.formatIssueBody(voucherData);
+    var title = username + voucherData.voucherId;
+    var labels = [JITConfig.getLabels().voucher, JITConfig.getLabels().pending];
+    if (type === "电器凭证") labels.push(JITConfig.getLabels().electric || "electric");
+
+    _apiPost(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues", {
+      title: title, body: body, labels: labels
+    }).then(function() {
+      _showToast("已为用户 [" + username + "] 添加凭证", "success");
+      document.getElementById("adminAddVoucherOverlay").classList.remove("active");
+      loadIssues();
+    }).catch(function(e) {
+      _showToast("添加失败: " + e.message);
+    }).then(function() {
+      btn.textContent = "提交凭证";
+      btn.disabled = false;
+    });
+  };
+
+  // ========= 管理员编辑凭证 =========
+  var _openEditVoucherModal = function() {
+    if (!currentIssue) { _showToast("请先选择凭证"); return; }
+    var data = _parseIssueBody(currentIssue.body);
+    var isElectric = !!(data.electric || data.voucherType === "电器凭证" || data.electricCategory);
+
+    document.getElementById("editVoucherUser").value = data.userId || data.username || (currentIssue.user && currentIssue.user.login) || "";
+    document.getElementById("editVoucherType").value = data.voucherType || "普通凭证";
+    document.getElementById("editVoucherShop").value = data.shopName || "";
+    document.getElementById("editVoucherAmount").value = data.amount || (data.electricApplyAmount || "").replace(/[元,]/g, "") || "";
+    document.getElementById("editVoucherDate").value = (data.date || data.createTime || "").split(" ")[0] || "";
+    document.getElementById("editVoucherPay").value = data.paymentMethod || "微信支付";
+    document.getElementById("editVoucherPlatform").value = data.platform || "";
+    document.getElementById("editVoucherOrderNo").value = data.orderNo || "";
+    document.getElementById("editVoucherElecCat").value = data.electricCategory || "";
+    document.getElementById("editVoucherBrand").value = data.electricBrand || "";
+    document.getElementById("editVoucherRemark").value = data.remark || data.note || "";
+    document.getElementById("editVoucherShopPhoto").value = data.shopPhoto || "";
+    document.getElementById("editVoucherOrderPhotos").value = data.orderPhotos || "";
+    _toggleEditVoucherFields();
+    document.getElementById("adminEditVoucherOverlay").classList.add("active");
+  };
+
+  var _toggleEditVoucherFields = function() {
+    var type = document.getElementById("editVoucherType").value;
+    var isOnline = (type === "线上购物");
+    var isElec = (type === "电器凭证");
+    document.getElementById("editVoucherPlatformWrap").style.display = isOnline ? "block" : "none";
+    document.getElementById("editVoucherOrderNoWrap").style.display = isOnline ? "block" : "none";
+    document.getElementById("editVoucherElecWrap").style.display = isElec ? "block" : "none";
+    document.getElementById("editVoucherBrandWrap").style.display = isElec ? "block" : "none";
+  };
+
+  var _submitEditVoucher = function() {
+    if (!currentIssue) return;
+    var data = _parseIssueBody(currentIssue.body);
+    var isElectric = !!(data.electric || data.voucherType === "电器凭证" || data.electricCategory);
+
+    var voucherData = {
+      username: document.getElementById("editVoucherUser").value,
+      voucherId: data.title ? data.title.replace(/^.*?(V\d+).*$/, "$1") : "",
+      voucherType: document.getElementById("editVoucherType").value,
+      shopName: document.getElementById("editVoucherShop").value.trim(),
+      amount: document.getElementById("editVoucherAmount").value.trim(),
+      date: document.getElementById("editVoucherDate").value || data.date || "",
+      paymentMethod: document.getElementById("editVoucherPay").value,
+      paymentMethodText: document.getElementById("editVoucherPay").value,
+      remark: document.getElementById("editVoucherRemark").value.trim(),
+      shopPhoto: document.getElementById("editVoucherShopPhoto").value.trim(),
+      orderPhotos: document.getElementById("editVoucherOrderPhotos").value.trim(),
+      signature: data.signature || "",
+      status: data.status || "待审核",
+      discount: data.discount || "",
+      _issueNumber: currentIssue.number
+    };
+    var type = voucherData.voucherType;
+    if (type === "线上购物") {
+      voucherData.platform = document.getElementById("editVoucherPlatform").value.trim();
+      voucherData.orderNo = document.getElementById("editVoucherOrderNo").value.trim();
+    }
+    if (type === "电器凭证" || isElectric) {
+      voucherData.electric = true;
+      voucherData.electricCategory = document.getElementById("editVoucherElecCat").value;
+      voucherData.electricBrand = document.getElementById("editVoucherBrand").value.trim();
+      voucherData.electricApplyAmount = voucherData.amount;
+      if (data.electricSubsidyRate) voucherData.electricSubsidyRate = data.electricSubsidyRate;
+      if (data.electricSubsidyAmount) voucherData.electricSubsidyAmount = data.electricSubsidyAmount;
+      if (data.finalPrice) voucherData.finalPrice = data.finalPrice;
+      if (data.reviewResult) voucherData.reviewResult = data.reviewResult;
+    }
+
+    var btn = document.getElementById("btnAdminEditVoucherConfirm");
+    btn.textContent = "保存中...";
+    btn.disabled = true;
+
+    var body = JITApi.formatIssueBody(voucherData);
+    _apiPatch(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues/" + currentIssue.number, { body: body }).then(function() {
+      _showToast("凭证已修改", "success");
+      document.getElementById("adminEditVoucherOverlay").classList.remove("active");
+      loadIssues();
+    }).catch(function(e) {
+      _showToast("修改失败: " + e.message);
+    }).then(function() {
+      btn.textContent = "保存修改";
+      btn.disabled = false;
+    });
+  };
+
   var _previewImage = function(src) {
     var overlay = document.getElementById("imagePreviewOverlay");
     overlay.innerHTML = '<img src="' + src + '">';
@@ -1426,6 +1619,31 @@ var JITAdmin = (function() {
         loadIssues();
       }).catch(function(e) { _showToast("删除失败: " + e.message); });
     });
+
+    // ===== 代用户添加凭证 =====
+    document.getElementById("btnAdminAddVoucher").addEventListener("click", _openAdminAddVoucherModal);
+    document.getElementById("btnAdminAddVoucherClose").addEventListener("click", function() {
+      document.getElementById("adminAddVoucherOverlay").classList.remove("active");
+    });
+    document.getElementById("btnAdminAddVoucherCancel").addEventListener("click", function() {
+      document.getElementById("adminAddVoucherOverlay").classList.remove("active");
+    });
+    document.getElementById("btnAdminAddVoucherConfirm").addEventListener("click", _submitAdminAddVoucher);
+    document.getElementById("adminVoucherType").addEventListener("change", _toggleAdminVoucherFields);
+
+    // ===== 编辑凭证 =====
+    document.getElementById("btnEditVoucher").addEventListener("click", function() {
+      document.getElementById("reviewOverlay").classList.remove("active");
+      _openEditVoucherModal();
+    });
+    document.getElementById("btnAdminEditVoucherClose").addEventListener("click", function() {
+      document.getElementById("adminEditVoucherOverlay").classList.remove("active");
+    });
+    document.getElementById("btnAdminEditVoucherCancel").addEventListener("click", function() {
+      document.getElementById("adminEditVoucherOverlay").classList.remove("active");
+    });
+    document.getElementById("btnAdminEditVoucherConfirm").addEventListener("click", _submitEditVoucher);
+    document.getElementById("editVoucherType").addEventListener("change", _toggleEditVoucherFields);
 
     var btnComplete = document.getElementById("btnComplete");
     if (btnComplete) {

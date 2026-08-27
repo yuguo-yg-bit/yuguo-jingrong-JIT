@@ -1055,6 +1055,7 @@ var JITApi = (function() {
     getAllVouchers: _getAllVouchers,
     submitVoucher: _submitVoucher,
     submitVoucherWithImages: _submitVoucherWithImages,
+    formatIssueBody: _formatIssueBody,
     getVoucherCount: _getVoucherCount,
     getApprovedCount: _getApprovedCount,
     compressImage: _compressImage,
