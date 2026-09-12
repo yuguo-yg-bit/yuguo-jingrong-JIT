@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>D1 Worker 测试</title>
+<style>
+  body { font-family: monospace; background: #0a0e17; color: #42a5f5; padding: 20px; }
+  .btn { background: #42a5f5; color: #000; padding: 10px 20px; border: none; cursor: pointer; margin: 5px; }
+  textarea { width: 100%; height: 200px; background: #111; color: #0f0; border: 1px solid #42a5f5; padding: 10px; }
+  pre { background: #111; padding: 15px; border: 1px solid #42a5f5; white-space: pre-wrap; word-break: break-all; }
+  .ok { color: #66bb6a; }
+  .err { color: #ef5350; }
+</style>
+</head>
+<body>
+<h2>D1 Worker 连接测试</h2>
+
+<p>Worker URL: <input id="workerUrl" value="https://floral-cake-1f5f.sgg12332108-825.workers.dev" style="width:400px; background:#111; color:#42a5f5; border:1px solid #42a5f5; padding:5px;"></p>
+<p>Token: <input id="token" value="Jrb@025808" style="width:300px; background:#111; color:#42a5f5; border:1px solid #42a5f5; padding:5px;"></p>
+
+<hr>
+
+<h3>1. 查询凭证列表</h3>
+<button class="btn" onclick="testQuery()">执行查询</button>
+<pre id="result1" style="height:300px;">等待执行...</pre>
+
+<hr>
+
+<h3>2. 新增一条凭证</h3>
+<button class="btn" onclick="testInsert()">新增凭证</button>
+<pre id="result2">等待执行...</pre>
+
+<hr>
+
+<h3>3. 自定义 SQL</h3>
+<textarea id="customSql">SELECT * FROM vouchers LIMIT 5</textarea><br>
+<button class="btn" onclick="testCustom()">执行</button>
+<pre id="result3">等待执行...</pre>
+
+<script>
+var WORKER_URL = document.getElementById('workerUrl').value;
+var TOKEN = document.getElementById('token').value;
+
+function query(sql, params) {
+  return fetch(WORKER_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Auth-Token': TOKEN
+    },
+    body: JSON.stringify({ sql: sql, params: params || [] })
+  }).then(function(r) { return r.json(); });
+}
+
+function testQuery() {
+  var el = document.getElementById('result1');
+  el.innerHTML = '查询中...';
+  query('SELECT * FROM vouchers LIMIT 10').then(function(res) {
+    el.innerHTML = JSON.stringify(res, null, 2);
+  }).catch(function(e) {
+    el.innerHTML = '<span class="err">错误: ' + e.message + '</span>';
+  });
+}
+
+function testInsert() {
+  var el = document.getElementById('result2');
+  el.innerHTML = '新增中...';
+  var id = 'test_' + Date.now();
+  var sql = "INSERT INTO vouchers (id, user_id, shop_name, amount, status, signature) VALUES (?, ?, ?, ?, ?, ?)";
+  query(sql, [id, '测试用户', '测试店铺', 100, '待审核', 'test_signature_url']).then(function(res) {
+    el.innerHTML = JSON.stringify(res, null, 2);
+    el.innerHTML += '\n\n<span class="ok">插入成功！ID: ' + id + '</span>';
+  }).catch(function(e) {
+    el.innerHTML = '<span class="err">错误: ' + e.message + '</span>';
+  });
+}
+
+function testCustom() {
+  var el = document.getElementById('result3');
+  var sql = document.getElementById('customSql').value;
+  el.innerHTML = '执行中...';
+  query(sql).then(function(res) {
+    el.innerHTML = JSON.stringify(res, null, 2);
+  }).catch(function(e) {
+    el.innerHTML = '<span class="err">错误: ' + e.message + '</span>';
+  });
+}
+</script>
+</body>
+</html>
