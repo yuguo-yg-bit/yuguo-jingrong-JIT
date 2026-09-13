@@ -10,13 +10,14 @@
   pre { background: #111; padding: 15px; border: 1px solid #42a5f5; white-space: pre-wrap; word-break: break-all; }
   .ok { color: #66bb6a; }
   .err { color: #ef5350; }
+  input { background: #111; color: #42a5f5; border: 1px solid #42a5f5; padding: 5px; }
 </style>
 </head>
 <body>
 <h2>D1 Worker 连接测试</h2>
 
-<p>Worker URL: <input id="workerUrl" value="https://floral-cake-1f5f.sgg12332108-825.workers.dev" style="width:400px; background:#111; color:#42a5f5; border:1px solid #42a5f5; padding:5px;"></p>
-<p>Token: <input id="token" value="Jrb@025808" style="width:300px; background:#111; color:#42a5f5; border:1px solid #42a5f5; padding:5px;"></p>
+<p>Worker URL: <input id="workerUrl" value="https://floral-cake-1f5f.sgg12332108-825.workers.dev" style="width:450px;"></p>
+<p>Token: <input id="token" value="" placeholder="填你的 AUTH_TOKEN" style="width:300px;"></p>
 
 <hr>
 
@@ -33,20 +34,19 @@
 <hr>
 
 <h3>3. 自定义 SQL</h3>
-<textarea id="customSql">SELECT * FROM vouchers LIMIT 5</textarea><br>
+<textarea id="customSql">SELECT * FROM vouchers LIMIT 5</textarea><br><br>
 <button class="btn" onclick="testCustom()">执行</button>
 <pre id="result3">等待执行...</pre>
 
 <script>
-var WORKER_URL = document.getElementById('workerUrl').value;
-var TOKEN = document.getElementById('token').value;
-
 function query(sql, params) {
-  return fetch(WORKER_URL, {
+  var url = document.getElementById('workerUrl').value;
+  var tok = document.getElementById('token').value;
+  return fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Auth-Token': TOKEN
+      'X-Auth-Token': tok
     },
     body: JSON.stringify({ sql: sql, params: params || [] })
   }).then(function(r) { return r.json(); });
