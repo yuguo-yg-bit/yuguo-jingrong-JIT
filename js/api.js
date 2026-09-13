@@ -1,1094 +1,596 @@
-var JITApi = (function() {
-  var _token = JITConfig.getTokenPart1() + JITConfig.getTokenPart3() + JITConfig.getTokenPart4();
-  var _apiBase = JITConfig.getApiBase();
-  var _repoFull = JITConfig.getRepoFull();
-  var _imageRepoFull = JITConfig.getImageRepoFull();
+// ============================================================
+// 玉国金融 - API 层（Worker + D1 版本）
+// 通过 Cloudflare Worker 访问 D1 数据库
+// ============================================================
 
-  var _headers = function() {
-    return {
-      "Authorization": "token " + _token,
-      "Accept": "application/vnd.github.v3+json",
-      "Content-Type": "application/json"
-    };
-  };
+const Api = {
+  _initialized: false,
 
-  var _safeRequest = function(url, options) {
-    return fetch(url, options).then(function(resp) {
-      if (!resp.ok) {
-        return resp.json().then(function(err) {
-          var msg = "";
-          if (err.errors && err.errors.length > 0) {
-            msg = err.errors.map(function(e) { return e.message || e.code || JSON.stringify(e); }).join("; ");
-          }
-          throw new Error(msg || err.message || "请求失败: " + resp.status);
-        }).catch(function(e) {
-          if (e.message && e.message !== "请求失败: " + resp.status) throw e;
-          throw new Error("请求失败: " + resp.status);
-        });
-      }
-      if (resp.status === 204) return null;
-      return resp.json();
+  async _send(sql, params = []) {
+    const res = await fetch(CONFIG.WORKER_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Auth-Token': CONFIG.AUTH_TOKEN
+      },
+      body: JSON.stringify({ sql, params })
     });
-  };
-
-  var _compressImage = function(file) {
-    return new Promise(function(resolve, reject) {
-      if (!file || !file.type || !file.type.match(/image\//)) {
-        reject(new Error("不是图片文件"));
-        return;
-      }
-      var img = new Image();
-      var url = URL.createObjectURL(file);
-      img.onload = function() {
-        URL.revokeObjectURL(url);
-        var maxW = 600;
-        var maxH = 600;
-        var w = img.width;
-        var h = img.height;
-        if (w > maxW || h > maxH) {
-          var ratio = Math.min(maxW / w, maxH / h);
-          w = Math.round(w * ratio);
-          h = Math.round(h * ratio);
-        }
-        var canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = h;
-        var ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, w, h);
-        var dataUrl = canvas.toDataURL("image/jpeg", 0.5);
-        var base64 = dataUrl.split(",")[1];
-        resolve(base64);
-      };
-      img.onerror = function() {
-        URL.revokeObjectURL(url);
-        reject(new Error("图片加载失败"));
-      };
-      img.src = url;
-    });
-  };
-
-  var _encodePath = function(path) {
-    return path.split("/").map(function(seg) { return encodeURIComponent(seg); }).join("/");
-  };
-
-  var _getFileSha = function(path) {
-    var url = _apiBase + "/repos/" + _imageRepoFull + "/contents/" + _encodePath(path);
-    return _safeRequest(url, {
-      method: "GET",
-      headers: _headers()
-    }).then(function(result) {
-      return result && result.sha ? result.sha : null;
-    }).catch(function() {
-      return null;
-    });
-  };
-
-  var _uploadFileToRepo = function(path, base64Content, commitMsg, retryCount) {
-    retryCount = retryCount || 0;
-    var url = _apiBase + "/repos/" + _imageRepoFull + "/contents/" + _encodePath(path);
-    var body = {
-      message: commitMsg || "upload image",
-      content: base64Content,
-      branch: "main"
-    };
-    // 乐观策略：直接 PUT（不带 sha），文件不存在时一次成功
-    // 失败（文件已存在需要 sha）→ GET sha → 递归重试
-    return _safeRequest(url, {
-      method: "PUT",
-      headers: _headers(),
-      body: JSON.stringify(body)
-    }).then(function(result) {
-      return result && result.content ? result.content.download_url : "";
-    }).catch(function(err) {
-      var msg = String(err.message || "");
-      // 递归重试：先 GET sha 再带 sha PUT，最多 3 次
-      if (retryCount < 3 && (msg.indexOf("sha") > -1 || msg.indexOf("expected") > -1 || msg.indexOf("422") > -1 || msg.indexOf("409") > -1)) {
-        return new Promise(function(resolve) {
-          setTimeout(resolve, 400 * (retryCount + 1));
-        }).then(function() {
-          return _getFileSha(path);
-        }).then(function(sha) {
-          if (sha) body.sha = sha;
-          // 递归调用自身重试（retryCount+1），确保每次失败都能继续重试
-          return _uploadFileToRepo(path, base64Content, commitMsg, retryCount + 1);
-        });
-      }
-      // 非 SHA 错误或已达最大重试次数，直接抛出
-      throw err;
-    });
-  };
-
-  var _uploadImageToRepo = function(file, folderPath, fileName, commitMsg) {
-    return _compressImage(file).then(function(base64) {
-      return _uploadFileToRepo(folderPath + "/" + fileName, base64, commitMsg);
-    });
-  };
-
-  var _uploadImagesToRepo = function(files, folderPath, commitMsg) {
-    // 串行上传，避免并发 PUT 同一目录导致 SHA 冲突
-    var results = [];
-    var chain = Promise.resolve();
-    for (var i = 0; i < files.length; i++) {
-      (function(file, index) {
-        var fileName = "order_" + (index + 1) + "_" + Date.now() + ".png";
-        chain = chain.then(function() {
-          return _uploadImageToRepo(file, folderPath, fileName, commitMsg).then(function(url) {
-            results.push(url);
-          });
-        });
-      })(files[i], i);
-    }
-    return chain.then(function() { return results; });
-  };
-
-  var _ensureLabels = function() {
-    var labels = JITConfig.getLabels();
-    var labelNames = Object.values(labels);
-    var url = _apiBase + "/repos/" + _repoFull + "/labels";
-    var promises = labelNames.map(function(name) {
-      return _safeRequest(url, {
-        method: "POST",
-        headers: _headers(),
-        body: JSON.stringify({ name: name, color: "0366d6" })
-      }).catch(function() {
-        return Promise.resolve(null);
-      });
-    });
-    return Promise.all(promises);
-  };
-
-  var _createIssue = function(title, body, labels) {
-    var url = _apiBase + "/repos/" + _repoFull + "/issues";
-    return _safeRequest(url, {
-      method: "POST",
-      headers: _headers(),
-      body: JSON.stringify({
-        title: title,
-        body: body,
-        labels: labels || [JITConfig.getLabels().voucher]
-      })
-    });
-  };
-
-  var _getIssues = function(labels, page, perPage) {
-    page = page || 1;
-    perPage = perPage || 20;
-    var labelStr = labels ? labels.join(",") : "";
-    var url = _apiBase + "/repos/" + _repoFull + "/issues?state=all&labels=" + encodeURIComponent(labelStr) + "&page=" + page + "&per_page=" + perPage + "&sort=created&direction=desc";
-    return _safeRequest(url, {
-      method: "GET",
-      headers: _headers()
-    });
-  };
-
-  var _getAllIssues = function(labels) {
-    var labelStr = labels ? labels.join(",") : "";
-    var perPage = 100;
-    var page = 1;
-    var allIssues = [];
-
-    var _fetchPage = function() {
-      var url = _apiBase + "/repos/" + _repoFull + "/issues?state=all&labels=" + encodeURIComponent(labelStr) + "&per_page=" + perPage + "&page=" + page + "&sort=created&direction=desc";
-      return _safeRequest(url, {
-        method: "GET",
-        headers: _headers()
-      }).then(function(issues) {
-        if (!issues || !Array.isArray(issues) || issues.length === 0) {
-          return allIssues;
-        }
-        allIssues = allIssues.concat(issues);
-        if (issues.length < perPage) {
-          return allIssues;
-        }
-        page++;
-        return _fetchPage();
-      });
-    };
-
-    return _fetchPage();
-  };
-
-  var _updateIssue = function(issueNumber, updates) {
-    var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber;
-    return _safeRequest(url, {
-      method: "PATCH",
-      headers: _headers(),
-      body: JSON.stringify(updates)
-    });
-  };
-
-  var _deleteIssue = function(issueNumber) {
-    var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber;
-    // GitHub API 不能真正删除 issue，只能关闭并移除标签
-    return _safeRequest(url, {
-      method: "PATCH",
-      headers: _headers(),
-      body: JSON.stringify({
-        state: "closed",
-        labels: ["deleted"]
-      })
-    });
-  };
-
-  var _closeIssue = function(issueNumber) {
-    var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber;
-    return _safeRequest(url, {
-      method: "PATCH",
-      headers: _headers(),
-      body: JSON.stringify({
-        state: "closed"
-      })
-    });
-  };
-
-  var _formatIssueBody = function(voucherData) {
-    var orderPhotos = "";
-    if (Array.isArray(voucherData.orderPhotos)) {
-      orderPhotos = voucherData.orderPhotos.join(" | ");
-    } else if (voucherData.orderPhotos) {
-      orderPhotos = voucherData.orderPhotos;
-    }
-    var isElectric = !!(voucherData.electric || voucherData.voucherType === "电器凭证" || voucherData.electricCategory || voucherData.electricBrand);
-
-    var lines = [
-      "｜标题：" + (voucherData.username || "user") + (voucherData.voucherId || ""),
-      "｜用户ID：" + (voucherData.username || "user"),
-      "｜内容：店铺：" + (voucherData.shopName || ""),
-      "｜     凭证类型：" + (voucherData.voucherType || "普通凭证"),
-      "｜     店铺照片：" + (voucherData.shopPhoto || ""),
-      "｜     商品订单照片：" + orderPhotos,
-      "｜     定位：" + (voucherData.latitude || "") + "," + (voucherData.longitude || ""),
-      "｜     金额：" + (voucherData.amount || ""),
-      "｜     签名：" + (voucherData.signature || ""),
-      "｜     备注：" + (voucherData.remark || ""),
-      "｜     创建时间：" + (voucherData.date || new Date().toISOString().split("T")[0]),
-      "｜     状态：" + (voucherData.status || "待审核"),
-      "｜     中奖打折：" + (voucherData.discount || ""),
-      "｜     支付方式：" + (voucherData.paymentMethodText || voucherData.paymentMethod || ""),
-      "｜     购物平台：" + (voucherData.platform || ""),
-      "｜     订单号：" + (voucherData.orderNo || ""),
-      "｜     商品截图：" + (voucherData.productPhoto || ""),
-      "｜     购物截图：" + (voucherData.shoppingPhotos || "")
-    ];
-    if (isElectric) {
-      lines.push("｜     模式标识：电器补贴（非抽奖）");
-      lines.push("｜     电器分类：" + (voucherData.electricCategory || ""));
-      lines.push("｜     品牌名称：" + (voucherData.electricBrand || ""));
-      lines.push("｜     申请基数金额：" + (voucherData.electricApplyAmount || ""));
-      lines.push("｜     补贴比例：" + (voucherData.electricSubsidyRate || ""));
-      lines.push("｜     补贴金额：" + (voucherData.electricSubsidyAmount || ""));
-      lines.push("｜     审核结果：" + (voucherData.reviewResult || ""));
-      lines.push("｜     最终实付：" + (voucherData.finalPrice || ""));
-    }
-    return lines.join("\n");
-  };
-
-  var _parseIssueBody = function(body) {
-    var data = {};
-    var lines = String(body || "").split(/\r?\n/);
-
-    lines.forEach(function(line) {
-      var trimmed = line.trim();
-      if (!trimmed) return;
-      var match;
-
-      if ((match = trimmed.match(/^｜?标题：(.+)$/))) {
-        data.title = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*用户ID：(.+)$/))) {
-        data.userId = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?内容：店铺：(.+)$/))) {
-        data.shopName = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*店铺照片：(.+)$/))) {
-        data.shopPhoto = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*商品订单照片：(.+)$/))) {
-        data.orderPhotos = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*定位：(.+)$/))) {
-        var loc = match[1].trim();
-        var parts = loc.split(",");
-        data.latitude = parts[0] || "";
-        data.longitude = parts[1] || "";
-      } else if ((match = trimmed.match(/^｜?\s*金额：(.+)$/))) {
-        data.amount = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*签名：(.+)$/))) {
-        data.signature = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*备注：(.+)$/))) {
-        data.remark = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*创建时间：(.+)$/))) {
-        data.date = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*状态：(.+)$/))) {
-        data.status = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*中奖打折：(.+)$/))) {
-        data.discount = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*支付方式：(.+)$/))) {
-        data.paymentMethod = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*不通过原因：(.+)$/))) {
-        data.rejectReason = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*凭证类型：(.+)$/))) {
-        data.voucherType = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*购物平台：(.+)$/))) {
-        data.platform = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*订单号：(.+)$/))) {
-        data.orderNo = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*商品截图：(.+)$/))) {
-        data.productPhoto = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*购物截图：(.+)$/))) {
-        data.shoppingPhotos = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*模式标识：(.+)$/))) {
-        var s = match[1].trim();
-        if (s.indexOf("电器补贴") !== -1) data.electric = true;
-      } else if ((match = trimmed.match(/^｜?\s*电器分类：(.+)$/))) {
-        data.electricCategory = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*品牌名称：(.+)$/))) {
-        data.electricBrand = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*申请基数金额：(.+)$/))) {
-        data.electricApplyAmount = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*补贴比例：(.+)$/))) {
-        data.electricSubsidyRate = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*补贴金额：(.+)$/))) {
-        data.electricSubsidyAmount = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*审核结果：(.+)$/))) {
-        data.reviewResult = match[1].trim();
-      } else if ((match = trimmed.match(/^｜?\s*最终实付：(.+)$/))) {
-        data.finalPrice = match[1].trim();
-        if (typeof data.discount === "undefined" || !data.discount) {
-          // 兼容逻辑：前端 _renderOrders 取 discountValue/finalPrice 展示结果，
-          // 补贴模式没有折扣，但给 discount 占位避免显示“未抽奖”
-          data.discount = "补贴模式";
-        }
-      }
-    });
-
-    if (data.title) {
-      var voucherIdMatch = data.title.match(/(\d+)$/);
-      if (voucherIdMatch) {
-        data.voucherId = voucherIdMatch[1];
-      }
-    }
-
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
     return data;
-  };
+  },
 
-  var _parseVoucherData = function(issue) {
-    var parsed = _parseIssueBody(issue.body);
-    var labels = (issue.labels || []).map(function(l) { return l.name; });
-    var hasVoucherLabel = labels.indexOf("voucher") > -1;
-    var hasCompletedLabel = labels.indexOf("completed") > -1;
+  async _query(sql, params = []) {
+    const result = await this._send(sql, params);
+    return result.results || [];
+  },
 
-    if (parsed.shopName || parsed.amount || parsed.paymentMethod || parsed.status || parsed.date) {
-      var isElectric = !!(parsed.electric || parsed.voucherType === "电器凭证" || parsed.electricCategory || parsed.electricSubsidyRate);
-      var amountValue = parseFloat(parsed.amount || 0);
-      var discountValue = 0;
-      // ===== 电器补贴：discount 显示补贴比例 =====
-      var displayDiscount = parsed.discount || "";
-      if (isElectric) {
-        if (parsed.electricSubsidyRate) {
-          // 已审核：补贴 X%
-          displayDiscount = "🎁 补贴 " + parsed.electricSubsidyRate;
-          if (parsed.electricSubsidyAmount) displayDiscount += "（约 " + parsed.electricSubsidyAmount + "）";
-        } else {
-          // 待审核：还没设置补贴比例
-          displayDiscount = "⏳ 待审核补贴";
-        }
-      } else if (parsed.discount && parsed.discount.indexOf("折") > -1) {
-        var discountMatch = parsed.discount.match(/(\d+(?:\.\d+)?)/);
-        if (discountMatch) {
-          discountValue = parseFloat(discountMatch[1]) / 10;
-        }
-      }
-      // ===== finalPrice：电器优先用 body 里已经算好的文本 =====
-      var finalAmount;
-      if (isElectric && parsed.finalPrice) {
-        finalAmount = parsed.finalPrice; // 如 "4749.05元（已减补贴 ¥249.95）"
-      } else {
-        finalAmount = isNaN(amountValue) ? parsed.amount : (amountValue * (discountValue || 1)).toFixed(2);
-      }
-      var finalPriceStr;
-      if (isElectric && parsed.finalPrice) {
-        finalPriceStr = parsed.finalPrice;
-      } else {
-        finalPriceStr = finalAmount ? (finalAmount + (String(finalAmount).indexOf("元") > -1 ? "" : "元")) : "";
-      }
-      var originalPriceStr = parsed.amount ? (parsed.amount + (parsed.amount.indexOf("元") > -1 ? "" : "元")) : "";
-      // ===== 申请基数（电器）显示 =====
-      if (isElectric && parsed.electricApplyAmount) {
-        try {
-          var n = parseFloat(parsed.electricApplyAmount);
-          if (!isNaN(n)) originalPriceStr = n.toFixed(2) + "元（电器申请基数）";
-        } catch(e) {}
-      }
-      var paymentMethodType = "userFirst";
-      if (parsed.paymentMethod && parsed.paymentMethod.indexOf("工会先代替") > -1) {
-        paymentMethodType = "unionFirst";
-      }
-      var statusText = parsed.status || (hasCompletedLabel ? "已完成交易" : (issue.state === "closed" ? "已关闭" : "待审核"));
-      return {
-        electric: isElectric,
-        electricCategory: parsed.electricCategory || "",
-        electricBrand: parsed.electricBrand || "",
-        electricApplyAmount: parsed.electricApplyAmount || "",
-        electricSubsidyRate: parsed.electricSubsidyRate || "",
-        electricSubsidyAmount: parsed.electricSubsidyAmount || "",
-        shopName: parsed.shopName || "",
-        date: parsed.date || (issue.created_at ? issue.created_at.split("T")[0] : ""),
-        discount: displayDiscount,
-        discountValue: discountValue,
-        paymentNote: parsed.paymentMethod || "",
-        paymentMethod: parsed.paymentMethod || "",
-        paymentMethodType: paymentMethodType,
-        originalPrice: originalPriceStr,
-        finalPrice: finalPriceStr,
-        amount: parsed.amount || "",
-        status: statusText,
-        statusType: labels.indexOf("completed") > -1 ? "completed" : (labels.indexOf("paid") > -1 ? "paid" : (labels.indexOf("approved") > -1 ? "approved" : (labels.indexOf("rejected") > -1 ? "rejected" : "pending"))),
-        shopPhoto: parsed.shopPhoto || "",
-        orderPhotos: parsed.orderPhotos || "",
-        latitude: parsed.latitude || "",
-        longitude: parsed.longitude || "",
-        signature: parsed.signature || "",
-        remark: parsed.remark || "",
-        rejectReason: parsed.rejectReason || "",
-        username: parsed.title ? parsed.title.replace(/\d+$/, "") : "",
-        voucherId: parsed.voucherId || "",
-        voucherType: parsed.voucherType || (isElectric ? "电器凭证" : "普通凭证"),
-        platform: parsed.platform || "",
-        orderNo: parsed.orderNo || "",
-        productPhoto: parsed.productPhoto || "",
-        shoppingPhotos: parsed.shoppingPhotos || "",
-        _issueNumber: issue.number,
-        _issueUrl: issue.html_url,
-        _createdAt: issue.created_at,
-        _updatedAt: issue.updated_at,
-        _state: issue.state,
-        _labels: labels,
-        _title: issue.title
-      };
-    }
+  async _run(sql, params = []) {
+    return this._send(sql, params);
+  },
 
-    // 兜底：body 为空/损坏，但有 voucher label 时，用标题+标签重建最小数据
-    if (hasVoucherLabel && issue.title) {
-      var title = issue.title;
-      var uname = title.replace(/\d+$/, "").trim();
-      return {
-        shopName: "(数据异常)",
-        date: issue.created_at ? issue.created_at.split("T")[0] : "",
-        discount: "",
-        discountValue: 0,
-        paymentNote: "",
-        paymentMethod: "",
-        paymentMethodType: "userFirst",
-        originalPrice: "",
-        finalPrice: "",
-        amount: "",
-        status: hasCompletedLabel ? "已完成交易" : "数据异常",
-        statusType: hasCompletedLabel ? "completed" : "pending",
-        shopPhoto: "",
-        orderPhotos: "",
-        latitude: "",
-        longitude: "",
-        signature: "",
-        remark: "",
-        rejectReason: "",
-        username: uname,
-        voucherId: "",
-        _issueNumber: issue.number,
-        _issueUrl: issue.html_url,
-        _createdAt: issue.created_at,
-        _updatedAt: issue.updated_at,
-        _state: issue.state,
-        _labels: labels,
-        _title: issue.title
-      };
-    }
+  async _getOne(sql, params = []) {
+    const rows = await this._query(sql, params);
+    return rows.length > 0 ? rows[0] : null;
+  },
 
+  async _count(sql, params = []) {
+    const row = await this._getOne(sql, params);
+    return row ? (row.cnt || row.count || 0) : 0;
+  },
+
+  // ============================================================
+  // 初始化：创建表结构和初始数据
+  // ============================================================
+  async init() {
+    if (this._initialized) return;
     try {
-      var data = JSON.parse(issue.body);
-      data._issueNumber = issue.number;
-      data._issueUrl = issue.html_url;
-      data._createdAt = issue.created_at;
-      data._updatedAt = issue.updated_at;
-      data._state = issue.state;
-      data._labels = (issue.labels || []).map(function(l) { return l.name; });
-      data._title = issue.title;
-      if (!data.username && issue.title) {
-        data.username = issue.title.replace(/\d+$/, "");
+      for (const sql of SCHEMA_SQL) {
+        await this._run(sql);
       }
-      return data;
+      this._initialized = true;
+      console.log('[Api] D1 数据库初始化完成');
     } catch (e) {
-      return null;
+      console.warn('[Api] 初始化警告:', e.message);
     }
-  };
+  },
 
-  var _submitVoucher = function(voucherData) {
-    var body = _formatIssueBody(voucherData);
-    var title = (voucherData.username || "user") + (voucherData.voucherId || "");
-    return _createIssue(title, body, [JITConfig.getLabels().voucher, JITConfig.getLabels().pending]);
-  };
-
-  var _submitVoucherWithImages = function(voucherData, shopPhotoFile, orderPhotoFiles, isNewShopPhoto, anyNewOrderPhotos) {
-    var voucherId = voucherData.voucherId || Date.now();
-    var username = voucherData.username || "user";
-    var ts = Date.now();
-    var folderPath = "uploads/" + username + "/" + voucherId + "_" + ts;
-    var commitMsg = "上传凭证图片: " + (voucherData.shopName || "") + " #" + voucherId;
-
-    // 串行执行所有上传，避免并发 PUT 导致 SHA 冲突
-    var uploadChain = Promise.resolve();
-
-    if (shopPhotoFile && isNewShopPhoto) {
-      uploadChain = uploadChain.then(function() {
-        return _uploadImageToRepo(shopPhotoFile, folderPath, "shop.png", commitMsg).then(function(url) {
-          voucherData.shopPhoto = url;
-        });
-      });
-    }
-
-    if (orderPhotoFiles && orderPhotoFiles.length > 0 && anyNewOrderPhotos) {
-      uploadChain = uploadChain.then(function() {
-        return _uploadImagesToRepo(orderPhotoFiles, folderPath, commitMsg).then(function(urls) {
-          voucherData.orderPhotos = (voucherData.orderPhotos || []).concat(urls);
-        });
-      });
-    }
-
-    if (voucherData.signature && voucherData.signature.indexOf("base64,") > -1) {
-      var sigBase64 = voucherData.signature.split(",")[1];
-      uploadChain = uploadChain.then(function() {
-        return _uploadFileToRepo(folderPath + "/signature.png", sigBase64, commitMsg).then(function(url) {
-          voucherData.signature = url;
-        });
-      });
-    }
-
-    return uploadChain.then(function() {
-      if (voucherData._issueNumber) {
-        return _updateVoucherIssueBody(voucherData);
-      } else {
-        return _submitVoucher(voucherData);
-      }
+  // ============================================================
+  // 图片上传
+  // ============================================================
+  async uploadImage(base64Data, folder) {
+    const res = await fetch(CONFIG.WORKER_URL + '/upload-image', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Auth-Token': CONFIG.AUTH_TOKEN
+      },
+      body: JSON.stringify({ base64Data, folder })
     });
-  };
-
-  var _updateVoucherIssueBody = function(voucherData) {
-    var body = _formatIssueBody(voucherData);
-    return _updateIssue(voucherData._issueNumber, { body: body });
-  };
-
-  var _updateVoucherIssue = function(voucherData) {
-    var body = _formatIssueBody(voucherData);
-    return _updateIssue(voucherData._issueNumber, { body: body });
-  };
-
-  var _updateVoucherWithLottery = function(issueNumber, voucherData) {
-    var body = _formatIssueBody(voucherData);
-    return _updateIssue(issueNumber, { body: body });
-  };
-
-  // 标记凭证为已完成交易：自动获取 body → 更新状态文本 → 加 completed label
-  var _markVoucherCompleted = function(issueNumber) {
-    var newBody;
-    // 先拿当前 Issue body，避免清空数据
-    return _getIssue(issueNumber).then(function(issue) {
-      var currentBody = issue.body || "";
-      newBody = currentBody.replace(/｜\s*状态：.*/, "｜     状态：已完成交易");
-      if (newBody === currentBody) {
-        newBody = currentBody + "\n｜     状态：已完成交易";
-      }
-      return _safeRequest(_apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber + "/labels", {
-        method: "POST",
-        headers: _headers(),
-        body: JSON.stringify({ labels: ["completed"] })
-      });
-    }).then(function() {
-      return _updateIssue(issueNumber, { body: newBody });
-    });
-  };
-
-  // 工会先支付：用户点击「我已付款」后，更新状态为「已付款·待确认」并加 paid label（保留 approved）
-  var _markVoucherPaid = function(issueNumber) {
-    var newBody;
-    return _getIssue(issueNumber).then(function(issue) {
-      var currentBody = issue.body || "";
-      newBody = currentBody.replace(/｜\s*状态：.*/, "｜     状态：已付款·待确认");
-      if (newBody === currentBody) {
-        newBody = currentBody + "\n｜     状态：已付款·待确认";
-      }
-      return _safeRequest(_apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber + "/labels", {
-        method: "POST",
-        headers: _headers(),
-        body: JSON.stringify({ labels: ["paid"] })
-      });
-    }).then(function() {
-      return _updateIssue(issueNumber, { body: newBody });
-    });
-  };
-
-  var _cache = {};
-  var _CACHE_TTL = 30000;
-
-  var _getCachedOrFetch = function(key, fetchFn) {
-    var now = Date.now();
-    if (_cache[key] && (now - _cache[key].ts < _CACHE_TTL)) {
-      return Promise.resolve(_cache[key].data);
-    }
-    return fetchFn().then(function(data) {
-      _cache[key] = { data: data, ts: Date.now() };
-      return data;
-    }).catch(function(err) {
-      if (_cache[key]) return _cache[key].data;
-      throw err;
-    });
-  };
-
-  var _invalidateCache = function(key) {
-    delete _cache[key];
-  };
-
-  var _getVouchers = function(page, perPage) {
-    return _getIssues([JITConfig.getLabels().voucher], page, perPage).then(function(issues) {
-      return issues.map(_parseVoucherData).filter(function(d) { return d !== null; });
-    });
-  };
-
-  var _getAllVouchers = function() {
-    return _getCachedOrFetch("allVouchers", function() {
-      return _getAllIssues([JITConfig.getLabels().voucher]).then(function(issues) {
-        return issues.map(_parseVoucherData).filter(function(d) { return d !== null; });
-      });
-    });
-  };
-
-  var _getVoucherCount = function() {
-    return _getAllVouchers().then(function(vouchers) {
-      return vouchers.length;
-    });
-  };
-
-  var _getApprovedCount = function() {
-    return _getAllVouchers().then(function(vouchers) {
-      return vouchers.filter(function(v) { return v.statusType === "approved"; }).length;
-    });
-  };
-
-  var _getNextVoucherId = function() {
-    return _getCachedOrFetch("allVouchersForId", function() {
-      return _getAllIssues([JITConfig.getLabels().voucher]).then(function(issues) {
-        var maxId = 0;
-        issues.forEach(function(issue) {
-          var data = _parseVoucherData(issue);
-          if (data && data.voucherId) {
-            var num = parseInt(data.voucherId, 10);
-            if (!isNaN(num) && num > maxId) maxId = num;
-          }
-        });
-        return maxId + 1;
-      });
-    }).catch(function() {
-      return 1;
-    });
-  };
-
-  var _getIssueComments = function(issueNumber) {
-    var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber + "/comments?per_page=100";
-    return _safeRequest(url, {
-      method: "GET",
-      headers: _headers()
-    }).catch(function() { return []; });
-  };
-
-  var _addIssueComment = function(issueNumber, body) {
-    var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber + "/comments";
-    return _safeRequest(url, {
-      method: "POST",
-      headers: _headers(),
-      body: JSON.stringify({ body: body })
-    });
-  };
-
-  var _getIssue = function(issueNumber) {
-    var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber;
-    return _safeRequest(url, {
-      method: "GET",
-      headers: _headers()
-    });
-  };
-
-  var _uploadChatImage = function(file, username) {
-    var ts = Date.now();
-    var folderPath = "chat/" + (username || "user") + "/" + ts;
-    return _uploadImageToRepo(file, folderPath, "chat_img.png", "聊天图片: " + (username || ""));
-  };
-
-  // ======= 用户注册系统（申请-审核制） =======
-  var _formatUserBody = function(data) {
-    return [
-      "｜用户名：" + (data.username || ""),
-      "｜密码：" + (data.password || ""),
-      "｜姓名：" + (data.fullName || ""),
-      "｜出生日期：" + (data.birthdate || ""),
-      "｜国家：" + (data.country || ""),
-      "｜省份：" + (data.province || ""),
-      "｜城市：" + (data.city || ""),
-      "｜注册时间：" + (data.registerTime || ""),
-      "｜邀请人：" + (data.referrer || ""),
-      "｜审核状态：" + (data.reviewStatus || "待审核")
-    ].join("\n");
-  };
-
-  var _parseUserBody = function(body) {
-    var data = {
-      username: "", password: "", fullName: "", birthdate: "",
-      country: "", province: "", city: "", registerTime: "", referrer: "", reviewStatus: ""
-    };
-    var lines = String(body || "").split(/\r?\n/);
-    lines.forEach(function(line) {
-      var trimmed = line.trim();
-      var match;
-      if ((match = trimmed.match(/^｜?\s*用户名：(.+)$/))) data.username = match[1].trim();
-      else if ((match = trimmed.match(/^｜?\s*密码：(.+)$/))) data.password = match[1].trim();
-      else if ((match = trimmed.match(/^｜?\s*姓名：(.+)$/))) data.fullName = match[1].trim();
-      else if ((match = trimmed.match(/^｜?\s*出生日期：(.+)$/))) data.birthdate = match[1].trim();
-      else if ((match = trimmed.match(/^｜?\s*国家：(.+)$/))) data.country = match[1].trim();
-      else if ((match = trimmed.match(/^｜?\s*省份：(.+)$/))) data.province = match[1].trim();
-      else if ((match = trimmed.match(/^｜?\s*城市：(.+)$/))) data.city = match[1].trim();
-      else if ((match = trimmed.match(/^｜?\s*注册时间：(.+)$/))) data.registerTime = match[1].trim();
-      else if ((match = trimmed.match(/^｜?\s*邀请人：(.+)$/))) data.referrer = match[1].trim();
-      else if ((match = trimmed.match(/^｜?\s*审核状态：(.+)$/))) data.reviewStatus = match[1].trim();
-    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
     return data;
-  };
+  },
 
-  // 查找已审核通过的用户（registered-user label）
-  var _findRegisteredUser = function(username) {
-    var label = JITConfig.getLabels().registeredUser;
-    var url = _apiBase + "/repos/" + _repoFull + "/issues?state=open&labels=" + encodeURIComponent(label) + "&per_page=100";
-    return _safeRequest(url, { method: "GET", headers: _headers() }).then(function(issues) {
-      if (!issues || issues.length === 0) return null;
-      for (var i = 0; i < issues.length; i++) {
-        var data = _parseUserBody(issues[i].body);
-        if (data.username === username) return { issue: issues[i], data: data };
-      }
-      return null;
+  // ============================================================
+  // 用户操作
+  // ============================================================
+  async getUser(username) {
+    return this._getOne('SELECT * FROM users WHERE id = ?', [username]);
+  },
+
+  async getUserByHash(username, hash) {
+    return this._getOne('SELECT * FROM users WHERE id = ? AND password_hash = ?', [username, hash]);
+  },
+
+  async createUser(username, hash, fullName, birthdate, country, province, city, referrer) {
+    await this._run(
+      `INSERT INTO users (id, password_hash, full_name, birthdate, country, province, city, referrer, review_status, points)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0)`,
+      [username, hash, fullName, birthdate, country, province, city, referrer]
+    );
+    return this.getUser(username);
+  },
+
+  async updateUser(username, fields) {
+    const keys = Object.keys(fields);
+    if (keys.length === 0) return;
+    const setClauses = keys.map(k => `${k} = ?`).join(', ');
+    const values = keys.map(k => fields[k]);
+    values.push(username);
+    await this._run(`UPDATE users SET ${setClauses}, updated_at = datetime('now') WHERE id = ?`, values);
+    return this.getUser(username);
+  },
+
+  async deleteUser(username) {
+    await this._run('DELETE FROM users WHERE id = ?', [username]);
+    await this._run('DELETE FROM vouchers WHERE user_id = ?', [username]);
+    await this._run('DELETE FROM points_records WHERE user_id = ?', [username]);
+    await this._run('DELETE FROM chat_messages WHERE user_id = ?', [username]);
+  },
+
+  async getAllUsers() {
+    return this._query('SELECT * FROM users ORDER BY created_at DESC');
+  },
+
+  async getUsersByStatus(status) {
+    return this._query('SELECT * FROM users WHERE review_status = ? ORDER BY created_at DESC', [status]);
+  },
+
+  async getUserCountByStatus(status) {
+    return this._count('SELECT COUNT(*) as cnt FROM users WHERE review_status = ?', [status]);
+  },
+
+  async getUserVoucherCount(username) {
+    return this._count('SELECT COUNT(*) as cnt FROM vouchers WHERE user_id = ?', [username]);
+  },
+
+  async freezeUser(username) {
+    return this.updateUser(username, { frozen: 1 });
+  },
+
+  async unfreezeUser(username) {
+    return this.updateUser(username, { frozen: 0 });
+  },
+
+  async getFrozenUsers() {
+    return this._query('SELECT * FROM users WHERE frozen = 1');
+  },
+
+  // ============================================================
+  // 注册申请
+  // ============================================================
+  async createRegistration(username, hash, fullName, birthdate, country, province, city, referrer) {
+    const id = _generateId();
+    await this._run(
+      `INSERT INTO registrations (id, username, password_hash, full_name, birthdate, country, province, city, referrer, review_status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+      [id, username, hash, fullName, birthdate, country, province, city, referrer]
+    );
+    return { id, username, review_status: 'pending' };
+  },
+
+  async getRegistration(username) {
+    return this._getOne('SELECT * FROM registrations WHERE username = ?', [username]);
+  },
+
+  async getAllRegistrations() {
+    return this._query('SELECT * FROM registrations ORDER BY created_at DESC');
+  },
+
+  async getRegistrationsByStatus(status) {
+    return this._query('SELECT * FROM registrations WHERE review_status = ? ORDER BY created_at DESC', [status]);
+  },
+
+  async approveRegistration(username) {
+    const reg = await this.getRegistration(username);
+    if (!reg) throw new Error('申请不存在');
+    await this._run(
+      `INSERT OR REPLACE INTO users (id, password_hash, full_name, birthdate, country, province, city, referrer, review_status, points)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?)`,
+      [reg.username, reg.password_hash, reg.full_name, reg.birthdate, reg.country, reg.province, reg.city, reg.referrer, REGISTER_POINTS]
+    );
+    await this._run('UPDATE registrations SET review_status = ? WHERE username = ?', ['approved', username]);
+    if (reg.referrer) {
+      await this.addPointsRecord(reg.referrer, REFERRAL_POINTS, `推荐用户 ${username} 注册奖励`, null);
+    }
+    return this.getUser(username);
+  },
+
+  async rejectRegistration(username) {
+    await this._run('UPDATE registrations SET review_status = ? WHERE username = ?', ['rejected', username]);
+  },
+
+  async deleteRegistration(username) {
+    await this._run('DELETE FROM registrations WHERE username = ?', [username]);
+  },
+
+  // ============================================================
+  // 凭证操作
+  // ============================================================
+  async createVoucher(data) {
+    const id = _generateVId();
+    const fields = [
+      'id', 'user_id', 'order_type', 'shop_name', 'shop_photo', 'order_photos',
+      'latitude', 'longitude', 'amount', 'discounted_amount', 'discount',
+      'status', 'payment_status', 'payment_method', 'remark', 'signature',
+      'platform', 'order_no', 'product_photo', 'shopping_photos',
+      'electric_category', 'electric_brand', 'electric_apply_amount',
+      'electric_subsidy_rate', 'electric_subsidy_amount',
+      'is_urgent', 'urgent_reason', 'urgent_username', 'urgent_time'
+    ];
+    const values = fields.map(f => {
+      if (f === 'id') return id;
+      const key = f;
+      const val = data[key];
+      if (val === undefined || val === null) return '';
+      if (typeof val === 'object') return JSON.stringify(val);
+      return val;
     });
-  };
+    const placeholders = fields.map(() => '?').join(', ');
+    await this._run(
+      `INSERT INTO vouchers (${fields.join(', ')}) VALUES (${placeholders})`,
+      values
+    );
+    return this.getVoucher(id);
+  },
 
-  // 查找待审核的注册申请（registration-request label）
-  var _findPendingRegistration = function(username) {
-    var label = JITConfig.getLabels().registrationRequest;
-    var url = _apiBase + "/repos/" + _repoFull + "/issues?state=open&labels=" + encodeURIComponent(label) + "&per_page=100";
-    return _safeRequest(url, { method: "GET", headers: _headers() }).then(function(issues) {
-      if (!issues || issues.length === 0) return null;
-      for (var i = 0; i < issues.length; i++) {
-        var data = _parseUserBody(issues[i].body);
-        if (data.username === username) return { issue: issues[i], data: data };
-      }
-      return null;
+  async getVoucher(id) {
+    return this._getOne('SELECT * FROM vouchers WHERE id = ?', [id]);
+  },
+
+  async getVouchers(filters = {}) {
+    let sql = 'SELECT * FROM vouchers WHERE 1=1';
+    const params = [];
+    if (filters.user_id) {
+      sql += ' AND user_id = ?';
+      params.push(filters.user_id);
+    }
+    if (filters.status) {
+      sql += ' AND status = ?';
+      params.push(filters.status);
+    }
+    if (filters.payment_status) {
+      sql += ' AND payment_status = ?';
+      params.push(filters.payment_status);
+    }
+    if (filters.order_type) {
+      sql += ' AND order_type = ?';
+      params.push(filters.order_type);
+    }
+    if (filters.is_urgent !== undefined) {
+      sql += ' AND is_urgent = ?';
+      params.push(filters.is_urgent ? 1 : 0);
+    }
+    if (filters.search) {
+      sql += ' AND (shop_name LIKE ? OR order_no LIKE ? OR platform LIKE ?)';
+      const s = '%' + filters.search + '%';
+      params.push(s, s, s);
+    }
+    sql += ' ORDER BY created_at DESC';
+    const limit = filters.limit || 200;
+    const offset = filters.offset || 0;
+    sql += ' LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+    return this._query(sql, params);
+  },
+
+  async updateVoucher(id, fields) {
+    const keys = Object.keys(fields);
+    if (keys.length === 0) return;
+    const setClauses = keys.map(k => `${k} = ?`).join(', ');
+    const values = keys.map(k => {
+      const val = fields[k];
+      if (val === undefined || val === null) return '';
+      if (typeof val === 'object') return JSON.stringify(val);
+      return val;
     });
-  };
+    values.push(id);
+    await this._run(`UPDATE vouchers SET ${setClauses}, updated_at = datetime('now') WHERE id = ?`, values);
+    return this.getVoucher(id);
+  },
 
-  // 提交注册申请
-  var _submitRegistrationRequest = function(data) {
-    var username = data.username;
-    // 先检查是否已注册或已有待审核申请
-    return _findRegisteredUser(username).then(function(existing) {
-      if (existing) throw new Error("该用户名已被注册");
-      var builtinUsers = JITConfig.getUsers();
-      if (builtinUsers[username]) throw new Error("该用户名已存在");
-      return _findPendingRegistration(username);
-    }).then(function(pending) {
-      if (pending) throw new Error("您已提交过注册申请，请等待管理员审核");
-      var label = JITConfig.getLabels().registrationRequest;
-      data.registerTime = new Date().toISOString().replace("T", " ").slice(0, 19);
-      data.reviewStatus = "待审核";
-      return _safeRequest(_apiBase + "/repos/" + _repoFull + "/issues", {
-        method: "POST",
-        headers: _headers(),
-        body: JSON.stringify({
-          title: "【注册申请】" + data.fullName + "（" + username + "）",
-          body: _formatUserBody(data),
-          labels: ["voucher", label]
-        })
-      });
+  async deleteVoucher(id) {
+    await this._run('DELETE FROM vouchers WHERE id = ?', [id]);
+  },
+
+  async getVoucherCount(filters = {}) {
+    let sql = 'SELECT COUNT(*) as cnt FROM vouchers WHERE 1=1';
+    const params = [];
+    if (filters.user_id) { sql += ' AND user_id = ?'; params.push(filters.user_id); }
+    if (filters.status) { sql += ' AND status = ?'; params.push(filters.status); }
+    if (filters.payment_status) { sql += ' AND payment_status = ?'; params.push(filters.payment_status); }
+    return this._count(sql, params);
+  },
+
+  async getVoucherStats() {
+    const stats = {};
+    stats.total = await this._count('SELECT COUNT(*) as cnt FROM vouchers');
+    stats.pending = await this._count("SELECT COUNT(*) as cnt FROM vouchers WHERE status = '待审核'");
+    stats.approved = await this._count("SELECT COUNT(*) as cnt FROM vouchers WHERE status = '已通过'");
+    stats.rejected = await this._count("SELECT COUNT(*) as cnt FROM vouchers WHERE status = '已拒绝'");
+    stats.paid = await this._count("SELECT COUNT(*) as cnt FROM vouchers WHERE payment_status = '已支付'");
+    stats.unpaid = await this._count("SELECT COUNT(*) as cnt FROM vouchers WHERE payment_status = '待支付'或 payment_status = ''");
+    stats.urgent = await this._count('SELECT COUNT(*) as cnt FROM vouchers WHERE is_urgent = 1');
+    const amtRow = await this._getOne('SELECT COALESCE(SUM(amount), 0) as total_amount FROM vouchers');
+    stats.totalAmount = amtRow ? amtRow.total_amount : 0;
+    return stats;
+  },
+
+  // ============================================================
+  // 积分操作
+  // ============================================================
+  async getPointsRecords(userId, limit = 100) {
+    return this._query(
+      'SELECT * FROM points_records WHERE user_id = ? ORDER BY created_at DESC LIMIT ?',
+      [userId, limit]
+    );
+  },
+
+  async addPointsRecord(userId, delta, reason, voucherId) {
+    const id = _generateId();
+    await this._run(
+      'INSERT INTO points_records (id, user_id, delta, reason, voucher_id) VALUES (?, ?, ?, ?, ?)',
+      [id, userId, delta, reason || '', voucherId || '']
+    );
+    await this._run(
+      'UPDATE users SET points = points + ?, updated_at = datetime(\'now\') WHERE id = ?',
+      [delta, userId]
+    );
+    return { id, user_id: userId, delta, reason, voucher_id: voucherId };
+  },
+
+  async getUserPoints(userId) {
+    const user = await this.getUser(userId);
+    return user ? user.points : 0;
+  },
+
+  async getTotalPointsIssued() {
+    const row = await this._getOne(
+      "SELECT COALESCE(SUM(delta), 0) as total FROM points_records WHERE delta > 0"
+    );
+    return row ? row.total : 0;
+  },
+
+  // ============================================================
+  // 签到
+  // ============================================================
+  async signIn(username) {
+    const user = await this.getUser(username);
+    if (!user) throw new Error('用户不存在');
+    const today = new Date().toISOString().split('T')[0];
+    const signIns = JSON.parse(user.sign_ins || '[]');
+    if (signIns.includes(today)) throw new Error('今日已签到');
+    signIns.push(today);
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    let streakDays = user.streak_days || 0;
+    if (signIns.includes(yesterday)) {
+      streakDays += 1;
+    } else {
+      streakDays = 1;
+    }
+    const bonus = Math.min(Math.floor(streakDays / 7), MAX_SIGN_STREAK_BONUS);
+    const points = SIGN_IN_POINTS + bonus;
+    await this.updateUser(username, {
+      sign_ins: JSON.stringify(signIns),
+      last_sign_in: today,
+      streak_days: streakDays
     });
-  };
+    await this.addPointsRecord(username, points, `签到 (连续${streakDays}天) + ${points}`, null);
+    return { points, streakDays, bonus };
+  },
 
-  // 管理员获取待审核注册申请列表
-  var _getPendingRegistrations = function() {
-    var label = JITConfig.getLabels().registrationRequest;
-    var url = _apiBase + "/repos/" + _repoFull + "/issues?state=open&labels=" + encodeURIComponent(label) + "&per_page=100";
-    return _safeRequest(url, { method: "GET", headers: _headers() }).then(function(issues) {
-      if (!issues || issues.length === 0) return [];
-      return issues.map(function(issue) {
-        var data = _parseUserBody(issue.body);
-        return { issue: issue, data: data };
-      });
-    });
-  };
+  async getTodaySignIn(username) {
+    const user = await this.getUser(username);
+    if (!user) return false;
+    const today = new Date().toISOString().split('T')[0];
+    const signIns = JSON.parse(user.sign_ins || '[]');
+    return signIns.includes(today);
+  },
 
-  // 管理员通过注册申请（添加 registered-user label，更新审核状态）
-  var _approveRegistration = function(issueNumber) {
-    var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber;
-    // 先获取当前Issue
-    return _safeRequest(url, { method: "GET", headers: _headers() }).then(function(issue) {
-      var data = _parseUserBody(issue.body);
-      data.reviewStatus = "已通过";
-      return _safeRequest(url, {
-        method: "PATCH",
-        headers: _headers(),
-        body: JSON.stringify({
-          body: _formatUserBody(data),
-          labels: ["voucher", JITConfig.getLabels().registeredUser, JITConfig.getLabels().registrationRequest]
-        })
-      });
-    });
-  };
+  // ============================================================
+  // 聊天消息
+  // ============================================================
+  async getChatMessages(userId, limit = 200) {
+    return this._query(
+      'SELECT * FROM chat_messages WHERE user_id = ? ORDER BY created_at ASC LIMIT ?',
+      [userId, limit]
+    );
+  },
 
-  // 管理员拒绝注册申请
-  var _rejectRegistration = function(issueNumber) {
-    var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber;
-    return _safeRequest(url, { method: "GET", headers: _headers() }).then(function(issue) {
-      var data = _parseUserBody(issue.body);
-      data.reviewStatus = "已拒绝";
-      return _safeRequest(url, {
-        method: "PATCH",
-        headers: _headers(),
-        body: JSON.stringify({
-          body: _formatUserBody(data),
-          labels: ["voucher", JITConfig.getLabels().registrationRequest, "rejected"]
-        })
-      });
-    });
-  };
+  async sendChatMessage(userId, sender, content, imageUrl) {
+    await this._run(
+      'INSERT INTO chat_messages (user_id, sender, content, image_url, is_read) VALUES (?, ?, ?, ?, 0)',
+      [userId, sender, content || '', imageUrl || '']
+    );
+    return this._query(
+      'SELECT * FROM chat_messages WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
+      [userId]
+    );
+  },
 
-  // 验证已注册用户登录
-  var _verifyRegisteredUser = function(username, password) {
-    return _findRegisteredUser(username).then(function(result) {
-      if (!result) return null;
-      if (result.data.password !== password) return null;
-      return result;
-    });
-  };
+  async markChatRead(userId) {
+    await this._run('UPDATE chat_messages SET is_read = 1 WHERE user_id = ? AND sender = ?', [userId, 'user']);
+  },
 
-  // 获取邀请列表（谁通过我的邀请注册了）
-  var _getReferrals = function(username) {
-    var label = JITConfig.getLabels().registeredUser;
-    var url = _apiBase + "/repos/" + _repoFull + "/issues?state=open&labels=" + encodeURIComponent(label) + "&per_page=100";
-    return _safeRequest(url, { method: "GET", headers: _headers() }).then(function(issues) {
-      if (!issues || issues.length === 0) return [];
-      var referrals = [];
-      issues.forEach(function(issue) {
-        var data = _parseUserBody(issue.body);
-        if (data.referrer === username) {
-          referrals.push({ username: data.username, registerTime: data.registerTime });
-        }
-      });
-      return referrals;
-    });
-  };
+  async getUnreadChatCount(userId) {
+    return this._count(
+      'SELECT COUNT(*) as cnt FROM chat_messages WHERE user_id = ? AND sender = ? AND is_read = 0',
+      [userId, 'user']
+    );
+  },
 
-  // ======= 通知系统 =======
-  var _formatNotificationBody = function(data) {
-    return [
-      "｜发送者：" + (data.sender || "admin"),
-      "｜标题：" + (data.title || ""),
-      "｜内容：" + (data.content || ""),
-      "｜目标用户：" + (data.targetUsers || "all"),
-      "｜发送时间：" + (data.sendTime || new Date().toISOString().replace("T", " ").slice(0, 19)),
-      "｜状态：active"
-    ].join("\n");
-  };
+  async getAllUnreadCounts() {
+    const rows = await this._query(
+      "SELECT user_id, COUNT(*) as cnt FROM chat_messages WHERE sender = 'user' AND is_read = 0 GROUP BY user_id"
+    );
+    const map = {};
+    rows.forEach(r => { map[r.user_id] = r.cnt; });
+    return map;
+  },
 
-  var _parseNotificationBody = function(body) {
-    var data = {};
-    var lines = String(body || "").split(/\r?\n/);
-    lines.forEach(function(line) {
-      var trimmed = line.trim();
-      var match;
-      if ((match = trimmed.match(/^｜?\s*发送者：(.+)$/))) data.sender = match[1].trim();
-      else if ((match = trimmed.match(/^｜?\s*标题：(.+)$/))) data.title = match[1].trim();
-      else if ((match = trimmed.match(/^｜?\s*内容：(.+)$/))) data.content = match[1].trim();
-      else if ((match = trimmed.match(/^｜?\s*目标用户：(.+)$/))) data.targetUsers = match[1].trim();
-      else if ((match = trimmed.match(/^｜?\s*发送时间：(.+)$/))) data.sendTime = match[1].trim();
-      else if ((match = trimmed.match(/^｜?\s*状态：(.+)$/))) data.status = match[1].trim();
-    });
-    return data;
-  };
+  async getChatUsers() {
+    return this._query("SELECT DISTINCT user_id FROM chat_messages WHERE sender = 'user'");
+  },
 
-  // 发送通知（管理员调用）
-  var _sendNotification = function(title, content, targetUsers) {
-    var label = JITConfig.getLabels().notification;
-    var data = {
-      sender: "admin",
-      title: title,
-      content: content,
-      targetUsers: targetUsers || "all",
-      sendTime: new Date().toISOString().replace("T", " ").slice(0, 19)
-    };
-    return _safeRequest(_apiBase + "/repos/" + _repoFull + "/issues", {
-      method: "POST",
-      headers: _headers(),
-      body: JSON.stringify({
-        title: "【通知】" + title,
-        body: _formatNotificationBody(data),
-        labels: ["voucher", label]
-      })
-    });
-  };
+  // ============================================================
+  // 通知
+  // ============================================================
+  async getNotifications(filter = {}) {
+    let sql = 'SELECT * FROM notifications WHERE 1=1';
+    const params = [];
+    if (filter.status) { sql += ' AND status = ?'; params.push(filter.status); }
+    sql += ' ORDER BY created_at DESC';
+    return this._query(sql, params);
+  },
 
-  // 获取所有通知（管理员）
-  var _getAllNotifications = function() {
-    var label = JITConfig.getLabels().notification;
-    var url = _apiBase + "/repos/" + _repoFull + "/issues?state=open&labels=" + encodeURIComponent(label) + "&per_page=100&sort=created&direction=desc";
-    return _safeRequest(url, { method: "GET", headers: _headers() }).then(function(issues) {
-      if (!issues) return [];
-      return issues.map(function(issue) {
-        var data = _parseNotificationBody(issue.body);
-        return {
-          issueNumber: issue.number,
-          sender: data.sender || "admin",
-          title: data.title || "",
-          content: data.content || "",
-          targetUsers: data.targetUsers || "all",
-          sendTime: data.sendTime || "",
-          status: data.status || "active",
-          createdAt: issue.created_at,
-          comments: issue.comments || 0
-        };
-      });
-    });
-  };
+  async getNotification(id) {
+    return this._getOne('SELECT * FROM notifications WHERE id = ?', [id]);
+  },
 
-  // 获取用户可见的通知
-  var _getUserNotifications = function(username) {
-    return _getAllNotifications().then(function(list) {
-      return list.filter(function(n) {
-        if (n.status !== "active") return false;
-        if (n.targetUsers === "all") return true;
-        var targets = n.targetUsers.split(",").map(function(s) { return s.trim(); });
-        return targets.indexOf(username) !== -1;
-      });
-    });
-  };
+  async createNotification(sender, title, content, targetUsers) {
+    const id = _generateId();
+    await this._run(
+      'INSERT INTO notifications (id, sender, title, content, target_users) VALUES (?, ?, ?, ?, ?)',
+      [id, sender, title, content, targetUsers || 'all']
+    );
+    return { id, sender, title, content, target_users: targetUsers };
+  },
 
-  // 用户回复通知
-  var _replyNotification = function(issueNumber, username, message) {
-    return _addIssueComment(issueNumber, "｜NOTIFY_REPLY｜" + username + "：" + message);
-  };
+  async deleteNotification(id) {
+    await this._run('DELETE FROM notifications WHERE id = ?', [id]);
+    await this._run('DELETE FROM notification_replies WHERE notification_id = ?', [id]);
+  },
 
-  // 获取通知的回复
-  var _getNotificationReplies = function(issueNumber) {
-    return _getIssueComments(issueNumber).then(function(comments) {
-      var replies = [];
-      (comments || []).forEach(function(c) {
-        if (c.body && c.body.indexOf("｜NOTIFY_REPLY｜") === 0) {
-          var rest = c.body.replace("｜NOTIFY_REPLY｜", "");
-          var idx = rest.indexOf("：");
-          replies.push({
-            username: idx > -1 ? rest.substring(0, idx) : "unknown",
-            message: idx > -1 ? rest.substring(idx + 1) : rest,
-            time: c.created_at,
-            commenter: c.user ? c.user.login : ""
-          });
-        }
-      });
-      return replies;
-    });
-  };
+  async getNotificationReplies(notificationId) {
+    return this._query(
+      'SELECT * FROM notification_replies WHERE notification_id = ? ORDER BY created_at ASC',
+      [notificationId]
+    );
+  },
 
-  // ======= 加急审核 =======
-  var _markUrgent = function(issueNumber, reason, username) {
-    var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber + "/labels";
-    return _safeRequest(url, {
-      method: "POST",
-      headers: _headers(),
-      body: JSON.stringify({ labels: [JITConfig.getLabels().urgent] })
-    }).then(function(res) {
-      // 加完标签后再追加一条加急理由的 Comment
-      if (reason || username) {
-        var body = "｜URGENT_REASON｜"
-          + (username ? (username + "：") : "")
-          + (reason || "无理由");
-        return _addIssueComment(issueNumber, body).then(function() { return res; });
-      }
-      return res;
-    });
-  };
+  async addNotificationReply(notificationId, username, message) {
+    await this._run(
+      'INSERT INTO notification_replies (notification_id, username, message) VALUES (?, ?, ?)',
+      [notificationId, username, message]
+    );
+    return { notification_id: notificationId, username, message };
+  },
 
-  var _getUrgentReason = function(issueNumber) {
-    return _getIssueComments(issueNumber).then(function(comments) {
-      var latest = null;
-      (comments || []).forEach(function(c) {
-        if (c.body && c.body.indexOf("｜URGENT_REASON｜") === 0) {
-          latest = c;
-        }
-      });
-      if (!latest) return null;
-      var rest = latest.body.replace("｜URGENT_REASON｜", "");
-      var idx = rest.indexOf("：");
-      return {
-        username: idx > -1 ? rest.substring(0, idx) : "unknown",
-        reason: idx > -1 ? rest.substring(idx + 1) : rest,
-        time: latest.created_at,
-        commenter: latest.user ? latest.user.login : ""
-      };
-    });
-  };
+  // ============================================================
+  // 黑名单
+  // ============================================================
+  async getBlacklist() {
+    return this._query('SELECT * FROM blacklist ORDER BY created_at DESC');
+  },
 
-  var _removeLabel = function(issueNumber, labelName) {
-    var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber + "/labels/" + encodeURIComponent(labelName);
-    return _safeRequest(url, {
-      method: "DELETE",
-      headers: _headers()
-    });
-  };
+  async addToBlacklist(username, reason, type) {
+    await this._run(
+      'INSERT OR REPLACE INTO blacklist (username, reason, type, time) VALUES (?, ?, ?, datetime(\'now\'))',
+      [username, reason || '', type || 'dynamic']
+    );
+  },
 
-  var _removeUrgent = function(issueNumber) {
-    var label = JITConfig.getLabels().urgent;
-    var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber + "/labels/" + encodeURIComponent(label);
-    return _safeRequest(url, {
-      method: "DELETE",
-      headers: _headers()
-    }).catch(function() { return null; });
-  };
+  async removeFromBlacklist(username) {
+    await this._run('DELETE FROM blacklist WHERE username = ?', [username]);
+  },
 
-  return {
-    getVouchers: _getVouchers,
-    getAllVouchers: _getAllVouchers,
-    submitVoucher: _submitVoucher,
-    submitVoucherWithImages: _submitVoucherWithImages,
-    formatIssueBody: _formatIssueBody,
-    getVoucherCount: _getVoucherCount,
-    getApprovedCount: _getApprovedCount,
-    compressImage: _compressImage,
-    updateIssue: _updateIssue,
-    deleteIssue: _deleteIssue,
-    closeIssue: _closeIssue,
-    updateVoucherWithLottery: _updateVoucherWithLottery,
-    updateVoucherIssue: _updateVoucherIssue,
-    parseVoucherData: _parseVoucherData,
-    getNextVoucherId: _getNextVoucherId,
-    ensureLabels: _ensureLabels,
-    invalidateCache: _invalidateCache,
-    getIssueComments: _getIssueComments,
-    addIssueComment: _addIssueComment,
-    uploadChatImage: _uploadChatImage,
-    getIssue: _getIssue,
-    markVoucherCompleted: _markVoucherCompleted,
-    markVoucherPaid: _markVoucherPaid,
-    registerUser: _submitRegistrationRequest,
-    findRegisteredUser: _findRegisteredUser,
-    findPendingRegistration: _findPendingRegistration,
-    verifyRegisteredUser: _verifyRegisteredUser,
-    getReferrals: _getReferrals,
-    getPendingRegistrations: _getPendingRegistrations,
-    approveRegistration: _approveRegistration,
-    rejectRegistration: _rejectRegistration,
-    sendNotification: _sendNotification,
-    getAllNotifications: _getAllNotifications,
-    getUserNotifications: _getUserNotifications,
-    replyNotification: _replyNotification,
-    getNotificationReplies: _getNotificationReplies,
-    markUrgent: _markUrgent,
-    removeUrgent: _removeUrgent,
-    getUrgentReason: _getUrgentReason
-  };
-})();
+  async isBlacklisted(username) {
+    const row = await this._getOne('SELECT * FROM blacklist WHERE username = ?', [username]);
+    return !!row;
+  },
+
+  // ============================================================
+  // 加急黑名单
+  // ============================================================
+  async getUrgentBlacklist() {
+    return this._query('SELECT * FROM urgent_blacklist ORDER BY created_at DESC');
+  },
+
+  async getActiveUrgentBlacklist() {
+    const now = datetime('now');
+    return this._query(
+      "SELECT * FROM urgent_blacklist WHERE until = 'permanent' OR until >= datetime('now')"
+    );
+  },
+
+  async addToUrgentBlacklist(username, reason, fromTime, until, operator) {
+    await this._run(
+      'INSERT OR REPLACE INTO urgent_blacklist (username, reason, from_time, until, operator) VALUES (?, ?, ?, ?, ?)',
+      [username, reason || '', fromTime || '', until || 'permanent', operator || 'admin']
+    );
+  },
+
+  async removeFromUrgentBlacklist(username) {
+    await this._run('DELETE FROM urgent_blacklist WHERE username = ?', [username]);
+  },
+
+  async isUrgentBlacklisted(username) {
+    const row = await this._getOne(
+      "SELECT * FROM urgent_blacklist WHERE username = ? AND (until = 'permanent' OR until >= datetime('now'))",
+      [username]
+    );
+    return !!row;
+  },
+
+  // ============================================================
+  // 白名单
+  // ============================================================
+  async getWhitelist() {
+    return this._query('SELECT username FROM whitelist ORDER BY created_at DESC');
+  },
+
+  async addToWhitelist(username) {
+    await this._run('INSERT OR IGNORE INTO whitelist (username) VALUES (?)', [username]);
+  },
+
+  async removeFromWhitelist(username) {
+    await this._run('DELETE FROM whitelist WHERE username = ?', [username]);
+  },
+
+  async isWhitelisted(username) {
+    const row = await this._getOne('SELECT * FROM whitelist WHERE username = ?', [username]);
+    return !!row;
+  },
+
+  // ============================================================
+  // 系统配置
+  // ============================================================
+  async getConfig(key) {
+    const row = await this._getOne('SELECT value FROM sys_config WHERE key = ?', [key]);
+    return row ? row.value : null;
+  },
+
+  async setConfig(key, value) {
+    await this._run('INSERT OR REPLACE INTO sys_config (key, value) VALUES (?, ?)', [key, value]);
+  },
+
+  async getAllConfig() {
+    const rows = await this._query('SELECT * FROM sys_config');
+    const config = {};
+    rows.forEach(r => { config[r.key] = r.value; });
+    return config;
+  },
+
+  // ============================================================
+  // 用户统计（管理后台用）
+  // ============================================================
+  async getUserStats(username) {
+    const user = await this.getUser(username);
+    if (!user) return null;
+    const voucherCount = await this.getUserVoucherCount(username);
+    const points = await this.getUserPoints(username);
+    const pendingVouchers = await this._count(
+      "SELECT COUNT(*) as cnt FROM vouchers WHERE user_id = ? AND status = '待审核'",
+      [username]
+    );
+    const approvedVouchers = await this._count(
+      "SELECT COUNT(*) as cnt FROM vouchers WHERE user_id = ? AND status = '已通过'",
+      [username]
+    );
+    return { user, voucherCount, points, pendingVouchers, approvedVouchers };
+  }
+};
+
+// ============================================================
+// 工具函数
+// ============================================================
+function _generateId() {
+  return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 10);
+}
+
+function _generateVId() {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let id = 'v_';
+  for (let i = 0; i < 12; i++) {
+    id += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return id;
+}
+
+async function sha256(message) {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
