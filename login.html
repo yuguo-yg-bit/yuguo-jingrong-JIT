@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>玉国金融【全球通】 — 登录</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+/* ========= 登录页专用布局 ========= */
+.login-page {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-height: 100vh;
+  align-items: stretch;
+}
+
+/* ========= 左侧介绍区 ========= */
+.login-hero {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 40px;
+  position: relative;
+  overflow: hidden;
+}
+
+.login-hero-inner {
+  position: relative;
+  z-index: 2;
+  max-width: 480px;
+  text-align: center;
+}
+
+.login-hero-logo {
+  font-size: 52px;
+  font-weight: 900;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg,
+    #ffffff 0%,
+    #c9d8ff 35%,
+    #64b5f6 60%,
+    #42a5f5 85%,
+    #1976d2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 25px rgba(66,165,245,0.3));
+  letter-spacing: 6px;
+}
+
+.login-hero-sub {
+  font-size: 16px;
+  color: var(--text-secondary);
+  margin-bottom: 48px;
+  line-height: 1.7;
+}
+
+.login-features {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.login-feature {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  opacity: 0;
+  transform: translateY(20px);
+  animation: featureSlideIn 0.6s ease forwards;
+}
+.login-feature:nth-child(1) { animation-delay: 0.1s; }
+.login-feature:nth-child(2) { animation-delay: 0.25s; }
+.login-feature:nth-child(3) { animation-delay: 0.4s; }
+.login-feature:nth-child(4) { animation-delay: 0.55s; }
+.login-feature:nth-child(5) { animation-delay: 0.7s; }
+
+@keyframes featureSlideIn {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.login-feature-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: rgba(66,165,245,0.1);
+  border: 1px solid rgba(66,165,245,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+  transition: all 0.3s;
+}
+.login-feature:hover .login-feature-icon {
+  background: rgba(66,165,245,0.2);
+  border-color: rgba(66,165,245,0.4);
+  box-shadow: 0 0 16px rgba(66,165,245,0.2);
+}
+
+.login-feature-text h4 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e0e6f0;
+  margin-bottom: 4px;
+}
+.login-feature-text p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* ========= 右侧表单区 ========= */
+.login-form-side {
+  width: 460px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: rgba(13,19,34,0.7);
+  border-left: 1px solid var(--ice-blue-border);
+  backdrop-filter: blur(10px);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 400px;
+}
+
+.login-card-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.login-card-header h2 {
+  font-size: 24px;
+  font-weight: 700;
+  color: #e0e6f0;
+  margin-bottom: 8px;
+}
+
+.login-card-header p {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.login-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 28px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--ice-blue-border);
+}
+
+.login-tab {
+  flex: 1;
+  padding: 10px 0;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  background: rgba(255,255,255,0.03);
+  color: var(--text-secondary);
+  border: none;
+  transition: all 0.3s;
+}
+.login-tab.active {
+  background: rgba(66,165,245,0.15);
+  color: var(--ice-blue);
+}
+.login-tab:hover {
+  background: rgba(66,165,245,0.08);
+  color: var(--ice-blue-light);
+}
+
+.login-panel {
+  display: none;
+}
+.login-panel.active {
+  display: block;
+}
+
+/* ========= 表单适配 ========= */
+.login-card .form-group {
+  margin-bottom: 18px;
+}
+.login-card .form-error {
+  margin-bottom: 14px;
+}
+.login-card .btn-submit {
+  margin-top: 8px;
+}
+
+/* 移动端适配 */
+@media (max-width: 900px) {
+  .login-page {
+    flex-direction: column;
+  }
+  .login-hero {
+    padding: 40px 24px 20px;
+    min-height: auto;
+  }
+  .login-hero-logo {
+    font-size: 36px;
+  }
+  .login-features {
+    display: none;
+  }
+  .login-hero-sub {
+    margin-bottom: 16px;
+  }
+  .login-form-side {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid var(--ice-blue-border);
+    padding: 24px 20px 40px;
+  }
+  .login-card {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 400px) {
+  .login-hero-logo {
+    font-size: 28px;
+    letter-spacing: 4px;
+  }
+}
+</style>
+</head>
+<body>
+<div class="bg-grid"></div>
+<div class="bg-particles" id="bgParticles"></div>
+
+<div class="login-page">
+  <!-- ===== 左侧介绍区 ===== -->
+  <div class="login-hero">
+    <div class="login-hero-inner">
+      <h1 class="login-hero-logo">玉国金融</h1>
+      <p class="login-hero-sub">
+        JIT 金融活动 · 工会凭证优惠管理平台<br>
+        随时随地提交凭证，参与抽奖赢取优惠
+      </p>
+      <div class="login-features">
+        <div class="login-feature">
+          <div class="login-feature-icon">📸</div>
+          <div class="login-feature-text">
+            <h4>拍照上传凭证</h4>
+            <p>支持店铺照片、订单截图，GPS定位 + 手写签名</p>
+          </div>
+        </div>
+        <div class="login-feature">
+          <div class="login-feature-icon">✅</div>
+          <div class="login-feature-text">
+            <h4>人工审核保障</h4>
+            <p>每份凭证管理员逐一审核，确保真实有效</p>
+          </div>
+        </div>
+        <div class="login-feature">
+          <div class="login-feature-icon">🎰</div>
+          <div class="login-feature-text">
+            <h4>刮刮乐抽奖</h4>
+            <p>审核通过即可参与抽奖，赢取免单至 7 折优惠</p>
+          </div>
+        </div>
+        <div class="login-feature">
+          <div class="login-feature-icon">💰</div>
+          <div class="login-feature-text">
+            <h4>积分灵活抵扣</h4>
+            <p>10 积分 = 1 元，抽到需补差额时积分抵消</p>
+          </div>
+        </div>
+        <div class="login-feature">
+          <div class="login-feature-icon">💬</div>
+          <div class="login-feature-text">
+            <h4>24h 在线客服</h4>
+            <p>工作台内置聊天系统，管理员实时响应</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 右侧表单区 ===== -->
+  <div class="login-form-side">
+    <div class="login-card">
+      <div class="login-card-header">
+        <h2 id="loginCardTitle">欢迎回来</h2>
+        <p id="loginCardSub">登录您的账户继续使用</p>
+      </div>
+
+      <div class="login-tabs">
+        <button class="login-tab active" id="tabLogin">登 录</button>
+        <button class="login-tab" id="tabRegister">注 册</button>
+      </div>
+
+      <!-- 登录面板 -->
+      <div class="login-panel active" id="panelLogin">
+        <div id="referrerHint" style="text-align:center;color:var(--ice-blue);font-size:13px;margin-bottom:12px;display:none;"></div>
+        <div class="form-group">
+          <label class="form-label">用户名</label>
+          <input type="text" class="form-input" id="loginUsername" placeholder="请输入用户名">
+        </div>
+        <div class="form-group">
+          <label class="form-label">密码</label>
+          <input type="password" class="form-input" id="loginPassword" placeholder="请输入密码">
+        </div>
+        <div class="form-error" id="loginError" style="display:none;"></div>
+        <button class="btn-submit" id="btnLogin" style="width:100%;">登 录</button>
+      </div>
+
+      <!-- 注册面板 -->
+      <div class="login-panel" id="panelRegister">
+        <div class="form-group">
+          <label class="form-label">姓名 <span class="required">*</span></label>
+          <input type="text" class="form-input" id="regFullName" placeholder="请输入真实姓名">
+        </div>
+        <div class="form-group">
+          <label class="form-label">出生日期 <span class="required">*</span></label>
+          <input type="date" class="form-input" id="regBirthdate">
+        </div>
+        <div class="form-group">
+          <label class="form-label">用户名 <span class="required">*</span></label>
+          <input type="text" class="form-input" id="regUsername" placeholder="2-20个字符，用于登录">
+        </div>
+        <div class="form-group">
+          <label class="form-label">密码 <span class="required">*</span></label>
+          <input type="password" class="form-input" id="regPassword" placeholder="至少6位">
+        </div>
+        <div class="form-group">
+          <label class="form-label">确认密码 <span class="required">*</span></label>
+          <input type="password" class="form-input" id="regPassword2" placeholder="请再次输入密码">
+        </div>
+        <div class="form-group">
+          <label class="form-label">国家 <span class="required">*</span></label>
+          <select class="form-input" id="regCountry"><option value="">请选择国家</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">省份 <span class="required">*</span></label>
+          <select class="form-input" id="regProvince" disabled><option value="">请先选择国家</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">城市 <span class="required">*</span></label>
+          <select class="form-input" id="regCity" disabled><option value="">请先选择省份</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">邀请人（选填）</label>
+          <input type="text" class="form-input" id="regReferrer" placeholder="输入邀请人用户名">
+        </div>
+        <div class="form-group">
+          <label class="form-label">人机验证 <span class="required">*</span></label>
+          <div class="slider-captcha" id="sliderCaptcha">
+            <div class="slider-track" id="sliderTrack">
+              <div class="slider-bg-unfilled" id="sliderBgUnfilled"></div>
+              <div class="slider-bg-filled" id="sliderBgFilled"></div>
+              <span class="slider-text" id="sliderText">→ 按住滑块拖到最右侧 →</span>
+              <div class="slider-knob" id="sliderKnob">
+                <svg class="slider-knob-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="form-error" id="regError" style="display:none;"></div>
+        <div style="text-align:center;font-size:12px;color:var(--text-secondary);margin-top:8px;">提交后需等待管理员审核通过方可登录</div>
+        <button class="btn-submit" id="btnRegister" style="width:100%;margin-top:12px;">提交注册申请</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/api.js"></script>
+<script>
+(function() {
+  // ========= 背景粒子动画 =========
+  var particlesContainer = document.getElementById("bgParticles");
+  var particleCount = 30;
+  for (var i = 0; i < particleCount; i++) {
+    var p = document.createElement("div");
+    p.className = "particle";
+    p.style.left = Math.random() * 100 + "%";
+    p.style.bottom = "-20px";
+    p.style.width = (2 + Math.random() * 4) + "px";
+    p.style.height = p.style.width;
+    p.style.animationDuration = (8 + Math.random() * 20) + "s";
+    p.style.animationDelay = Math.random() * 15 + "s";
+    particlesContainer.appendChild(p);
+  }
+
+  // ========= 邀请人处理 =========
+  var _escapeHtml = function(text) {
+    var div = document.createElement("div");
+    div.appendChild(document.createTextNode(text));
+    return div.innerHTML;
+  };
+
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var ref = params.get("ref");
+    if (ref) {
+      ref = decodeURIComponent(ref);
+      localStorage.setItem("jit_referrer", ref);
+      var cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+    }
+  } catch (e) {}
+
+  var referrer = localStorage.getItem("jit_referrer") || "";
+  if (referrer) {
+    var hint = document.getElementById("referrerHint");
+    hint.style.display = "block";
+    hint.textContent = "邀请人：" + referrer;
+    document.getElementById("regReferrer").value = referrer;
+  }
+
+  // ========= Tab 切换 =========
+  var _switchTab = function(tab) {
+    var isLogin = (tab === "login");
+    document.getElementById("tabLogin").classList.toggle("active", isLogin);
+    document.getElementById("tabRegister").classList.toggle("active", !isLogin);
+    document.getElementById("panelLogin").classList.toggle("active", isLogin);
+    document.getElementById("panelRegister").classList.toggle("active", !isLogin);
+    document.getElementById("loginCardTitle").textContent = isLogin ? "欢迎回来" : "创建账户";
+    document.getElementById("loginCardSub").textContent = isLogin ? "登录您的账户继续使用" : "注册后需等待管理员审核通过";
+    document.getElementById("loginError").style.display = "none";
+    document.getElementById("regError").style.display = "none";
+  };
+
+  document.getElementById("tabLogin").addEventListener("click", function() { _switchTab("login"); });
+  document.getElementById("tabRegister").addEventListener("click", function() { _switchTab("register"); });
+
+  // 处理 ?tab=register 参数
+  if ((new URLSearchParams(window.location.search)).get("tab") === "register") {
+    _switchTab("register");
+  }
+
+  // ========= Toast 提示 =========
+  var _showToast = function(msg, type) {
+    var el = document.getElementById("loginToast");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "loginToast";
+      el.style.cssText = "position:fixed;bottom:40px;left:50%;transform:translateX(-50%);z-index:9999;padding:10px 24px;border-radius:20px;font-size:14px;font-weight:600;pointer-events:none;opacity:0;transition:opacity 0.3s;";
+      document.body.appendChild(el);
+    }
+    if (type === "error") {
+      el.style.background = "rgba(244,67,54,0.9)";
+      el.style.color = "#fff";
+    } else {
+      el.style.background = "rgba(76,175,80,0.9)";
+      el.style.color = "#fff";
+    }
+    el.textContent = msg;
+    el.style.opacity = "1";
+    clearTimeout(el._t);
+    el._t = setTimeout(function() { el.style.opacity = "0"; }, 3000);
+  };
+
+  // ========= 登录逻辑 =========
+  document.getElementById("btnLogin").addEventListener("click", function() {
+    var username = document.getElementById("loginUsername").value.trim();
+    var password = document.getElementById("loginPassword").value.trim();
+    var errorEl = document.getElementById("loginError");
+    var users = JITConfig.getUsers();
+
+    if (!username || !password) {
+      errorEl.style.display = "block";
+      errorEl.textContent = "请输入用户名和密码";
+      return;
+    }
+
+    if (JITConfig.isBlacklisted(username)) {
+      errorEl.style.display = "block";
+      errorEl.textContent = "该账户已被列入黑名单，禁止登录。如有疑问请联系管理员。";
+      return;
+    }
+    if (JITConfig.isWhitelistEnabled() && !JITConfig.isWhitelisted(username)) {
+      errorEl.style.display = "block";
+      errorEl.textContent = "当前为白名单模式，您的账户未在白名单中，暂时无法登录。";
+      return;
+    }
+
+    // 先检查内置用户
+    if (users[username] && users[username] === password) {
+      localStorage.setItem("jit_current_user", username);
+      _showToast("登录成功，欢迎 " + username, "success");
+      setTimeout(function() { window.location.replace("/work"); }, 600);
+    } else {
+      errorEl.style.display = "none";
+      var btn = document.getElementById("btnLogin");
+      btn.disabled = true;
+      btn.textContent = "验证中...";
+      JITApi.verifyRegisteredUser(username, password).then(function(result) {
+        if (result) {
+          localStorage.setItem("jit_current_user", username);
+          _showToast("登录成功，欢迎 " + username, "success");
+          setTimeout(function() { window.location.replace("/work"); }, 600);
+        } else {
+          return JITApi.findPendingRegistration(username).then(function(pending) {
+            if (pending) {
+              errorEl.style.display = "block";
+              errorEl.textContent = "您的注册申请正在审核中，请耐心等待管理员通过";
+            } else {
+              errorEl.style.display = "block";
+              errorEl.textContent = "用户名或密码错误";
+            }
+          });
+        }
+      }).catch(function(err) {
+        errorEl.style.display = "block";
+        errorEl.textContent = "登录失败: " + err.message;
+      }).finally(function() {
+        btn.disabled = false;
+        btn.textContent = "登 录";
+      });
+    }
+  });
+
+  document.getElementById("loginPassword").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") document.getElementById("btnLogin").click();
+  });
+
+  // ========= 国家/省份/城市级联 =========
+  var _REGION_DATA = {
+    "中国": {
+      "北京市": ["东城区","西城区","朝阳区","海淀区","丰台区","石景山区","通州区","昌平区"],
+      "上海市": ["黄浦区","徐汇区","长宁区","静安区","普陀区","虹口区","杨浦区","浦东新区"],
+      "广东省": ["广州市","深圳市","珠海市","佛山市","东莞市","中山市","惠州市","汕头市"],
+      "浙江省": ["杭州市","宁波市","温州市","嘉兴市","湖州市","绍兴市","金华市","台州市"],
+      "江苏省": ["南京市","苏州市","无锡市","常州市","镇江市","南通市","扬州市","徐州市"],
+      "山东省": ["济南市","青岛市","烟台市","潍坊市","济宁市","临沂市","淄博市","威海市"],
+      "四川省": ["成都市","绵阳市","德阳市","宜宾市","南充市","乐山市","泸州市","自贡市"],
+      "湖北省": ["武汉市","宜昌市","襄阳市","荆州市","黄冈市","孝感市","十堰市","黄石市"],
+      "湖南省": ["长沙市","株洲市","湘潭市","衡阳市","岳阳市","常德市","郴州市","益阳市"],
+      "福建省": ["福州市","厦门市","泉州市","漳州市","莆田市","宁德市","龙岩市","南平市"],
+      "河南省": ["郑州市","洛阳市","开封市","新乡市","焦作市","安阳市","南阳市","许昌市"],
+      "陕西省": ["西安市","咸阳市","宝鸡市","渭南市","延安市","榆林市","汉中市","安康市"],
+      "辽宁省": ["沈阳市","大连市","鞍山市","抚顺市","本溪市","丹东市","锦州市","营口市"],
+      "重庆市": ["渝中区","江北区","南岸区","九龙坡区","沙坪坝区","渝北区","巴南区","大渡口区"],
+      "天津市": ["和平区","河东区","河西区","南开区","河北区","红桥区","东丽区","西青区"],
+      "其他省市": ["其他区县"]
+    },
+    "美国": {
+      "California": ["Los Angeles","San Francisco","San Diego","San Jose","Sacramento"],
+      "New York": ["New York City","Buffalo","Rochester","Albany","Syracuse"],
+      "Texas": ["Houston","Dallas","Austin","San Antonio","Fort Worth"],
+      "Florida": ["Miami","Orlando","Tampa","Jacksonville","Fort Lauderdale"],
+      "Washington": ["Seattle","Tacoma","Spokane","Bellevue","Vancouver"],
+      "Illinois": ["Chicago","Aurora","Naperville","Springfield","Rockford"],
+      "Other States": ["Other Cities"]
+    },
+    "日本": {
+      "東京都": ["新宿区","渋谷区","港区","千代田区","中央区","豊島区"],
+      "大阪府": ["大阪市","堺市","豊中市","吹田市","枚方市"],
+      "神奈川県": ["横浜市","川崎市","相模原市","横須賀市"],
+      "北海道": ["札幌市","函館市","旭川市","釧路市"],
+      "福岡県": ["福岡市","北九州市","久留米市"],
+      "Other": ["Other Cities"]
+    },
+    "韩国": {"首尔特别市": ["江南区","江北区","城东区","钟路区","中区"],"釜山广域市": ["海云台区","中区","南区","北区"],"仁川广域市": ["中区","南区","北区","西区"],"Other": ["Other Cities"]},
+    "新加坡": {"新加坡": ["中央区","东区","西区","北区","东北区"]},
+    "马来西亚": {"Kuala Lumpur": ["Kuala Lumpur","Putrajaya","Selangor","Penang","Johor"]},
+    "泰国": {"主要城市": ["Bangkok","Chiang Mai","Phuket","Pattaya","Hua Hin"]},
+    "英国": {"England": ["London","Manchester","Birmingham","Liverpool","Leeds"],"Scotland": ["Edinburgh","Glasgow","Aberdeen"],"Other": ["Other Cities"]},
+    "法国": {"主要城市": ["Paris","Marseille","Lyon","Toulouse","Nice"]},
+    "德国": {"Bayern": ["München","Nürnberg","Augsburg"],"Nordrhein-Westfalen": ["Köln","Düsseldorf","Dortmund","Essen"],"Berlin": ["Berlin"]},
+    "加拿大": {"Ontario": ["Toronto","Ottawa","Mississauga"],"British Columbia": ["Victoria","Vancouver","Burnaby"],"Quebec": ["Montreal","Quebec City"]},
+    "澳大利亚": {"New South Wales": ["Sydney","Newcastle","Wollongong"],"Victoria": ["Melbourne","Geelong"],"Queensland": ["Brisbane","Gold Coast","Cairns"]},
+    "中国香港": {"香港": ["香港岛","九龙","新界","离岛"]},
+    "中国澳门": {"澳门": ["澳门半岛","氹仔","路环"]},
+    "中国台湾": {"台湾省": ["台北市","新北市","高雄市","台中市","台南市"]},
+    "越南": {"主要城市": ["Hanoi","Ho Chi Minh City","Da Nang","Hai Phong"]},
+    "印度尼西亚": {"主要城市": ["Jakarta","Surabaya","Bandung","Medan"]},
+    "菲律宾": {"主要城市": ["Manila","Cebu","Davao","Quezon City"]},
+    "印度": {"主要城市": ["Mumbai","Delhi","Bangalore","Chennai","Kolkata"]},
+    "俄罗斯": {"主要城市": ["Moscow","Saint Petersburg","Novosibirsk","Yekaterinburg"]},
+    "阿联酋": {"主要城市": ["Dubai","Abu Dhabi","Sharjah"]},
+    "沙特阿拉伯": {"主要城市": ["Riyadh","Jeddah","Mecca","Medina"]},
+    "其他国家": {"其他地区": ["其他城市"]}
+  };
+
+  var countrySel = document.getElementById("regCountry");
+  var provinceSel = document.getElementById("regProvince");
+  var citySel = document.getElementById("regCity");
+  Object.keys(_REGION_DATA).forEach(function(c) {
+    var opt = document.createElement("option");
+    opt.value = c; opt.textContent = c;
+    countrySel.appendChild(opt);
+  });
+  if (_REGION_DATA["中国"]) {
+    countrySel.value = "中国";
+    countrySel.dispatchEvent(new Event("change"));
+  }
+  countrySel.addEventListener("change", function() {
+    var country = this.value;
+    provinceSel.innerHTML = '<option value="">请选择省份</option>';
+    citySel.innerHTML = '<option value="">请先选择省份</option>';
+    citySel.disabled = true;
+    if (!country || !_REGION_DATA[country]) { provinceSel.disabled = true; return; }
+    Object.keys(_REGION_DATA[country]).forEach(function(p) {
+      var opt = document.createElement("option");
+      opt.value = p; opt.textContent = p;
+      provinceSel.appendChild(opt);
+    });
+    provinceSel.disabled = false;
+  });
+  provinceSel.addEventListener("change", function() {
+    var country = countrySel.value;
+    var province = this.value;
+    citySel.innerHTML = '<option value="">请选择城市</option>';
+    if (!country || !province || !_REGION_DATA[country] || !_REGION_DATA[country][province]) { citySel.disabled = true; return; }
+    _REGION_DATA[country][province].forEach(function(c) {
+      var opt = document.createElement("option");
+      opt.value = c; opt.textContent = c;
+      citySel.appendChild(opt);
+    });
+    citySel.disabled = false;
+  });
+
+  // ========= 滑块人机验证 =========
+  var _sliderVerified = false;
+  var track = document.getElementById("sliderTrack");
+  var knob = document.getElementById("sliderKnob");
+  var filled = document.getElementById("sliderBgFilled");
+  var unfilled = document.getElementById("sliderBgUnfilled");
+  var sliderText = document.getElementById("sliderText");
+  var dragging = false;
+  var startX = 0;
+  var maxLeft = 0;
+
+  var _resetSlider = function() {
+    _sliderVerified = false;
+    knob.style.left = "0px";
+    filled.style.width = "0px";
+    unfilled.style.width = "100%";
+    sliderText.textContent = "→ 按住滑块拖到最右侧 →";
+    sliderText.style.color = "";
+    track.classList.remove("slider-pass", "slider-fail", "dragging");
+  };
+
+  var _onSliderStart = function(clientX) {
+    if (_sliderVerified) return;
+    dragging = true;
+    startX = clientX - knob.offsetLeft;
+    maxLeft = track.offsetWidth - knob.offsetWidth;
+    track.classList.add("dragging");
+  };
+
+  var _onSliderMove = function(clientX) {
+    if (!dragging || _sliderVerified) return;
+    var left = clientX - startX;
+    if (left < 0) left = 0;
+    if (left > maxLeft) left = maxLeft;
+    knob.style.left = left + "px";
+    filled.style.width = left + "px";
+    unfilled.style.width = (maxLeft - left) + "px";
+
+    if (left >= maxLeft - 2) {
+      _sliderVerified = true;
+      dragging = false;
+      filled.style.width = maxLeft + "px";
+      unfilled.style.width = "0px";
+      sliderText.textContent = "✓ 验证通过";
+      sliderText.style.color = "#4caf50";
+      track.classList.remove("dragging");
+      track.classList.add("slider-pass");
+    }
+  };
+
+  var _onSliderEnd = function() {
+    if (dragging) {
+      dragging = false;
+      track.classList.remove("dragging");
+      if (!_sliderVerified) {
+        track.classList.add("slider-fail");
+        sliderText.textContent = "✗ 请拖到最右侧";
+        sliderText.style.color = "#f44336";
+        setTimeout(function() {
+          _resetSlider();
+        }, 800);
+      }
+    }
+  };
+
+  knob.addEventListener("mousedown", function(e) { e.preventDefault(); _onSliderStart(e.clientX); });
+  knob.addEventListener("touchstart", function(e) { e.preventDefault(); _onSliderStart(e.touches[0].clientX); });
+  document.addEventListener("mousemove", function(e) { _onSliderMove(e.clientX); });
+  document.addEventListener("touchmove", function(e) { _onSliderMove(e.touches[0].clientX); });
+  document.addEventListener("mouseup", _onSliderEnd);
+  document.addEventListener("touchend", _onSliderEnd);
+
+  // ========= 注册逻辑 =========
+  document.getElementById("btnRegister").addEventListener("click", function() {
+    var fullName = document.getElementById("regFullName").value.trim();
+    var birthdate = document.getElementById("regBirthdate").value;
+    var username = document.getElementById("regUsername").value.trim();
+    var password = document.getElementById("regPassword").value;
+    var password2 = document.getElementById("regPassword2").value;
+    var country = document.getElementById("regCountry").value;
+    var province = document.getElementById("regProvince").value;
+    var city = document.getElementById("regCity").value;
+    var referrerVal = document.getElementById("regReferrer").value.trim();
+    var errorEl = document.getElementById("regError");
+
+    if (!fullName) { errorEl.style.display = "block"; errorEl.textContent = "请输入姓名"; return; }
+    if (!birthdate) { errorEl.style.display = "block"; errorEl.textContent = "请输入出生日期"; return; }
+    if (!username || username.length < 2) { errorEl.style.display = "block"; errorEl.textContent = "用户名至少需要2个字符"; return; }
+    if (!password || password.length < 6) { errorEl.style.display = "block"; errorEl.textContent = "密码至少需要6位"; return; }
+    if (password !== password2) { errorEl.style.display = "block"; errorEl.textContent = "两次密码输入不一致"; return; }
+    if (!country) { errorEl.style.display = "block"; errorEl.textContent = "请选择国家"; return; }
+    if (!province) { errorEl.style.display = "block"; errorEl.textContent = "请选择省份"; return; }
+    if (!city) { errorEl.style.display = "block"; errorEl.textContent = "请选择城市"; return; }
+    if (!_sliderVerified) { errorEl.style.display = "block"; errorEl.textContent = "请完成人机验证"; return; }
+
+    // 检查是否与内置用户重名
+    var users = JITConfig.getUsers();
+    if (users[username]) { errorEl.style.display = "block"; errorEl.textContent = "该用户名已被使用，请更换"; return; }
+
+    errorEl.style.display = "none";
+    var btn = document.getElementById("btnRegister");
+    btn.disabled = true;
+    btn.textContent = "提交中...";
+
+    JITApi.submitRegistrationRequest({
+      username: username,
+      password: password,
+      fullName: fullName,
+      birthdate: birthdate,
+      country: country,
+      province: province,
+      city: city,
+      referrer: referrerVal
+    }).then(function() {
+      _resetSlider();
+      _showToast("注册申请已提交，请等待管理员审核通过", "success");
+      document.getElementById("regFullName").value = "";
+      document.getElementById("regBirthdate").value = "";
+      document.getElementById("regUsername").value = "";
+      document.getElementById("regPassword").value = "";
+      document.getElementById("regPassword2").value = "";
+      if (!referrer) document.getElementById("regReferrer").value = "";
+      _switchTab("login");
+    }).catch(function(err) {
+      errorEl.style.display = "block";
+      errorEl.textContent = "注册失败: " + (err.message || "未知错误");
+    }).finally(function() {
+      btn.disabled = false;
+      btn.textContent = "提交注册申请";
+    });
+  });
+})();
+</script>
+</body>
+</html>
