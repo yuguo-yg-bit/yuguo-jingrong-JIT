@@ -57,15 +57,15 @@ var JITAdmin = (function() {
   };
 
   var _apiGet = function(url) {
-    // 添加 cache-busting 防止浏览器/GitHub 返回缓存数据
+    // 用时间戳参数做 cache-busting。
+    // 注意：不能加 Cache-Control / Pragma 请求头，它们不在 GitHub 的 CORS 白名单里，
+    // 会导致浏览器预检失败从而拦掉所有请求。
     var sep = url.indexOf("?") > -1 ? "&" : "?";
     var cacheBustUrl = url + sep + "_t=" + Date.now();
     return fetch(cacheBustUrl, {
       headers: {
         Authorization: "token " + TOKEN,
-        Accept: "application/vnd.github.v3+json",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache"
+        Accept: "application/vnd.github.v3+json"
       }
     }).then(function(r) {
       if (!r.ok) throw new Error("请求失败: " + r.status);
@@ -227,6 +227,12 @@ var JITAdmin = (function() {
       });
       _issuesLoaded = true;
       renderTable();
+    }).catch(function(e) {
+      var tbody = document.getElementById("adminTableBody");
+      if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="8" class="loading-cell" style="color:#ef5350;">加载失败：'
+          + _escapeHtml(e.message || "未知错误") + '，请点「刷新」重试</td></tr>';
+      }
     });
   };
 
