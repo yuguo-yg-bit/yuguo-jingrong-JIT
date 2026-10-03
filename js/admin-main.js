@@ -15,7 +15,6 @@ var JITAdmin = (function() {
   var LOCKOUT_MINUTES = 15;
   var currentIssue = null;
   var allIssues = [];
-  var chatPollTimer = null;
   var currentChatUser = null;
   var _isLoggedIn = false;
 
@@ -176,7 +175,10 @@ var JITAdmin = (function() {
     return "pending";
   };
 
+  // 标签只在本次会话创建一次（原本每次加载都发 7 个查询请求）
+  var _labelsReady = null;
   var _ensureLabels = function() {
+    if (_labelsReady) return _labelsReady;
     var labels = [
       { name: "pending", color: "ff9800" },
       { name: "approved", color: "4caf50" },
@@ -201,16 +203,29 @@ var JITAdmin = (function() {
         }).catch(function() {})
       );
     });
-    return Promise.all(promises);
+    _labelsReady = Promise.all(promises).catch(function(e) {
+      _labelsReady = null; // 失败时允许下次重试
+      throw e;
+    });
+    return _labelsReady;
   };
 
-  var loadIssues = function() {
+  // 凭证列表内存缓存：首次加载后不再自动重新请求，点「刷新」传 force=true 才重新拉取
+  var _issuesLoaded = false;
+  var loadIssues = function(force) {
+    if (_issuesLoaded && !force) {
+      renderTable();
+      return Promise.resolve();
+    }
     return _ensureLabels().then(function() {
       return _apiGet(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues?state=all&per_page=100&sort=created&direction=desc");
     }).then(function(issues) {
       allIssues = issues.filter(function(issue) {
+        var labels = (issue.labels || []).map(function(l) { return l.name; });
+        if (labels.indexOf("deleted") > -1) return false; // 已删除的凭证不再显示
         return issue.title && (issue.title.indexOf("凭证") !== -1 || hasVoucherData(issue));
       });
+      _issuesLoaded = true;
       renderTable();
     });
   };
@@ -218,6 +233,143 @@ var JITAdmin = (function() {
   var hasVoucherData = function(issue) {
     if (!issue.body) return false;
     return issue.body.indexOf("店铺名称") > -1 || issue.body.indexOf("店铺：") > -1 || issue.body.indexOf("中奖打折") > -1 || issue.body.indexOf("【聊天专用】") > -1;
+  };
+
+  // ===== 列表懒加载：按「每页条数」分批渲染，点「加载更多」追加下一批 =====
+  var _getPageSize = function() {
+    var n = parseInt(localStorage.getItem("jit_per_page") || "10", 10);
+    if (isNaN(n) || n < 1) n = 10;
+    return n;
+  };
+
+  var _statusTextMap = {
+    pending: "待审核",
+    approved: "已通过",
+    rejected: "已拒绝",
+    paid: "已付款·待确认",
+    completed: "已完成交易"
+  };
+
+  var _filteredIssues = [];   // 当前筛选结果
+  var _renderedRows = 0;      // 已渲染行数（懒加载游标）
+
+  // 构建单行 HTML
+  var _buildRow = function(issue) {
+    var data = _parseIssueBody(issue.body);
+    var status = _getIssueStatus(issue);
+    var statusText = _statusTextMap[status] || "待审核";
+    var isElectric = !!(data.electric || data.voucherType === "电器凭证" || data.electricCategory);
+    var isUrgent = (issue.labels || []).some(function(l) { return l.name === "urgent"; });
+
+    // ===== 金额列：电器显示申请基数 =====
+    var amtDisplay = data.amount || "—";
+    if (isElectric && data.electricApplyAmount) {
+      amtDisplay = data.electricApplyAmount + " 元🎁";
+    }
+    // ===== 折扣/补贴列：电器显示补贴率 =====
+    var discountDisplay = data.discount || "未抽奖";
+    var discountStyle = "";
+    if (isElectric) {
+      if (data.electricSubsidyRate) {
+        discountDisplay = "补贴 " + data.electricSubsidyRate;
+        if (data.electricSubsidyAmount) discountDisplay += " ≈" + data.electricSubsidyAmount;
+      } else {
+        discountDisplay = "⏳ 待设补贴";
+      }
+      discountStyle = ' style="background:rgba(255,112,67,0.15);color:#ff7043;border-color:rgba(255,112,67,0.4);"';
+    }
+
+    var html = '<tr>';
+    html += '<td>' + (isUrgent ? '<span style="display:inline-block;font-size:10px;padding:1px 5px;margin-right:4px;border-radius:3px;background:#f44336;color:#fff;font-weight:700;animation:pulse 1.5s infinite;">⚡加急</span>' : '') + _escapeHtml((data.userId || data.title || issue.user.login || "—").substring(0, 15)) + '</td>';
+    // 店铺列：电器附小标签
+    var shopCell = (data.shopName || "—").substring(0, 12);
+    if (isElectric) {
+      shopCell = '<span style="display:inline-block;font-size:10px;padding:1px 4px;margin-right:4px;border-radius:3px;background:rgba(255,112,67,0.15);color:#ff7043;">🎁电器</span>' + _escapeHtml(shopCell);
+    } else {
+      shopCell = _escapeHtml(shopCell);
+    }
+    html += '<td>' + shopCell + '</td>';
+    html += '<td>' + _escapeHtml(data.date || data.createTime || "—") + '</td>';
+    html += '<td>' + _escapeHtml(amtDisplay) + '</td>';
+    html += '<td><span class="discount-badge"' + discountStyle + '>' + _escapeHtml(discountDisplay) + '</span></td>';
+    html += '<td>' + _escapeHtml((data.paymentMethod || "—").substring(0, 15)) + '</td>';
+    html += '<td><span class="status-badge ' + status + '">' + statusText + '</span></td>';
+    // ===== 操作列：审核 + 加急切换 + 加急黑名单 =====
+    var urgentBtn = '';
+    if (isUrgent) {
+      urgentBtn = '<button class="action-btn urgent-toggle-btn" data-issue="' + issue.number + '" data-urgent="1" title="取消加急标记" style="background:#fff3e0;color:#e65100;border-color:#ffab91;">⚡ 取消加急</button>';
+    } else {
+      urgentBtn = '<button class="action-btn urgent-toggle-btn" data-issue="' + issue.number + '" data-urgent="0" title="标记为加急凭证" style="background:#ffebee;color:#b71c1c;border-color:#ef9a9a;">⚡ 设为加急</button>';
+    }
+    var blBtn = '<button class="action-btn urgent-bl-btn" data-issue="' + issue.number + '" data-user="' + _escapeHtml(data.userId || data.title || '') + '" title="将此用户加入加急黑名单" style="background:#f3e5f5;color:#6a1b9a;border-color:#ce93d8;">🚫 加黑</button>';
+    html += '<td style="white-space:nowrap;">'
+      + '<button class="action-btn" data-issue="' + issue.number + '">审核</button>'
+      + urgentBtn
+      + blBtn
+      + '</td>';
+    html += '</tr>';
+    return html;
+  };
+
+  // 绑定单行按钮事件（只对新增行调用，避免重复绑定）
+  var _bindRowActions = function(row) {
+    row.querySelectorAll(".action-btn[data-issue]").forEach(function(btn) {
+      if (btn.classList.contains("urgent-toggle-btn") || btn.classList.contains("urgent-bl-btn")) return;
+      btn.addEventListener("click", function() {
+        openReview(parseInt(this.getAttribute("data-issue")));
+      });
+    });
+    row.querySelectorAll(".urgent-toggle-btn").forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        var num = parseInt(this.getAttribute("data-issue"));
+        var isUrg = this.getAttribute("data-urgent") === "1";
+        _toggleUrgentOnRow(num, !isUrg);
+      });
+    });
+    row.querySelectorAll(".urgent-bl-btn").forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        var user = this.getAttribute("data-user");
+        if (!user) { _showToast("未能读取用户", "error"); return; }
+        _currentUGBanUser = user;
+        document.getElementById("urgentBlBanUser").value = user;
+        document.getElementById("urgentBlBanReason").value = "管理员从审核列表快捷加入（加急理由不合理）";
+        document.getElementById("urgentBlPermBan").checked = true;
+        _onUrgBanPermToggle.call(document.getElementById("urgentBlPermBan"));
+        document.getElementById("urgentBlacklistOverlay").style.display = "flex";
+      });
+    });
+  };
+
+  // 分批追加渲染
+  var _appendRows = function(count) {
+    var tbody = document.getElementById("adminTableBody");
+    var oldMore = tbody.querySelector(".load-more-row");
+    if (oldMore) oldMore.remove();
+
+    var slice = _filteredIssues.slice(_renderedRows, _renderedRows + count);
+    if (slice.length === 0) return;
+    var html = "";
+    slice.forEach(function(issue) { html += _buildRow(issue); });
+
+    var start = tbody.children.length;
+    tbody.insertAdjacentHTML("beforeend", html);
+    for (var i = start; i < tbody.children.length; i++) {
+      _bindRowActions(tbody.children[i]);
+    }
+    _renderedRows += slice.length;
+
+    if (_renderedRows < _filteredIssues.length) {
+      var remaining = _filteredIssues.length - _renderedRows;
+      var tr = document.createElement("tr");
+      tr.className = "load-more-row";
+      tr.innerHTML = '<td colspan="8" style="text-align:center;padding:14px;">'
+        + '<button class="action-btn" id="btnLoadMoreRows">加载更多（剩余 ' + remaining + ' 条）</button>'
+        + '</td>';
+      tbody.appendChild(tr);
+      document.getElementById("btnLoadMoreRows").addEventListener("click", function() {
+        _appendRows(_getPageSize());
+      });
+    }
   };
 
   var renderTable = function() {
@@ -250,104 +402,16 @@ var JITAdmin = (function() {
     var statCompleted = document.getElementById("statCompleted");
     if (statCompleted) statCompleted.textContent = "已完成: " + completedCount;
 
+    _filteredIssues = filtered;
+    _renderedRows = 0;
+
     if (filtered.length === 0) {
       tbody.innerHTML = '<tr><td colspan="8" class="loading-cell">暂无数据</td></tr>';
       return;
     }
 
-    var statusTextMap = {
-      pending: "待审核",
-      approved: "已通过",
-      rejected: "已拒绝",
-      paid: "已付款·待确认",
-      completed: "已完成交易"
-    };
-
-    var html = "";
-    filtered.forEach(function(issue) {
-      var data = _parseIssueBody(issue.body);
-      var status = _getIssueStatus(issue);
-      var statusText = statusTextMap[status] || "待审核";
-      var isElectric = !!(data.electric || data.voucherType === "电器凭证" || data.electricCategory);
-      var isUrgent = (issue.labels || []).some(function(l) { return l.name === "urgent"; });
-
-      // ===== 金额列：电器显示申请基数 =====
-      var amtDisplay = data.amount || "—";
-      if (isElectric && data.electricApplyAmount) {
-        amtDisplay = data.electricApplyAmount + " 元🎁";
-      }
-      // ===== 折扣/补贴列：电器显示补贴率 =====
-      var discountDisplay = data.discount || "未抽奖";
-      var discountStyle = "";
-      if (isElectric) {
-        if (data.electricSubsidyRate) {
-          discountDisplay = "补贴 " + data.electricSubsidyRate;
-          if (data.electricSubsidyAmount) discountDisplay += " ≈" + data.electricSubsidyAmount;
-        } else {
-          discountDisplay = "⏳ 待设补贴";
-        }
-        discountStyle = ' style="background:rgba(255,112,67,0.15);color:#ff7043;border-color:rgba(255,112,67,0.4);"';
-      }
-
-      html += '<tr>';
-      html += '<td>' + (isUrgent ? '<span style="display:inline-block;font-size:10px;padding:1px 5px;margin-right:4px;border-radius:3px;background:#f44336;color:#fff;font-weight:700;animation:pulse 1.5s infinite;">⚡加急</span>' : '') + _escapeHtml((data.userId || data.title || issue.user.login || "—").substring(0, 15)) + '</td>';
-      // 店铺列：电器附小标签
-      var shopCell = (data.shopName || "—").substring(0, 12);
-      if (isElectric) {
-        shopCell = '<span style="display:inline-block;font-size:10px;padding:1px 4px;margin-right:4px;border-radius:3px;background:rgba(255,112,67,0.15);color:#ff7043;">🎁电器</span>' + _escapeHtml(shopCell);
-      } else {
-        shopCell = _escapeHtml(shopCell);
-      }
-      html += '<td>' + shopCell + '</td>';
-      html += '<td>' + _escapeHtml(data.date || data.createTime || "—") + '</td>';
-      html += '<td>' + _escapeHtml(amtDisplay) + '</td>';
-      html += '<td><span class="discount-badge"' + discountStyle + '>' + _escapeHtml(discountDisplay) + '</span></td>';
-      html += '<td>' + _escapeHtml((data.paymentMethod || "—").substring(0, 15)) + '</td>';
-      html += '<td><span class="status-badge ' + status + '">' + statusText + '</span></td>';
-      // ===== 操作列：审核 + 加急切换 + 加急黑名单 =====
-      var urgentBtn = '';
-      if (isUrgent) {
-        urgentBtn = '<button class="action-btn urgent-toggle-btn" data-issue="' + issue.number + '" data-urgent="1" title="取消加急标记" style="background:#fff3e0;color:#e65100;border-color:#ffab91;">⚡ 取消加急</button>';
-      } else {
-        urgentBtn = '<button class="action-btn urgent-toggle-btn" data-issue="' + issue.number + '" data-urgent="0" title="标记为加急凭证" style="background:#ffebee;color:#b71c1c;border-color:#ef9a9a;">⚡ 设为加急</button>';
-      }
-      var blBtn = '<button class="action-btn urgent-bl-btn" data-issue="' + issue.number + '" data-user="' + _escapeHtml(data.userId || data.title || '') + '" title="将此用户加入加急黑名单" style="background:#f3e5f5;color:#6a1b9a;border-color:#ce93d8;">🚫 加黑</button>';
-      html += '<td style="white-space:nowrap;">'
-        + '<button class="action-btn" data-issue="' + issue.number + '">审核</button>'
-        + urgentBtn
-        + blBtn
-        + '</td>';
-      html += '</tr>';
-    });
-
-    tbody.innerHTML = html;
-    tbody.querySelectorAll(".action-btn[data-issue]").forEach(function(btn) {
-      if (btn.classList.contains("urgent-toggle-btn") || btn.classList.contains("urgent-bl-btn")) return;
-      btn.addEventListener("click", function() {
-        openReview(parseInt(this.getAttribute("data-issue")));
-      });
-    });
-    // 加急切换
-    tbody.querySelectorAll(".urgent-toggle-btn").forEach(function(btn) {
-      btn.addEventListener("click", function() {
-        var num = parseInt(this.getAttribute("data-issue"));
-        var isUrg = this.getAttribute("data-urgent") === "1";
-        _toggleUrgentOnRow(num, !isUrg);
-      });
-    });
-    // 列表快捷加黑
-    tbody.querySelectorAll(".urgent-bl-btn").forEach(function(btn) {
-      btn.addEventListener("click", function() {
-        var user = this.getAttribute("data-user");
-        if (!user) { _showToast("未能读取用户", "error"); return; }
-        _currentUGBanUser = user;
-        document.getElementById("urgentBlBanUser").value = user;
-        document.getElementById("urgentBlBanReason").value = "管理员从审核列表快捷加入（加急理由不合理）";
-        document.getElementById("urgentBlPermBan").checked = true;
-        _onUrgBanPermToggle.call(document.getElementById("urgentBlPermBan"));
-        document.getElementById("urgentBlacklistOverlay").style.display = "flex";
-      });
-    });
+    tbody.innerHTML = "";
+    _appendRows(_getPageSize());  // 首批只渲染「每页条数」条
   };
 
   // 列表行快捷切换加急状态
@@ -357,12 +421,12 @@ var JITAdmin = (function() {
     if (setUrgent) {
       JITApi.markUrgent(issueNumber, "【管理员手动加急】从列表操作列直接标记", "admin").then(function() {
         _showToast("✅ 已设为加急");
-        loadIssues();
+        loadIssues(true);
       }).catch(function(e) { _showToast("操作失败: " + e.message, "error"); });
     } else {
       JITApi.removeUrgent(issueNumber).then(function() {
         _showToast("已取消加急标记");
-        loadIssues();
+        loadIssues(true);
       }).catch(function(e) { _showToast("操作失败: " + e.message, "error"); });
     }
   };
@@ -924,7 +988,7 @@ var JITAdmin = (function() {
       JITApi.submitVoucherWithImages(voucherData, shopPhotoFile, orderPhotoFiles, hasShopPhoto, hasOrderPhotos).then(function(result) {
         _showToast("已为用户 [" + username + "] 添加凭证", "success");
         document.getElementById("adminAddVoucherOverlay").classList.remove("active");
-        loadIssues();
+        loadIssues(true);
       }).catch(function(e) {
         _showToast("添加失败: " + e.message);
       }).then(function() {
@@ -938,7 +1002,7 @@ var JITAdmin = (function() {
       }).then(function() {
         _showToast("已为用户 [" + username + "] 添加凭证", "success");
         document.getElementById("adminAddVoucherOverlay").classList.remove("active");
-        loadIssues();
+        loadIssues(true);
       }).catch(function(e) {
         _showToast("添加失败: " + e.message);
       }).then(function() {
@@ -1149,7 +1213,7 @@ var JITAdmin = (function() {
       }).then(function() {
         _showToast("凭证已修改", "success");
         document.getElementById("adminEditVoucherOverlay").classList.remove("active");
-        loadIssues();
+        loadIssues(true);
       }).catch(function(e) {
         _showToast("修改失败: " + e.message);
       }).then(function() {
@@ -1160,7 +1224,7 @@ var JITAdmin = (function() {
       _apiPatch(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues/" + currentIssue.number, { body: body }).then(function() {
         _showToast("凭证已修改", "success");
         document.getElementById("adminEditVoucherOverlay").classList.remove("active");
-        loadIssues();
+        loadIssues(true);
       }).catch(function(e) {
         _showToast("修改失败: " + e.message);
       }).then(function() {
@@ -1283,7 +1347,7 @@ var JITAdmin = (function() {
 
   var selectChatUser = function(userId) {
     currentChatUser = { userId: userId };
-    document.getElementById("chatHeader").textContent = "与 " + userId + " 聊天中";
+    document.getElementById("chatHeaderText").textContent = "与 " + userId + " 聊天中";
     document.getElementById("chatInput").disabled = false;
     document.getElementById("btnChatSend").disabled = false;
     var imgBtn = document.getElementById("btnChatImage");
@@ -1373,18 +1437,7 @@ var JITAdmin = (function() {
     });
   };
 
-  var startChatPoll = function() {
-    stopChatPoll();
-    chatPollTimer = setInterval(function() {
-      if (document.getElementById("tabChat").classList.contains("active") && currentChatUser) {
-        loadIssues().then(function() { loadChatMessages(); });
-      }
-    }, 5000);
-  };
-
-  var stopChatPoll = function() {
-    if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null; }
-  };
+  // 聊天内容只在打开聊天页、选择客户或点「刷新」时加载，不再自动轮询
 
   var loadLotteryConfig = function() {
     var prizes = JITLottery.getPrizes && JITLottery.getPrizes() || [
@@ -1873,7 +1926,7 @@ var JITAdmin = (function() {
   var clearCache = function() {
     localStorage.clear();
     _showToast("所有缓存已清除！");
-    loadIssues();
+    loadIssues(true);
   };
 
   var exportData = function() {
@@ -1916,6 +1969,34 @@ var JITAdmin = (function() {
     return true;
   };
 
+  // ===== Tab 懒加载：每个页面首次点击才加载，之后复用内存数据（点刷新才重新拉取）=====
+  var _tabLoaded = {};
+  var _tabLoaders = {
+    review: function(force) { loadIssues(force); },
+    chat: function() {
+      loadIssues().then(function() {
+        loadChatUsers();
+        if (currentChatUser) loadChatMessages();
+      });
+    },
+    lottery: function() { loadLotteryConfig(); },
+    users: function() { loadUsers(); },
+    registrations: function() { loadRegistrations(); },
+    points: function() { loadPointsList(); },
+    blacklist: function() { loadBlacklist(); },
+    urgentBl: function() { loadUrgentBlacklist(); },
+    notifications: function() { loadNotifications(); },
+    settings: function() { loadSettings(); },
+    developer: function() { loadSystemInfo(); }
+  };
+  var _loadTab = function(tab, force) {
+    if (!force && _tabLoaded[tab]) return;
+    var loader = _tabLoaders[tab];
+    if (!loader) return;
+    _tabLoaded[tab] = true;
+    loader(force);
+  };
+
   var init = function() {
     if (!checkLoginStatus()) return;
 
@@ -1933,7 +2014,7 @@ var JITAdmin = (function() {
           document.getElementById("loginOverlay").style.opacity = "0";
           document.getElementById("loginOverlay").style.visibility = "hidden";
           document.getElementById("adminUser").textContent = "管理员";
-          loadIssues();
+          loadIssues();  // 首次进入：加载默认显示的「凭证审核」页
         } else {
           var attempts = parseInt(localStorage.getItem(_attemptsKey) || "0", 10) + 1;
           localStorage.setItem(_attemptsKey, String(attempts));
@@ -1965,7 +2046,7 @@ var JITAdmin = (function() {
     });
 
     document.getElementById("filterStatus").addEventListener("change", renderTable);
-    document.getElementById("btnRefreshReview").addEventListener("click", function() { loadIssues(); });
+    document.getElementById("btnRefreshReview").addEventListener("click", function() { loadIssues(true); });
 
     document.getElementById("btnReviewClose").addEventListener("click", function() {
       document.getElementById("reviewOverlay").classList.remove("active");
@@ -1990,7 +2071,7 @@ var JITAdmin = (function() {
         _showToast("已拒绝该凭证");
         document.getElementById("reviewOverlay").classList.remove("active");
         document.getElementById("rejectReasonWrap").style.display = "none";
-        loadIssues();
+        loadIssues(true);
       }).catch(function(e) { _showToast("操作失败: " + e.message); });
     });
 
@@ -2031,7 +2112,7 @@ var JITAdmin = (function() {
         document.getElementById("rejectReasonWrap").style.display = "none";
         var subWrap = document.getElementById("subsidyRateWrap");
         if (subWrap) subWrap.style.display = "none";
-        loadIssues();
+        loadIssues(true);
       }).catch(function(e) { _showToast("操作失败: " + e.message); });
     });
 
@@ -2065,7 +2146,7 @@ var JITAdmin = (function() {
         _showToast("凭证已删除");
         document.getElementById("reviewOverlay").classList.remove("active");
         document.getElementById("rejectReasonWrap").style.display = "none";
-        loadIssues();
+        loadIssues(true);
       }).catch(function(e) { _showToast("删除失败: " + e.message); });
     });
 
@@ -2118,7 +2199,7 @@ var JITAdmin = (function() {
         _updateIssueStatus(currentIssue, "completed").then(function() {
           _showToast("已标记为已完成交易");
           document.getElementById("reviewOverlay").classList.remove("active");
-          loadIssues();
+          loadIssues(true);
         }).catch(function(e) { _showToast("操作失败: " + e.message); });
       });
     }
@@ -2136,23 +2217,20 @@ var JITAdmin = (function() {
         this.classList.add("active");
         document.querySelectorAll(".admin-tab").forEach(function(t) { t.classList.remove("active"); });
         document.getElementById("tab" + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add("active");
-        if (tab === "chat") { loadChatUsers(); startChatPoll(); }
-        else { stopChatPoll(); }
-        if (tab === "lottery") loadLotteryConfig();
-        if (tab === "users") loadUsers();
-        if (tab === "registrations") loadRegistrations();
-        if (tab === "points") loadPointsList();
-        if (tab === "blacklist") loadBlacklist();
-        if (tab === "urgentBl") loadUrgentBlacklist();
-        if (tab === "notifications") loadNotifications();
-        if (tab === "settings") loadSettings();
-        if (tab === "developer") loadSystemInfo();
+        _loadTab(tab);  // 懒加载：只加载当前点击的页面
       });
     });
 
     document.getElementById("btnChatSend").addEventListener("click", sendChatMessage);
     document.getElementById("chatInput").addEventListener("keydown", function(e) {
       if (e.key === "Enter") sendChatMessage();
+    });
+    // 手动刷新聊天（已取消自动轮询）
+    var btnChatRefresh = document.getElementById("btnChatRefresh");
+    if (btnChatRefresh) btnChatRefresh.addEventListener("click", function() {
+      loadChatUsers();
+      if (currentChatUser) loadChatMessages();
+      else _showToast("请先选择客户");
     });
     var chatImgInput = document.getElementById("chatImageInput");
     if (chatImgInput) {

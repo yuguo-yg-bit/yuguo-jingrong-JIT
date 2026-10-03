@@ -80,7 +80,10 @@
           <div class="chat-users-list" id="chatUsersList"></div>
         </div>
         <div class="chat-main">
-          <div class="chat-header" id="chatHeader">选择客户开始聊天</div>
+          <div class="chat-header" id="chatHeader" style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+            <span id="chatHeaderText">选择客户开始聊天</span>
+            <button class="action-btn" id="btnChatRefresh" title="重新加载聊天记录" style="font-size:12px;padding:3px 12px;">🔄 刷新</button>
+          </div>
           <div class="chat-messages" id="chatMessages"></div>
           <div class="chat-input-area">
             <input type="text" class="chat-input" id="chatInput" placeholder="输入消息..." disabled>
