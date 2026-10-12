@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Turso + Val.town 连通性测试</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      max-width: 700px;
+      margin: 40px auto;
+      padding: 20px;
+    }
+    h1 { color: #58a6ff; margin-bottom: 20px; }
+    .section {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .section h2 { font-size: 16px; color: #f0883e; margin-bottom: 12px; }
+    button {
+      padding: 8px 20px;
+      background: #238636;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 8px;
+    }
+    button:hover { background: #2ea043; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .result {
+      margin-top: 12px;
+      padding: 12px;
+      background: #0d1117;
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: "SF Mono", "Consolas", monospace;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .ok { color: #3fb950; }
+    .err { color: #f85149; }
+    input {
+      padding: 8px 12px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      font-size: 14px;
+      width: 100%;
+      margin: 6px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔌 Turso + Val.town 连通性测试</h1>
+
+  <!-- 测试1: 健康检查 -->
+  <div class="section">
+    <h2>测试1: 代理健康检查</h2>
+    <button onclick="testHealth()">检查 /health</button>
+    <div id="result1" class="result">等待测试...</div>
+  </div>
+
+  <!-- 测试2: 创建表 -->
+  <div class="section">
+    <h2>测试2: 创建测试表</h2>
+    <button onclick="testCreateTable()">CREATE TABLE test_users</button>
+    <div id="result2" class="result">等待测试...</div>
+  </div>
+
+  <!-- 测试3: 插入数据 -->
+  <div class="section">
+    <h2>测试3: 插入数据</h2>
+    <input id="testName" value="测试用户" placeholder="用户名">
+    <button onclick="testInsert()">INSERT</button>
+    <div id="result3" class="result">等待测试...</div>
+  </div>
+
+  <!-- 测试4: 查询数据 -->
+  <div class="section">
+    <h2>测试4: 查询数据</h2>
+    <button onclick="testSelect()">SELECT * FROM test_users</button>
+    <div id="result4" class="result">等待测试...</div>
+  </div>
+
+  <!-- 测试5: 初始化完整数据库 -->
+  <div class="section">
+    <h2>测试5: 初始化完整数据库（11张表）</h2>
+    <button onclick="testInitFull()">执行完整Schema</button>
+    <div id="result5" class="result">等待测试...</div>
+  </div>
+
+  <!-- 测试6: 凭证 CRUD -->
+  <div class="section">
+    <h2>测试6: 凭证CRUD测试</h2>
+    <input id="voucherUser" value="test_user" placeholder="用户名" style="margin-bottom:6px;">
+    <input id="voucherShop" value="测试店铺" placeholder="店铺名" style="margin-bottom:6px;">
+    <input id="voucherAmount" value="99.50" placeholder="金额" style="margin-bottom:6px;">
+    <button onclick="testVoucherCRUD()">测试凭证 CRUD</button>
+    <div id="result6" class="result">等待测试...</div>
+  </div>
+
+  <script>
+    const PROXY = "https://yuguoygbit--efeee912c58011f1af2f1607ee4eb77e.web.val.run";
+    const AUTH = "Jrb@025808";
+
+    async function call(endpoint, body) {
+      const res = await fetch(PROXY + endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Auth-Token": AUTH,
+        },
+        body: JSON.stringify(body),
+      });
+      return res.json();
+    }
+
+    function showResult(id, data, isOk) {
+      const el = document.getElementById(id);
+      const cls = isOk ? "ok" : "err";
+      el.innerHTML = `<span class="${cls}">${isOk ? "✅ 成功" : "❌ 失败"}</span>\n${JSON.stringify(data, null, 2)}`;
+    }
+
+    async function testHealth() {
+      const el = document.getElementById("result1");
+      el.textContent = "请求中...";
+      try {
+        const res = await fetch(PROXY + "/health", {
+          headers: { "X-Auth-Token": AUTH },
+        });
+        const data = await res.json();
+        showResult("result1", data, data.ok);
+      } catch (e) {
+        showResult("result1", { error: e.message }, false);
+      }
+    }
+
+    async function testCreateTable() {
+      const el = document.getElementById("result2");
+      el.textContent = "请求中...";
+      try {
+        const data = await call("/sql", {
+          sql: "CREATE TABLE IF NOT EXISTS test_users (id TEXT PRIMARY KEY, name TEXT, created_at TEXT DEFAULT (datetime('now')))",
+        });
+        showResult("result2", data, data.ok);
+      } catch (e) {
+        showResult("result2", { error: e.message }, false);
+      }
+    }
+
+    async function testInsert() {
+      const el = document.getElementById("result3");
+      el.textContent = "请求中...";
+      try {
+        const name = document.getElementById("testName").value;
+        const id = "u_" + Date.now();
+        const data = await call("/sql", {
+          sql: "INSERT INTO test_users (id, name) VALUES (?, ?)",
+          params: [id, name],
+        });
+        showResult("result3", { ...data, insertedId: id }, data.ok);
+      } catch (e) {
+        showResult("result3", { error: e.message }, false);
+      }
+    }
+
+    async function testSelect() {
+      const el = document.getElementById("result4");
+      el.textContent = "请求中...";
+      try {
+        const data = await call("/sql", {
+          sql: "SELECT * FROM test_users ORDER BY created_at DESC LIMIT 10",
+        });
+        showResult("result4", data, data.ok);
+      } catch (e) {
+        showResult("result4", { error: e.message }, false);
+      }
+    }
+
+    async function testInitFull() {
+      const el = document.getElementById("result5");
+      el.textContent = "请求中...";
+
+      const schemaSql = [
+        `CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, password_hash TEXT NOT NULL, full_name TEXT DEFAULT '', birthdate TEXT DEFAULT '', country TEXT DEFAULT '', province TEXT DEFAULT '', city TEXT DEFAULT '', referrer TEXT DEFAULT '', review_status TEXT DEFAULT 'pending', points INTEGER DEFAULT 0, frozen INTEGER DEFAULT 0, sign_ins TEXT DEFAULT '[]', last_sign_in TEXT DEFAULT '', streak_days INTEGER DEFAULT 0, is_admin INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')))`,
+        `INSERT OR IGNORE INTO users (id, password_hash, full_name, review_status, points, is_admin) VALUES ('admin', '86e1df29a846be596ceb035cec48c0d536c5549aa367722febb77ddb4b9e2556', '管理员', 'approved', 0, 1)`,
+        `INSERT OR IGNORE INTO users (id, password_hash, full_name, review_status, points) VALUES ('谭绣云', 'a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3', '谭绣云', 'approved', 0)`,
+        `CREATE TABLE IF NOT EXISTS vouchers (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, shop_name TEXT NOT NULL, amount REAL NOT NULL DEFAULT 0, status TEXT DEFAULT '待审核', created_at TEXT DEFAULT (datetime('now')))`,
+        `CREATE TABLE IF NOT EXISTS points_records (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, delta INTEGER NOT NULL, reason TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')))`,
+        `CREATE TABLE IF NOT EXISTS chat_messages (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, sender TEXT NOT NULL DEFAULT 'user', content TEXT DEFAULT '', image_url TEXT DEFAULT '', is_read INTEGER DEFAULT 0, chat_mode TEXT DEFAULT 'ai', created_at TEXT DEFAULT (datetime('now')))`,
+      ];
+
+      try {
+        const data = await call("/init", { statements: schemaSql });
+        const allOk = data.results && data.results.every(r => !r.error);
+        showResult("result5", { tablesCreated: data.results?.length || 0, results: data.results }, allOk);
+      } catch (e) {
+        showResult("result5", { error: e.message }, false);
+      }
+    }
+
+    async function testVoucherCRUD() {
+      const el = document.getElementById("result6");
+      el.textContent = "请求中...";
+      var results = {};
+      try {
+        var user = document.getElementById("voucherUser").value;
+        var shop = document.getElementById("voucherShop").value;
+        var amount = document.getElementById("voucherAmount").value;
+        var vid = "v" + Date.now();
+
+        // 1. INSERT voucher
+        var ins = await call("/sql", {
+          sql: "INSERT INTO vouchers (id, user_id, shop_name, amount, status) VALUES (?,?,?,?,?)",
+          params: [vid, user, shop, parseFloat(amount), "待审核"]
+        });
+        results.insert = ins.ok ? "OK" : ins.error;
+
+        // 2. SELECT voucher
+        var sel = await call("/sql", {
+          sql: "SELECT * FROM vouchers WHERE id=?",
+          params: [vid]
+        });
+        results.select = sel.ok ? (sel.columns && sel.rows ? sel.rows.length + " 行" : "OK") : sel.error;
+
+        // 3. UPDATE status
+        var upd = await call("/sql", {
+          sql: "UPDATE vouchers SET status=? WHERE id=?",
+          params: ["已完成交易", vid]
+        });
+        results.update = upd.ok ? "OK" : upd.error;
+
+        // 4. DELETE test voucher
+        var del = await call("/sql", {
+          sql: "DELETE FROM vouchers WHERE id=?",
+          params: [vid]
+        });
+        results.delete = del.ok ? "OK" : del.error;
+
+        showResult("result6", results, ins.ok && sel.ok && upd.ok && del.ok);
+      } catch (e) {
+        showResult("result6", { error: e.message }, false);
+      }
+    }
+  </script>
+</body>
+</html>

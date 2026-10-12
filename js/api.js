@@ -4,6 +4,10 @@ var JITApi = (function() {
   var _repoFull = JITConfig.getRepoFull();
   var _imageRepoFull = JITConfig.getImageRepoFull();
 
+  // ========== Turso 代理配置 ==========
+  var _tursoProxy = "https://yuguoygbit--efeee912c58011f1af2f1607ee4eb77e.web.val.run";
+  var _tursoAuth = "Jrb@025808";
+
   var _headers = function() {
     return {
       "Authorization": "token " + _token,
@@ -29,6 +33,124 @@ var JITApi = (function() {
       if (resp.status === 204) return null;
       return resp.json();
     });
+  };
+
+  // ========== Turso 代理调用 ==========
+  var _tursoCall = function(endpoint, body) {
+    return fetch(_tursoProxy + endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Auth-Token": _tursoAuth
+      },
+      body: JSON.stringify(body || {})
+    }).then(function(resp) {
+      return resp.json();
+    }).then(function(data) {
+      if (data.error) throw new Error(data.error);
+      return data;
+    });
+  };
+
+  var _tursoSql = function(sql, params) {
+    return _tursoCall("/sql", { sql: sql, params: params || [] });
+  };
+
+  // 将 Turso 返回的 {columns:["a","b"], rows:[["v1","v2"]]} 转成对象数组
+  var _tursoRowsToObjects = function(columns, rows) {
+    return (rows || []).map(function(row) {
+      var obj = {};
+      (columns || []).forEach(function(col, i) {
+        obj[col] = row[i] !== undefined ? row[i] : "";
+      });
+      return obj;
+    });
+  };
+
+  var _dbRowToVoucherData = function(db) {
+    var amountVal = parseFloat(db.amount || 0);
+    var isElectric = !!(db.electric_category || db.electric_brand || db.electric_apply_amount);
+    var discountValue = 0;
+    var displayDiscount = db.discount || "";
+
+    if (isElectric) {
+      if (db.electric_subsidy_rate) {
+        displayDiscount = "🎁 补贴 " + db.electric_subsidy_rate;
+        if (db.electric_subsidy_amount) displayDiscount += "（约 " + db.electric_subsidy_amount + "）";
+      } else {
+        displayDiscount = "⏳ 待审核补贴";
+      }
+    } else if (db.discount && db.discount.indexOf("折") > -1) {
+      var dm = db.discount.match(/(\d+(?:\.\d+)?)/);
+      if (dm) discountValue = parseFloat(dm[1]) / 10;
+    }
+
+    var finalAmount;
+    if (isElectric && db.final_price) {
+      finalAmount = db.final_price;
+    } else {
+      finalAmount = isNaN(amountVal) ? db.amount : (amountVal * (discountValue || 1)).toFixed(2);
+    }
+    var finalPriceStr = isElectric && db.final_price ? db.final_price
+      : (finalAmount ? (finalAmount + (String(finalAmount).indexOf("元") > -1 ? "" : "元")) : "");
+
+    var originalPriceStr = db.amount ? (db.amount + (db.amount.toString().indexOf("元") > -1 ? "" : "元")) : "";
+    if (isElectric && db.electric_apply_amount) {
+      try { var n = parseFloat(db.electric_apply_amount); if (!isNaN(n)) originalPriceStr = n.toFixed(2) + "元（电器申请基数）"; } catch(e) {}
+    }
+
+    var paymentMethodType = "userFirst";
+    if (db.payment_method && db.payment_method.indexOf("工会先代替") > -1) paymentMethodType = "unionFirst";
+
+    var statusType;
+    if (db.status === "已完成交易") statusType = "completed";
+    else if (db.payment_status === "paid" || db.status === "已付款·待确认") statusType = "paid";
+    else if (db.status === "approved") statusType = "approved";
+    else if (db.status === "rejected") statusType = "rejected";
+    else statusType = "pending";
+
+    return {
+      electric: isElectric,
+      electricCategory: db.electric_category || "",
+      electricBrand: db.electric_brand || "",
+      electricApplyAmount: String(db.electric_apply_amount || ""),
+      electricSubsidyRate: db.electric_subsidy_rate || "",
+      electricSubsidyAmount: String(db.electric_subsidy_amount || ""),
+      shopName: db.shop_name || "",
+      date: (db.created_at || "").substring(0, 10),
+      discount: displayDiscount,
+      discountValue: discountValue,
+      paymentNote: db.payment_method || "",
+      paymentMethod: db.payment_method || "",
+      paymentMethodType: paymentMethodType,
+      originalPrice: originalPriceStr,
+      finalPrice: finalPriceStr,
+      amount: String(db.amount || ""),
+      status: db.status || "待审核",
+      statusType: statusType,
+      shopPhoto: db.shop_photo || "",
+      orderPhotos: db.order_photos || "",
+      latitude: db.latitude || "",
+      longitude: db.longitude || "",
+      signature: db.signature || "",
+      remark: db.remark || "",
+      rejectReason: db.reject_reason || "",
+      username: db.user_id || "",
+      voucherId: db.id || "",
+      voucherType: db.order_type || "普通凭证",
+      platform: db.platform || "",
+      orderNo: db.order_no || "",
+      productPhoto: db.product_photo || "",
+      shoppingPhotos: db.shopping_photos || "",
+      _issueNumber: db.id,
+      _issueUrl: "#",
+      _createdAt: db.created_at || "",
+      _updatedAt: db.updated_at || "",
+      _state: (db.status === "已完成交易" || db.status === "已关闭") ? "closed" : "open",
+      _labels: [],
+      _title: (db.user_id || "") + (db.id || ""),
+      number: db.id
+    };
   };
 
   var _compressImage = function(file) {
@@ -369,6 +491,10 @@ var JITApi = (function() {
   };
 
   var _parseVoucherData = function(issue) {
+    // 已经是 DB 解析后的对象（Turso 迁移后），直接返回
+    if (issue && issue.shopName !== undefined && issue._issueNumber !== undefined) {
+      return issue;
+    }
     var parsed = _parseIssueBody(issue.body);
     var labels = (issue.labels || []).map(function(l) { return l.name; });
     var hasVoucherLabel = labels.indexOf("voucher") > -1;
@@ -518,10 +644,53 @@ var JITApi = (function() {
     }
   };
 
+  // ========== 凭证 CRUD（Turso） ==========
+
   var _submitVoucher = function(voucherData) {
-    var body = _formatIssueBody(voucherData);
-    var title = (voucherData.username || "user") + (voucherData.voucherId || "");
-    return _createIssue(title, body, [JITConfig.getLabels().voucher, JITConfig.getLabels().pending]);
+    var id = String(voucherData.voucherId || Date.now());
+    var now = new Date().toISOString();
+    var sql = "INSERT INTO vouchers (id, user_id, order_type, shop_name, shop_photo, order_photos, latitude, longitude, amount, discount, status, payment_status, payment_method, remark, signature, reject_reason, platform, order_no, product_photo, shopping_photos, electric_category, electric_brand, electric_apply_amount, electric_subsidy_rate, electric_subsidy_amount, review_result, final_price, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+    var params = [
+      id,
+      voucherData.username || "",
+      voucherData.voucherType || "普通凭证",
+      voucherData.shopName || "",
+      voucherData.shopPhoto || "",
+      Array.isArray(voucherData.orderPhotos) ? voucherData.orderPhotos.join("|") : (voucherData.orderPhotos || ""),
+      voucherData.latitude || "",
+      voucherData.longitude || "",
+      String(voucherData.amount || "0"),
+      voucherData.discount || "",
+      "待审核",
+      "待支付",
+      voucherData.paymentMethod || "",
+      voucherData.remark || "",
+      voucherData.signature || "",
+      "",
+      voucherData.platform || "",
+      voucherData.orderNo || "",
+      voucherData.productPhoto || "",
+      Array.isArray(voucherData.shoppingPhotos) ? voucherData.shoppingPhotos.join("|") : (voucherData.shoppingPhotos || ""),
+      voucherData.electricCategory || "",
+      voucherData.electricBrand || "",
+      String(voucherData.electricApplyAmount || "0"),
+      voucherData.electricSubsidyRate || "",
+      String(voucherData.electricSubsidyAmount || "0"),
+      voucherData.reviewResult || "",
+      voucherData.finalPrice || "",
+      now, now
+    ];
+    return _tursoSql(sql, params).then(function() {
+      _invalidateCache("allVouchers");
+      _invalidateCache("allVouchersForId");
+      return _tursoSql("SELECT * FROM vouchers WHERE id=?", [id]);
+    }).then(function(result) {
+      var objs = _tursoRowsToObjects(result.columns, result.rows);
+      if (objs.length > 0) {
+        return _dbRowToVoucherData(objs[0]);
+      }
+      return { number: id, html_url: "#", created_at: now, id: id };
+    });
   };
 
   var _submitVoucherWithImages = function(voucherData, shopPhotoFile, orderPhotoFiles, isNewShopPhoto, anyNewOrderPhotos) {
@@ -531,7 +700,6 @@ var JITApi = (function() {
     var folderPath = "uploads/" + username + "/" + voucherId + "_" + ts;
     var commitMsg = "上传凭证图片: " + (voucherData.shopName || "") + " #" + voucherId;
 
-    // 串行执行所有上传，避免并发 PUT 导致 SHA 冲突
     var uploadChain = Promise.resolve();
 
     if (shopPhotoFile && isNewShopPhoto) {
@@ -569,56 +737,73 @@ var JITApi = (function() {
   };
 
   var _updateVoucherIssueBody = function(voucherData) {
-    var body = _formatIssueBody(voucherData);
-    return _updateIssue(voucherData._issueNumber, { body: body });
-  };
-
-  var _updateVoucherIssue = function(voucherData) {
-    var body = _formatIssueBody(voucherData);
-    return _updateIssue(voucherData._issueNumber, { body: body });
-  };
-
-  var _updateVoucherWithLottery = function(issueNumber, voucherData) {
-    var body = _formatIssueBody(voucherData);
-    return _updateIssue(issueNumber, { body: body });
-  };
-
-  // 标记凭证为已完成交易：自动获取 body → 更新状态文本 → 加 completed label
-  var _markVoucherCompleted = function(issueNumber) {
-    var newBody;
-    // 先拿当前 Issue body，避免清空数据
-    return _getIssue(issueNumber).then(function(issue) {
-      var currentBody = issue.body || "";
-      newBody = currentBody.replace(/｜\s*状态：.*/, "｜     状态：已完成交易");
-      if (newBody === currentBody) {
-        newBody = currentBody + "\n｜     状态：已完成交易";
-      }
-      return _safeRequest(_apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber + "/labels", {
-        method: "POST",
-        headers: _headers(),
-        body: JSON.stringify({ labels: ["completed"] })
-      });
-    }).then(function() {
-      return _updateIssue(issueNumber, { body: newBody });
+    var id = voucherData._issueNumber || voucherData.voucherId || "";
+    var now = new Date().toISOString();
+    var sql = "UPDATE vouchers SET shop_name=?, shop_photo=?, order_photos=?, latitude=?, longitude=?, amount=?, discount=?, payment_method=?, remark=?, signature=?, reject_reason=?, platform=?, order_no=?, product_photo=?, shopping_photos=?, electric_category=?, electric_brand=?, electric_apply_amount=?, electric_subsidy_rate=?, electric_subsidy_amount=?, review_result=?, final_price=?, updated_at=? WHERE id=?";
+    var params = [
+      voucherData.shopName || "",
+      voucherData.shopPhoto || "",
+      Array.isArray(voucherData.orderPhotos) ? voucherData.orderPhotos.join("|") : (voucherData.orderPhotos || ""),
+      voucherData.latitude || "",
+      voucherData.longitude || "",
+      String(voucherData.amount || "0"),
+      voucherData.discount || "",
+      voucherData.paymentMethod || "",
+      voucherData.remark || "",
+      voucherData.signature || "",
+      voucherData.rejectReason || "",
+      voucherData.platform || "",
+      voucherData.orderNo || "",
+      voucherData.productPhoto || "",
+      Array.isArray(voucherData.shoppingPhotos) ? voucherData.shoppingPhotos.join("|") : (voucherData.shoppingPhotos || ""),
+      voucherData.electricCategory || "",
+      voucherData.electricBrand || "",
+      String(voucherData.electricApplyAmount || "0"),
+      voucherData.electricSubsidyRate || "",
+      String(voucherData.electricSubsidyAmount || "0"),
+      voucherData.reviewResult || "",
+      voucherData.finalPrice || "",
+      now, id
+    ];
+    return _tursoSql(sql, params).then(function() {
+      _invalidateCache("allVouchers");
+      return { number: id, html_url: "#" };
     });
   };
 
-  // 工会先支付：用户点击「我已付款」后，更新状态为「已付款·待确认」并加 paid label（保留 approved）
+  var _updateVoucherIssue = function(voucherData) {
+    return _updateVoucherIssueBody(voucherData);
+  };
+
+  var _updateVoucherWithLottery = function(issueNumber, voucherData) {
+    var now = new Date().toISOString();
+    var sql = "UPDATE vouchers SET discount=?, discounted_amount=?, final_price=?, status=?, updated_at=? WHERE id=?";
+    var params = [
+      voucherData.discount || "",
+      String(voucherData.discountValue || "0"),
+      voucherData.finalPrice || "",
+      voucherData.status || "待审核",
+      now, String(issueNumber)
+    ];
+    return _tursoSql(sql, params).then(function() {
+      _invalidateCache("allVouchers");
+      return { number: issueNumber };
+    });
+  };
+
+  var _markVoucherCompleted = function(issueNumber) {
+    var now = new Date().toISOString();
+    return _tursoSql("UPDATE vouchers SET status=?, updated_at=? WHERE id=?", ["已完成交易", now, String(issueNumber)]).then(function() {
+      _invalidateCache("allVouchers");
+      return { number: issueNumber };
+    });
+  };
+
   var _markVoucherPaid = function(issueNumber) {
-    var newBody;
-    return _getIssue(issueNumber).then(function(issue) {
-      var currentBody = issue.body || "";
-      newBody = currentBody.replace(/｜\s*状态：.*/, "｜     状态：已付款·待确认");
-      if (newBody === currentBody) {
-        newBody = currentBody + "\n｜     状态：已付款·待确认";
-      }
-      return _safeRequest(_apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber + "/labels", {
-        method: "POST",
-        headers: _headers(),
-        body: JSON.stringify({ labels: ["paid"] })
-      });
-    }).then(function() {
-      return _updateIssue(issueNumber, { body: newBody });
+    var now = new Date().toISOString();
+    return _tursoSql("UPDATE vouchers SET status=?, payment_status=?, updated_at=? WHERE id=?", ["已付款·待确认", "paid", now, String(issueNumber)]).then(function() {
+      _invalidateCache("allVouchers");
+      return { number: issueNumber };
     });
   };
 
@@ -644,15 +829,20 @@ var JITApi = (function() {
   };
 
   var _getVouchers = function(page, perPage) {
-    return _getIssues([JITConfig.getLabels().voucher], page, perPage).then(function(issues) {
-      return issues.map(_parseVoucherData).filter(function(d) { return d !== null; });
+    page = page || 1;
+    perPage = perPage || 20;
+    var offset = (page - 1) * perPage;
+    return _tursoSql("SELECT * FROM vouchers ORDER BY created_at DESC LIMIT ? OFFSET ?", [perPage, offset]).then(function(result) {
+      var objs = _tursoRowsToObjects(result.columns, result.rows);
+      return objs.map(_dbRowToVoucherData);
     });
   };
 
   var _getAllVouchers = function() {
     return _getCachedOrFetch("allVouchers", function() {
-      return _getAllIssues([JITConfig.getLabels().voucher]).then(function(issues) {
-        return issues.map(_parseVoucherData).filter(function(d) { return d !== null; });
+      return _tursoSql("SELECT * FROM vouchers ORDER BY created_at DESC", []).then(function(result) {
+        var objs = _tursoRowsToObjects(result.columns, result.rows);
+        return objs.map(_dbRowToVoucherData);
       });
     });
   };
@@ -671,19 +861,22 @@ var JITApi = (function() {
 
   var _getNextVoucherId = function() {
     return _getCachedOrFetch("allVouchersForId", function() {
-      return _getAllIssues([JITConfig.getLabels().voucher]).then(function(issues) {
-        var maxId = 0;
-        issues.forEach(function(issue) {
-          var data = _parseVoucherData(issue);
-          if (data && data.voucherId) {
-            var num = parseInt(data.voucherId, 10);
-            if (!isNaN(num) && num > maxId) maxId = num;
-          }
-        });
-        return maxId + 1;
+      return _tursoSql("SELECT COALESCE(MAX(CAST(id AS INTEGER)), 0) + 1 AS next_id FROM vouchers", []).then(function(result) {
+        var objs = _tursoRowsToObjects(result.columns, result.rows);
+        return parseInt((objs[0] && objs[0].next_id) || 1, 10);
       });
     }).catch(function() {
       return 1;
+    });
+  };
+
+  var _getVoucherById = function(id) {
+    return _tursoSql("SELECT * FROM vouchers WHERE id=?", [String(id)]).then(function(result) {
+      var objs = _tursoRowsToObjects(result.columns, result.rows);
+      if (objs.length > 0) {
+        return _dbRowToVoucherData(objs[0]);
+      }
+      return null;
     });
   };
 
@@ -1066,6 +1259,7 @@ var JITApi = (function() {
     updateVoucherIssue: _updateVoucherIssue,
     parseVoucherData: _parseVoucherData,
     getNextVoucherId: _getNextVoucherId,
+    getVoucherById: _getVoucherById,
     ensureLabels: _ensureLabels,
     invalidateCache: _invalidateCache,
     getIssueComments: _getIssueComments,

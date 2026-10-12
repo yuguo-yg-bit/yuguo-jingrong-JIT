@@ -2925,8 +2925,7 @@ var JITApp = (function() {
   };
 
   var _openVoucherDetail = function(issueNum) {
-    JITApi.getIssue(issueNum).then(function(issue) {
-      var v = JITApi.parseVoucherData(issue);
+    JITApi.getVoucherById(issueNum).then(function(v) {
       if (!v) { _showToast("无法加载凭证", "error"); return; }
       var overlay = document.createElement("div");
       overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;";
