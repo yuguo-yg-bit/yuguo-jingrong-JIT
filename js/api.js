@@ -1302,7 +1302,7 @@ var JITApi = (function() {
     else if (row.status === "已完成交易" || row.status === "completed") labels.push({name: "completed"});
     else if (row.payment_status === "paid" || row.status === "已付款·待确认") labels.push({name: "paid"});
     else labels.push({name: "pending"});
-    if (row.is_urgent) labels.push({name: "urgent"});
+    if (parseInt(row.is_urgent) === 1) labels.push({name: "urgent"});
 
     var bodyLines = [];
     bodyLines.push("｜ 用户ID：" + (row.user_id || ""));
@@ -1342,7 +1342,32 @@ var JITApi = (function() {
       user: { login: row.user_id || "" },
       labels: labels,
       body: bodyLines.join("\n"),
-      created_at: row.created_at || ""
+      created_at: row.created_at || "",
+      userId: row.user_id || "",
+      shopName: row.shop_name || "",
+      isUrgent: parseInt(row.is_urgent) === 1,
+      voucherType: row.order_type || "普通凭证",
+      amount: row.amount || 0,
+      discount: row.discount || "",
+      paymentMethod: row.payment_method || "",
+      isElectric: isElectric,
+      electricCategory: row.electric_category || "",
+      electricBrand: row.electric_brand || "",
+      electricApplyAmount: row.electric_apply_amount || 0,
+      electricSubsidyRate: row.electric_subsidy_rate || "",
+      electricSubsidyAmount: row.electric_subsidy_amount || 0,
+      reviewResult: row.review_result || "",
+      finalPrice: row.final_price || "",
+      platform: row.platform || "",
+      orderNo: row.order_no || "",
+      date: (row.created_at || "").replace("T"," ").slice(0,10),
+      latitude: row.latitude || "",
+      longitude: row.longitude || "",
+      shopPhoto: row.shop_photo || "",
+      orderPhotos: row.order_photos || "",
+      signature: row.signature || "",
+      remark: row.remark || "",
+      rejectReason: row.reject_reason || ""
     };
   };
 

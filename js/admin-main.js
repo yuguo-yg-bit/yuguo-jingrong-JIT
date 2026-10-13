@@ -127,7 +127,7 @@ var JITAdmin = (function() {
       else if ((match = trimmed.match(/^｜?\s*状态：(.+)/))) data.status = match[1].trim();
       else if ((match = trimmed.match(/^｜?\s*不通过原因：(.+)/))) data.rejectReason = match[1].trim();
       else if ((match = trimmed.match(/^｜?\s*创建时间：(.+)/))) data.createTime = match[1].trim();
-      else if ((match = trimmed.match(/^｜?标题：(.+)/))) data.title = match[1].trim();
+      else if ((match = trimmed.match(/^｜?\s*标题：(.+)/))) data.title = match[1].trim();
       else if ((match = trimmed.match(/^｜?内容：店铺：(.+)/))) data.shopName = data.shopName || match[1].trim();
       else if ((match = trimmed.match(/^｜?\s*中奖打折：(.+)/))) data.discount = match[1].trim();
       else if ((match = trimmed.match(/^｜?\s*金额：(.+)/))) data.amount = match[1].trim();
@@ -219,7 +219,7 @@ var JITAdmin = (function() {
     var status = _getIssueStatus(issue);
     var statusText = _statusTextMap[status] || "待审核";
     var isElectric = !!(data.electric || data.voucherType === "电器凭证" || data.electricCategory);
-    var isUrgent = (issue.labels || []).some(function(l) { return l.name === "urgent"; });
+    var isUrgent = issue.isUrgent || (issue.labels || []).some(function(l) { return l.name === "urgent"; });
 
     // ===== 金额列：电器显示申请基数 =====
     var amtDisplay = data.amount || "—";
@@ -240,9 +240,9 @@ var JITAdmin = (function() {
     }
 
     var html = '<tr>';
-    html += '<td>' + (isUrgent ? '<span style="display:inline-block;font-size:10px;padding:1px 5px;margin-right:4px;border-radius:3px;background:#f44336;color:#fff;font-weight:700;animation:pulse 1.5s infinite;">⚡加急</span>' : '') + _escapeHtml((data.userId || data.title || issue.user.login || "—").substring(0, 15)) + '</td>';
+    html += '<td>' + (isUrgent ? '<span style="display:inline-block;font-size:10px;padding:1px 5px;margin-right:4px;border-radius:3px;background:#f44336;color:#fff;font-weight:700;animation:pulse 1.5s infinite;">⚡加急</span>' : '') + _escapeHtml((issue.userId || data.userId || data.title || issue.user.login || "—").substring(0, 15)) + '</td>';
     // 店铺列：电器附小标签
-    var shopCell = (data.shopName || "—").substring(0, 12);
+    var shopCell = (issue.shopName || data.shopName || "—").substring(0, 12);
     if (isElectric) {
       shopCell = '<span style="display:inline-block;font-size:10px;padding:1px 4px;margin-right:4px;border-radius:3px;background:rgba(255,112,67,0.15);color:#ff7043;">🎁电器</span>' + _escapeHtml(shopCell);
     } else {
@@ -349,8 +349,8 @@ var JITAdmin = (function() {
 
     // ===== 加急凭证排到最前面 =====
     filtered.sort(function(a, b) {
-      var aUrgent = (a.labels || []).some(function(l) { return l.name === "urgent"; });
-      var bUrgent = (b.labels || []).some(function(l) { return l.name === "urgent"; });
+      var aUrgent = a.isUrgent || (a.labels || []).some(function(l) { return l.name === "urgent"; });
+      var bUrgent = b.isUrgent || (b.labels || []).some(function(l) { return l.name === "urgent"; });
       if (aUrgent && !bUrgent) return -1;
       if (!aUrgent && bUrgent) return 1;
       return 0;
@@ -488,7 +488,7 @@ var JITAdmin = (function() {
     document.getElementById("btnReject").style.display = (status === "pending") ? "inline-block" : "none";
     document.getElementById("btnDelete").style.display = "inline-block";
     // ===== 加急标识 / 加急理由 / 加入黑名单按钮 =====
-    var isUrgentIssue = (issue.labels || []).some(function(l) { return l.name === "urgent"; });
+    var isUrgentIssue = issue.isUrgent || (issue.labels || []).some(function(l) { return l.name === "urgent"; });
     var banBtn = document.getElementById("btnUrgentBlackBan");
     var userId = (data.userId || data.title || (issue.user && issue.user.login) || "");
     // 存储用于加黑弹窗的上下文
