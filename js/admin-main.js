@@ -175,41 +175,6 @@ var JITAdmin = (function() {
     return "pending";
   };
 
-  // 标签只在本次会话创建一次（原本每次加载都发 7 个查询请求）
-  var _labelsReady = null;
-  var _ensureLabels = function() {
-    if (_labelsReady) return _labelsReady;
-    var labels = [
-      { name: "pending", color: "ff9800" },
-      { name: "approved", color: "4caf50" },
-      { name: "rejected", color: "f44336" },
-      { name: "paid", color: "00bcd4" },
-      { name: "completed", color: "2196f3" },
-      { name: "points", color: "ffd54f" },
-      { name: "lottery", color: "9c27b0" }
-    ];
-    var promises = [];
-    labels.forEach(function(lb) {
-      promises.push(
-        fetch(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/labels/" + lb.name, {
-          headers: { Authorization: "token " + TOKEN, Accept: "application/vnd.github.v3+json" }
-        }).then(function(r) {
-          if (r.status === 404) {
-            return _apiPost(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/labels", {
-              name: lb.name,
-              color: lb.color
-            });
-          }
-        }).catch(function() {})
-      );
-    });
-    _labelsReady = Promise.all(promises).catch(function(e) {
-      _labelsReady = null; // 失败时允许下次重试
-      throw e;
-    });
-    return _labelsReady;
-  };
-
   // 凭证列表内存缓存：首次加载后不再自动重新请求，点「刷新」传 force=true 才重新拉取
   var _issuesLoaded = false;
   var loadIssues = function(force) {
@@ -217,14 +182,8 @@ var JITAdmin = (function() {
       renderTable();
       return Promise.resolve();
     }
-    return _ensureLabels().then(function() {
-      return _apiGet(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues?state=all&per_page=100&sort=created&direction=desc");
-    }).then(function(issues) {
-      allIssues = issues.filter(function(issue) {
-        var labels = (issue.labels || []).map(function(l) { return l.name; });
-        if (labels.indexOf("deleted") > -1) return false; // 已删除的凭证不再显示
-        return issue.title && (issue.title.indexOf("凭证") !== -1 || hasVoucherData(issue));
-      });
+    return JITApi.getAllVoucherIssueObjects().then(function(issueObjects) {
+      allIssues = issueObjects;
       _issuesLoaded = true;
       renderTable();
     }).catch(function(e) {
@@ -234,11 +193,6 @@ var JITAdmin = (function() {
           + _escapeHtml(e.message || "未知错误") + '，请点「刷新」重试</td></tr>';
       }
     });
-  };
-
-  var hasVoucherData = function(issue) {
-    if (!issue.body) return false;
-    return issue.body.indexOf("店铺名称") > -1 || issue.body.indexOf("店铺：") > -1 || issue.body.indexOf("中奖打折") > -1 || issue.body.indexOf("【聊天专用】") > -1;
   };
 
   // ===== 列表懒加载：按「每页条数」分批渲染，点「加载更多」追加下一批 =====
@@ -631,18 +585,11 @@ var JITAdmin = (function() {
       addOption(userId);
     });
 
-    // 2. 从 registeredUser 标签的issue中补充（已审核通过的注册用户）
-    _apiGet(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues?state=all&labels=" + encodeURIComponent(JITConfig.getLabels().registeredUser) + "&per_page=100").then(function(issues) {
-      (issues || []).forEach(function(issue) {
-        var body = issue.body || "";
-        // 使用与 api.js _parseUserBody 相同的解析逻辑
-        var lines = body.split(/\r?\n/);
-        var username = "";
-        for (var i = 0; i < lines.length; i++) {
-          var m = lines[i].trim().match(/^｜?\s*用户名：(.+)$/);
-          if (m) { username = m[1].trim(); break; }
-        }
-        addOption(username);
+    // 2. 从 Turso users 表补充（已审核通过的注册用户）
+    JITApi._tursoSql("SELECT id FROM users WHERE review_status='approved' ORDER BY created_at DESC", []).then(function(result) {
+      var objs = JITApi._tursoRowsToObjects(result.columns, result.rows);
+      (objs || []).forEach(function(row) {
+        if (row.id) addOption(row.id);
       });
     }).catch(function() {});
   };
@@ -1002,10 +949,7 @@ var JITAdmin = (function() {
         btn.disabled = false;
       });
     } else {
-      // 无图片时直接创建 issue
-      _apiPost(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues", {
-        title: title, body: body, labels: labels
-      }).then(function() {
+      JITApi.submitVoucher(voucherData).then(function() {
         _showToast("已为用户 [" + username + "] 添加凭证", "success");
         document.getElementById("adminAddVoucherOverlay").classList.remove("active");
         loadIssues(true);
@@ -1210,12 +1154,8 @@ var JITAdmin = (function() {
     var hasNewShopPhoto = !!shopPhotoFile;
     var hasNewOrderPhotos = orderPhotoFiles && orderPhotoFiles.length > 0;
     if (hasNewShopPhoto || hasNewOrderPhotos) {
-      // 保留旧图片，新图片追加
       JITApi.submitVoucherWithImages(voucherData, shopPhotoFile, orderPhotoFiles, hasNewShopPhoto, hasNewOrderPhotos).then(function(result) {
-        // 更新 issue body
-        return _apiPatch(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues/" + currentIssue.number, {
-          body: JITApi.formatIssueBody(voucherData)
-        });
+        return JITApi.updateVoucherFields(currentIssue.number, voucherData);
       }).then(function() {
         _showToast("凭证已修改", "success");
         document.getElementById("adminEditVoucherOverlay").classList.remove("active");
@@ -1227,7 +1167,7 @@ var JITAdmin = (function() {
         btn.disabled = false;
       });
     } else {
-      _apiPatch(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues/" + currentIssue.number, { body: body }).then(function() {
+      JITApi.updateVoucherFields(currentIssue.number, voucherData).then(function() {
         _showToast("凭证已修改", "success");
         document.getElementById("adminEditVoucherOverlay").classList.remove("active");
         loadIssues(true);
@@ -1356,57 +1296,11 @@ var JITAdmin = (function() {
   };
 
   var _updateIssueStatus = function(issue, action, reason, extra) {
-    extra = extra || {};
-    var labels = (issue.labels || []).map(function(l) { return l.name; });
-    labels = labels.filter(function(l) { return l !== "pending" && l !== "approved" && l !== "rejected" && l !== "paid" && l !== "completed"; });
-    labels.push(action);
-    var newBody = issue.body;
-    if (action === "rejected" && reason) {
-      if (newBody.indexOf("不通过原因：") === -1) {
-        newBody += "\n｜     不通过原因：" + reason;
-      }
-    }
-    // 电器凭证通过 → 写入补贴比例 / 金额 / 结果字段
-    if (action === "approved" && extra.isElectric) {
-      var rate = extra.subsidyRate || 0;
-      var amt = extra.subsidyAmount || 0;
-      var rateStr = String(rate);
-      var amtStr = amt.toFixed(2) + "元";
-      function upsert(key, val) {
-        var pat = new RegExp("｜\\s*" + key + "：.*");
-        if (pat.test(newBody)) newBody = newBody.replace(pat, "｜     " + key + "：" + val);
-        else newBody += "\n｜     " + key + "：" + val;
-      }
-      upsert("补贴比例", rateStr + "%");
-      upsert("补贴金额", amtStr);
-      upsert("补贴结果", "补贴 " + rateStr + "%，实得 ¥" + amt.toFixed(2));
-      // 同时更新 finalPrice：实付金额 = 原金额 - 补贴金额
-      var m = newBody.match(/｜\s*申请基数金额：\s*([0-9.]+)/);
-      var applyN = m ? parseFloat(m[1]) : 0;
-      if (applyN > 0) {
-        var finalN = Math.max(0, applyN - amt);
-        upsert("最终实付", finalN.toFixed(2) + "元（已减补贴 ¥" + amt.toFixed(2) + "）");
-      }
-      upsert("审核结果", "🎁 补贴 " + rateStr + "%，非抽奖模式");
-    }
-    var statusText = action === "approved" ? "已通过" : (action === "rejected" ? "已拒绝" : (action === "completed" ? "已完成交易" : "待审核"));
-    newBody = newBody.replace(/｜\s*状态：.*/, "｜     状态：" + statusText);
-    return _apiPatch(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues/" + issue.number, {
-      labels: labels,
-      body: newBody
-    });
+    return JITApi.updateVoucherStatusTurso(issue.number, action, reason, extra);
   };
 
   var _deleteIssue = function(issue) {
-    return _apiPatch(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues/" + issue.number, { state: "closed" });
-  };
-
-  var _getIssueComments = function(issueNumber) {
-    return _apiGet(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues/" + issueNumber + "/comments?per_page=100");
-  };
-
-  var _addIssueComment = function(issueNumber, body) {
-    return _apiPost(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues/" + issueNumber + "/comments", { body: body });
+    return JITApi.deleteVoucherTurso(issue.number);
   };
 
   var _getChatUsers = function() {
@@ -1628,104 +1522,23 @@ var JITAdmin = (function() {
     document.getElementById("addUserOverlay").classList.remove("active");
   };
 
-  // ========= 黑名单管理 =========
-  var _blIssueCache = null;   // 缓存云端黑名单 Issue
-  var _blPendingSync = false; // 是否有未同步的更改
-
-  // 黑名单 Issue Body 格式：每行一个用户
-  // ｜用户名：xxx
-  // ｜原因：xxx
-  // ｜时间：xxx
-  var _parseBlacklistBody = function(body) {
-    var out = {};
-    var lines = String(body || "").split(/\r?\n/);
-    var cur = null;
-    lines.forEach(function(line) {
-      var trimmed = line.trim();
-      var m;
-      if ((m = trimmed.match(/^｜?\s*用户名：(.+)$/))) {
-        cur = m[1].trim();
-        if (!out[cur]) out[cur] = {};
-      } else if (cur && (m = trimmed.match(/^｜?\s*原因：(.+)$/))) {
-        out[cur].reason = m[1].trim();
-      } else if (cur && (m = trimmed.match(/^｜?\s*时间：(.+)$/))) {
-        out[cur].time = m[1].trim();
-      }
-    });
-    return out;
-  };
-
-  var _formatBlacklistBody = function(map) {
-    var lines = ["【动态黑名单】此文件由系统自动生成，请勿手动编辑。"];
-    Object.keys(map || {}).forEach(function(u) {
-      lines.push("｜用户名：" + u);
-      lines.push("｜原因：" + (map[u].reason || "—"));
-      lines.push("｜时间：" + (map[u].time || "—"));
-      lines.push("");
-    });
-    return lines.join("\n");
-  };
-
-  var _ensureBlacklistLabel = function() {
-    var lb = JITConfig.getBlacklistLabel();
-    return fetch(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/labels/" + encodeURIComponent(lb), {
-      headers: { Authorization: "token " + TOKEN, Accept: "application/vnd.github.v3+json" }
-    }).then(function(r) {
-      if (r.status === 404) {
-        return _apiPost(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/labels", {
-          name: lb, color: "b71c1c"
-        }).catch(function() {});
-      }
-    }).catch(function() {});
-  };
-
-  var _findBlacklistIssue = function() {
-    var lb = JITConfig.getBlacklistLabel();
-    return _apiGet(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues?state=open&labels=" + encodeURIComponent(lb) + "&per_page=10").then(function(issues) {
-      if (issues && issues.length > 0) {
-        _blIssueCache = issues[0];
-        return issues[0];
-      }
-      // 没找到就创建
-      return _ensureBlacklistLabel().then(function() {
-        return _apiPost(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues", {
-          title: "【系统】动态黑名单",
-          body: _formatBlacklistBody(JITConfig.getDynamicBlacklist()),
-          labels: [lb]
-        }).then(function(issue) {
-          _blIssueCache = issue;
-          return issue;
-        });
-      });
-    });
-  };
-
+  // ========= 黑名单管理（Turso 版） =========
   var loadBlacklist = function() {
     var tbody = document.getElementById("blacklistTable");
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">加载中...</td></tr>';
-
-    // 先显示本地缓存
     _renderBlacklist();
-
-    // 拉取云端，合并到本地
-    _findBlacklistIssue().then(function(issue) {
-      if (issue && issue.body) {
-        var cloudMap = _parseBlacklistBody(issue.body);
-        var localMap = JITConfig.getDynamicBlacklist();
-        var merged = {};
-        Object.keys(cloudMap).forEach(function(u) { merged[u] = cloudMap[u]; });
-        Object.keys(localMap).forEach(function(u) { merged[u] = localMap[u]; });
-        // 如果不一致，写回本地 + 下次增删操作会同步云端
-        var changed = Object.keys(cloudMap).length !== Object.keys(localMap).length;
-        if (!changed) {
-          for (var k in merged) {
-            if (!cloudMap[k]) { changed = true; break; }
-          }
-        }
-        JITConfig.setDynamicBlacklist(merged);
-        _renderBlacklist();
-      }
+    JITApi.getBlacklistRows().then(function(rows) {
+      var cloudMap = {};
+      (rows || []).forEach(function(r) {
+        cloudMap[r.username] = { reason: r.reason || "—", time: r.time || r.created_at || "—", type: r.type || "dynamic" };
+      });
+      var localMap = JITConfig.getDynamicBlacklist();
+      var merged = {};
+      Object.keys(localMap).forEach(function(u) { merged[u] = localMap[u]; });
+      Object.keys(cloudMap).forEach(function(u) { merged[u] = cloudMap[u]; });
+      JITConfig.setDynamicBlacklist(merged);
+      _renderBlacklist();
     }).catch(function(e) {
       console.warn("加载云端黑名单失败，使用本地缓存", e);
     });
@@ -1760,36 +1573,14 @@ var JITAdmin = (function() {
       btn.addEventListener("click", function() {
         var username = this.getAttribute("data-user");
         if (!confirm("确定将 " + username + " 移出黑名单？")) return;
-        if (JITConfig.removeFromBlacklist(username)) {
-          _syncBlacklistToCloud();
-          _showToast("已解除 " + username + " 的封禁");
-          _renderBlacklist();
-        } else {
-          _showToast("移除失败（可能是静态黑名单）");
-        }
+        JITApi.removeFromBlacklistTurso(username).then(function() {
+          if (JITConfig.removeFromBlacklist(username)) {
+            _showToast("已解除 " + username + " 的封禁");
+            _renderBlacklist();
+          }
+        }).catch(function(e) { _showToast("操作失败: " + e.message); });
       });
     });
-  };
-
-  var _syncBlacklistToCloud = function() {
-    var map = JITConfig.getDynamicBlacklist();
-    _blPendingSync = true;
-    // 使用防抖：合并多次更改到一次请求
-    clearTimeout(_syncBlacklistToCloud._t);
-    _syncBlacklistToCloud._t = setTimeout(function() {
-      _findBlacklistIssue().then(function(issue) {
-        if (!issue) return;
-        return _apiPatch(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues/" + issue.number, {
-          body: _formatBlacklistBody(map)
-        });
-      }).then(function() {
-        _blPendingSync = false;
-        console.log("黑名单已同步到云端");
-      }).catch(function(e) {
-        console.warn("黑名单同步失败：", e);
-        _showToast("黑名单同步云端失败，已保存在本地");
-      });
-    }, 600);
   };
 
   // ========= 积分管理 =========
@@ -2367,7 +2158,7 @@ var JITAdmin = (function() {
         if (username === "admin") { _showToast("不能封禁admin用户"); return; }
         if (JITConfig.isBlacklisted(username)) { _showToast("该用户已在黑名单中"); return; }
         JITConfig.addToBlacklist(username, reason);
-        _syncBlacklistToCloud();
+        JITApi.addToBlacklistTurso(username, reason, "dynamic").catch(function(){});
         if (userInput) userInput.value = "";
         if (reasonInput) reasonInput.value = "";
         _showToast("已将 " + username + " 加入黑名单");
@@ -2427,32 +2218,35 @@ var JITAdmin = (function() {
     var tbody = document.getElementById("registrationsList");
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#999;">加载中...</td></tr>';
-    JITApi.getPendingRegistrations().then(function(list) {
-      if (!list || list.length === 0) {
+    JITApi.getAllRegistrationIssueObjects().then(function(issues) {
+      if (!issues || issues.length === 0) {
         tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#999;">暂无注册申请</td></tr>';
         return;
       }
+      var list = issues.map(function(issue) {
+        return {issue: issue, data: _parseIssueBody(issue.body)};
+      });
       tbody.innerHTML = "";
       list.forEach(function(item) {
         var d = item.data;
         var issueNum = item.issue.number;
-        var status = d.reviewStatus || "待审核";
-        var statusColor = status === "已通过" ? "#4caf50" : (status === "已拒绝" ? "#f44336" : "#ff9800");
-        var location = [d.country, d.province, d.city].filter(Boolean).join(" / ") || "—";
+        var status = d.reviewStatus || d.审核状态 || "待审核";
+        var statusColor = status === "已通过" || status === "approved" ? "#4caf50" : (status === "已拒绝" || status === "rejected" ? "#f44336" : "#ff9800");
+        var location = [d.country || d.国家, d.province || d.省份, d.city || d.城市].filter(Boolean).join(" / ") || "—";
         var tr = document.createElement("tr");
         var actionsHtml = "";
-        if (status === "待审核") {
-          actionsHtml = '<button class="btn btn-approve" style="padding:4px 10px;font-size:12px;margin-right:4px;" onclick="JITAdmin._approveReg(' + issueNum + ')">通过</button>' +
-            '<button class="btn btn-reject" style="padding:4px 10px;font-size:12px;" onclick="JITAdmin._rejectReg(' + issueNum + ')">拒绝</button>';
+        if (status === "待审核" || status === "pending") {
+          actionsHtml = '<button class="btn btn-approve" style="padding:4px 10px;font-size:12px;margin-right:4px;" onclick="JITAdmin._approveReg(\'' + issueNum + '\')">通过</button>' +
+            '<button class="btn btn-reject" style="padding:4px 10px;font-size:12px;" onclick="JITAdmin._rejectReg(\'' + issueNum + '\')">拒绝</button>';
         } else {
           actionsHtml = '<span style="color:#999;font-size:12px;">已处理</span>';
         }
-        tr.innerHTML = '<td>' + _escapeHtml(d.fullName || "—") + '</td>' +
-          '<td>' + _escapeHtml(d.username || "—") + '</td>' +
-          '<td>' + _escapeHtml(d.birthdate || "—") + '</td>' +
+        tr.innerHTML = '<td>' + _escapeHtml(d.fullName || d.姓名 || "—") + '</td>' +
+          '<td>' + _escapeHtml(d.username || d.用户名 || "—") + '</td>' +
+          '<td>' + _escapeHtml(d.birthdate || d.出生日期 || "—") + '</td>' +
           '<td style="font-size:12px;">' + _escapeHtml(location) + '</td>' +
-          '<td>' + _escapeHtml(d.referrer || "—") + '</td>' +
-          '<td style="font-size:12px;">' + _escapeHtml(d.registerTime || "—") + '</td>' +
+          '<td>' + _escapeHtml(d.referrer || d.邀请人 || "—") + '</td>' +
+          '<td style="font-size:12px;">' + _escapeHtml(d.registerTime || d.注册时间 || "—") + '</td>' +
           '<td><span style="color:' + statusColor + ';font-size:12px;font-weight:bold;">' + status + '</span></td>' +
           '<td>' + actionsHtml + '</td>';
         tbody.appendChild(tr);
@@ -2462,30 +2256,43 @@ var JITAdmin = (function() {
     });
   };
 
-  var _approveReg = function(issueNum) {
-    JITApi.approveRegistration(issueNum).then(function() {
-      _showToast("已通过注册申请");
-      // 发放积分奖励
-      return JITApi.getIssue(issueNum).then(function(issue) {
-        var bodyData = _parseIssueBody(issue.body);
+  var _approveReg = function(regId) {
+    JITApi.getAllRegistrationIssueObjects().then(function(issues) {
+      var found = null;
+      for (var i = 0; i < issues.length; i++) {
+        if (String(issues[i].number) === String(regId)) { found = issues[i]; break; }
+      }
+      if (!found) throw new Error("未找到注册申请");
+      var bodyData = _parseIssueBody(found.body);
+      return JITApi.approveRegistrationTurso(regId, {
+        username: bodyData.username || bodyData.用户名,
+        password_hash: bodyData.password_hash || "",
+        full_name: bodyData.fullName || bodyData.姓名,
+        birthdate: bodyData.birthdate || bodyData.出生日期,
+        country: bodyData.country || bodyData.国家,
+        province: bodyData.province || bodyData.省份,
+        city: bodyData.city || bodyData.城市,
+        referrer: bodyData.referrer || bodyData.邀请人
+      }).then(function() {
         var promises = [];
-        // 新用户得50积分
-        if (bodyData.username) {
-          promises.push(JITPoints.changePoints(bodyData.username, JITPoints.RULES.INVITE_REWARD, "注册奖励"));
-        }
-        // 邀请人得50积分
-        if (bodyData.referrer && bodyData.referrer !== bodyData.username) {
-          promises.push(JITPoints.changePoints(bodyData.referrer, JITPoints.RULES.INVITE_REWARD, "邀请好友：" + bodyData.username));
+        if (bodyData.username || bodyData.用户名) {
+          var uid = bodyData.username || bodyData.用户名;
+          promises.push(JITPoints.changePoints(uid, JITPoints.RULES.INVITE_REWARD, "注册奖励"));
+          var ref = bodyData.referrer || bodyData.邀请人;
+          if (ref && ref !== uid) {
+            promises.push(JITPoints.changePoints(ref, JITPoints.RULES.INVITE_REWARD, "邀请好友：" + uid));
+          }
         }
         return Promise.all(promises);
       });
     }).then(function() {
+      _showToast("已通过注册申请");
       loadRegistrations();
     }).catch(function(e) { _showToast("操作失败: " + e.message); });
   };
 
-  var _rejectReg = function(issueNum) {
-    JITApi.rejectRegistration(issueNum).then(function() {
+  var _rejectReg = function(regId) {
+    JITApi.rejectRegistrationTurso(regId).then(function() {
       _showToast("已拒绝注册申请");
       loadRegistrations();
     }).catch(function(e) { _showToast("操作失败: " + e.message); });
@@ -2586,113 +2393,27 @@ var JITAdmin = (function() {
     });
   };
 
-  // ========= 加急黑名单管理（GitHub Issues 后端存储） =========
+  // ========= 加急黑名单管理（Turso 后端存储） =========
   function _fmtIsoShort(iso) {
     if (!iso) return "—";
     if (iso === "permanent") return "永久";
     try { return iso.replace("T", " ").substring(0, 16); } catch(e) { return iso; }
   }
 
-  var _ubIssueCache = null;
-  var _UB_LABEL = "urgent-blacklist";
-
-  var _formatUrgentBlBody = function(map) {
-    var lines = ["【加急黑名单】此文件由系统自动生成，请勿手动编辑。"];
-    Object.keys(map || {}).forEach(function(u) {
-      var e = map[u] || {};
-      lines.push("｜用户名：" + u);
-      lines.push("｜理由：" + (e.reason || "—"));
-      lines.push("｜开始：" + (e.from || "—"));
-      lines.push("｜到期：" + (e.until || "permanent"));
-      lines.push("｜操作员：" + (e.operator || "admin"));
-      lines.push("");
-    });
-    return lines.join("\n");
-  };
-
-  var _parseUrgentBlBody = function(body) {
-    var map = {};
-    if (!body) return map;
-    var blocks = body.split(/\n(?=｜用户名：)/);
-    blocks.forEach(function(block) {
-      var u = (block.match(/｜用户名：(.+)/) || [])[1];
-      if (!u) return;
-      u = u.trim();
-      map[u] = {
-        reason: ((block.match(/｜理由：(.+)/) || [])[1] || "").trim(),
-        from: ((block.match(/｜开始：(.+)/) || [])[1] || "").trim(),
-        until: ((block.match(/｜到期：(.+)/) || [])[1] || "permanent").trim(),
-        operator: ((block.match(/｜操作员：(.+)/) || [])[1] || "admin").trim()
-      };
-    });
-    return map;
-  };
-
-  var _ensureUrgentBlLabel = function() {
-    return _apiGet(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/labels/" + encodeURIComponent(_UB_LABEL)).catch(function() {
-      return _apiPost(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/labels", { name: _UB_LABEL, color: "6a1b9a" }).catch(function(){});
-    });
-  };
-
-  var _findUrgentBlIssue = function() {
-    if (_ubIssueCache) return Promise.resolve(_ubIssueCache);
-    return _apiGet(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues?state=open&labels=" + encodeURIComponent(_UB_LABEL) + "&per_page=5").then(function(issues) {
-      if (issues && issues.length > 0) {
-        _ubIssueCache = issues[0];
-        return issues[0];
-      }
-      return _ensureUrgentBlLabel().then(function() {
-        return _apiPost(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues", {
-          title: "【系统】加急黑名单",
-          body: _formatUrgentBlBody({}),
-          labels: [_UB_LABEL]
-        }).then(function(issue) {
-          _ubIssueCache = issue;
-          return issue;
-        });
-      });
-    });
-  };
-
-  var _syncUrgentBlToCloud = function() {
-    var map = JITConfig.getUrgentBlacklist();
-    clearTimeout(_syncUrgentBlToCloud._t);
-    _syncUrgentBlToCloud._t = setTimeout(function() {
-      _findUrgentBlIssue().then(function(issue) {
-        if (!issue) return;
-        return _apiPatch(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues/" + issue.number, {
-          body: _formatUrgentBlBody(map)
-        });
-      }).then(function() {
-        console.log("加急黑名单已同步到云端");
-      }).catch(function(e) {
-        console.warn("加急黑名单同步失败：", e);
-        _showToast("加急黑名单同步云端失败");
-      });
-    }, 600);
-  };
-
   var loadUrgentBlacklist = function() {
     var tbody = document.getElementById("urgentBlTable");
     if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="6" class="loading-cell">加载中...</td></tr>';
-    _findUrgentBlIssue().then(function(issue) {
+    JITApi.getUrgentBlacklistRows().then(function(rows) {
       var cloudMap = {};
-      if (issue && issue.body) {
-        cloudMap = _parseUrgentBlBody(issue.body);
-      }
-      // 清理过期
-      var nowIso = new Date().toISOString().slice(0,19);
-      var changed = false;
-      Object.keys(cloudMap).forEach(function(u) {
-        var e = cloudMap[u];
-        if (e && e.until && e.until !== "permanent" && e.until < nowIso) {
-          delete cloudMap[u];
-          changed = true;
+      (rows || []).forEach(function(r) {
+        if (r.until && r.until !== "permanent") {
+          var exp = new Date(r.until.replace(" ", "T")).getTime();
+          if (!isNaN(exp) && exp < Date.now()) return;
         }
+        cloudMap[r.username] = { reason: r.reason, from: r.from_time, until: r.until, operator: r.operator || "admin" };
       });
       JITConfig.setUrgentBlCache(cloudMap);
-      if (changed) _syncUrgentBlToCloud();
       _renderUrgentBlTable();
     }).catch(function(e) {
       tbody.innerHTML = '<tr><td colspan="6" class="loading-cell">加载失败: ' + _escapeHtml(e.message || "") + '</td></tr>';
@@ -2714,10 +2435,7 @@ var JITAdmin = (function() {
       var isPerm = (e.until === "permanent" || !e.until);
       var expSoon = false;
       if (!isPerm) {
-        try {
-          var ms = new Date(e.until.replace(" ","T")).getTime() - Date.now();
-          expSoon = ms < 86400000;
-        } catch(err) {}
+        try { var ms = new Date(e.until.replace(" ","T")).getTime() - Date.now(); expSoon = ms < 86400000; } catch(err) {}
       }
       html += '<tr>';
       html += '<td>' + _escapeHtml(u) + '</td>';
@@ -2735,13 +2453,12 @@ var JITAdmin = (function() {
         var u = this.getAttribute("data-user");
         if (!u) return;
         if (!confirm("确认解除用户 [" + u + "] 的加急黑名单吗？")) return;
-        if (JITConfig.removeUrgentBlacklist(u)) {
-          _syncUrgentBlToCloud();
-          _showToast("已解除 " + u + " 的加急黑名单", "success");
-          _renderUrgentBlTable();
-        } else {
-          _showToast("移除失败，该用户可能不在名单中");
-        }
+        JITApi.removeFromUrgentBlacklistTurso(u).then(function() {
+          if (JITConfig.removeUrgentBlacklist(u)) {
+            _showToast("已解除 " + u + " 的加急黑名单", "success");
+            _renderUrgentBlTable();
+          }
+        }).catch(function(e) { _showToast("操作失败: " + e.message); });
       });
     });
   };
@@ -2764,7 +2481,7 @@ var JITAdmin = (function() {
     var until = JITConfig.addUrgentDurationIso(h, d, m, permanent);
     var ok = JITConfig.addUrgentBlacklist(username, { reason: reason, until: until, operator: "admin" });
     if (ok) {
-      _syncUrgentBlToCloud();
+      JITApi.addToUrgentBlacklistTurso(username, reason, until, "admin").catch(function() {});
       _showToast("已将 [" + username + "] 加入加急黑名单（" + (until === "permanent" ? "永久" : ("至 " + _fmtIsoShort(until))) + "）", "success");
       if (userEl) userEl.value = "";
       if (reasonEl) reasonEl.value = "";
@@ -2815,7 +2532,7 @@ var JITAdmin = (function() {
     var until = JITConfig.addUrgentDurationIso(h, d, m, permanent);
     var ok = JITConfig.addUrgentBlacklist(t.username, { reason: reason, until: until, operator: "admin" });
     if (ok) {
-      _syncUrgentBlToCloud();
+      JITApi.addToUrgentBlacklistTurso(t.username, reason, until, "admin").catch(function() {});
       _showToast("已将 [" + t.username + "] 加入加急黑名单（" + (until === "permanent" ? "永久" : ("至 " + _fmtIsoShort(until))) + "）", "success");
       _closeUrgentBlacklistModal();
     } else {

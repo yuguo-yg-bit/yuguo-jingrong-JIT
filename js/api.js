@@ -660,7 +660,7 @@ var JITApi = (function() {
   var _submitVoucher = function(voucherData) {
     var id = String(voucherData.voucherId || Date.now());
     var now = new Date().toISOString();
-    var sql = "INSERT INTO vouchers (id, user_id, order_type, shop_name, shop_photo, order_photos, latitude, longitude, amount, discount, status, payment_status, payment_method, remark, signature, reject_reason, platform, order_no, product_photo, shopping_photos, electric_category, electric_brand, electric_apply_amount, electric_subsidy_rate, electric_subsidy_amount, review_result, final_price, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+    var sql = "INSERT INTO vouchers (id, user_id, order_type, shop_name, shop_photo, order_photos, latitude, longitude, amount, discount, status, payment_status, payment_method, remark, signature, reject_reason, platform, order_no, product_photo, shopping_photos, electric_category, electric_brand, electric_apply_amount, electric_subsidy_rate, electric_subsidy_amount, review_result, final_price, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
     var params = [
       id,
       voucherData.username || "",
@@ -1288,6 +1288,209 @@ var JITApi = (function() {
     }).catch(function() { return null; });
   };
 
+  // ===== 管理员端 Turso 迁移：凭证列表 & 审核 =====
+  var _tursoVoucherToIssue = function(row) {
+    var isElectric = !!(row.electric_category || row.electric_brand || row.electric_apply_amount);
+    var labels = [];
+    if (row.status === "已通过" || row.status === "approved") labels.push({name: "approved"});
+    else if (row.status === "已拒绝" || row.status === "rejected") labels.push({name: "rejected"});
+    else if (row.status === "已完成交易" || row.status === "completed") labels.push({name: "completed"});
+    else if (row.payment_status === "paid" || row.status === "已付款·待确认") labels.push({name: "paid"});
+    else labels.push({name: "pending"});
+    if (row.is_urgent) labels.push({name: "urgent"});
+
+    var bodyLines = [];
+    bodyLines.push("｜ 用户ID：" + (row.user_id || ""));
+    bodyLines.push("｜ 标题：" + (row.shop_name || "凭证"));
+    bodyLines.push("｜ 店铺名称：" + (row.shop_name || ""));
+    bodyLines.push("｜ 消费日期：" + (row.created_at || "").replace("T"," ").slice(0,10));
+    if (isElectric) { bodyLines.push("｜ 凭证类型：电器凭证（大额补贴）"); bodyLines.push("｜ 模式标识：电器补贴模式"); }
+    else bodyLines.push("｜ 凭证类型：" + (row.order_type || "普通凭证"));
+    bodyLines.push("｜ 消费金额：" + (row.amount || "0"));
+    if (row.discount) bodyLines.push("｜ 中奖打折：" + row.discount);
+    bodyLines.push("｜ 支付方式：" + (row.payment_method || ""));
+    if (row.remark) bodyLines.push("｜ 备注：" + row.remark);
+    if (row.reject_reason) bodyLines.push("｜ 不通过原因：" + row.reject_reason);
+    if (row.shop_photo) bodyLines.push("｜ 店铺照片：" + row.shop_photo);
+    if (row.order_photos && row.order_photos !== "[]") bodyLines.push("｜ 商品订单照片：" + row.order_photos);
+    if (row.signature) bodyLines.push("｜ 签名：" + row.signature);
+    bodyLines.push("｜ 状态：" + (row.status || "待审核"));
+    bodyLines.push("｜ 创建时间：" + (row.created_at || ""));
+    if (isElectric) {
+      if (row.electric_category) bodyLines.push("｜ 电器分类：" + row.electric_category);
+      if (row.electric_brand) bodyLines.push("｜ 品牌名称：" + row.electric_brand);
+      if (row.electric_apply_amount) bodyLines.push("｜ 申请基数金额：" + row.electric_apply_amount);
+      if (row.electric_subsidy_rate) bodyLines.push("｜ 补贴比例：" + row.electric_subsidy_rate);
+      if (row.electric_subsidy_amount) bodyLines.push("｜ 补贴金额：" + row.electric_subsidy_amount);
+      if (row.review_result) bodyLines.push("｜ 审核结果：" + row.review_result);
+      if (row.final_price) bodyLines.push("｜ 最终实付：" + row.final_price);
+    }
+    if (row.platform) bodyLines.push("｜ 购物平台：" + row.platform);
+    if (row.order_no) bodyLines.push("｜ 订单号：" + row.order_no);
+    var latLng = (row.latitude || row.longitude) ? (row.latitude || "") + "," + (row.longitude || "") : "";
+    if (latLng && latLng !== ",") bodyLines.push("｜ 定位：" + latLng);
+
+    return {
+      number: String(row.id),
+      title: row.shop_name ? "凭证  # " + row.shop_name : "凭证",
+      state: (row.status === "已删除") ? "closed" : "open",
+      user: { login: row.user_id || "" },
+      labels: labels,
+      body: bodyLines.join("\n"),
+      created_at: row.created_at || ""
+    };
+  };
+
+  var _getAllVoucherIssueObjects = function() {
+    return _tursoSql("SELECT * FROM vouchers WHERE status != '已删除' ORDER BY created_at DESC", []).then(function(result) {
+      var objs = _tursoRowsToObjects(result.columns, result.rows);
+      return objs.map(_tursoVoucherToIssue);
+    });
+  };
+
+  var _updateVoucherStatusTurso = function(voucherId, action, reason, extra) {
+    extra = extra || {};
+    var now = new Date().toISOString();
+    if (action === "approved") {
+      if (extra.isElectric && extra.subsidyRate) {
+        return _tursoSql(
+          "UPDATE vouchers SET status='approved', electric_subsidy_rate=?, electric_subsidy_amount=?, updated_at=? WHERE id=?",
+          [String(extra.subsidyRate || ""), String(extra.subsidyAmount || "0"), now, String(voucherId)]
+        );
+      }
+      return _tursoSql("UPDATE vouchers SET status='approved', updated_at=? WHERE id=?", [now, String(voucherId)]);
+    } else if (action === "rejected") {
+      return _tursoSql("UPDATE vouchers SET status='rejected', reject_reason=?, updated_at=? WHERE id=?", [reason || "", now, String(voucherId)]);
+    } else if (action === "completed") {
+      return _tursoSql("UPDATE vouchers SET status='已完成交易', updated_at=? WHERE id=?", [now, String(voucherId)]);
+    }
+    return Promise.resolve();
+  };
+
+  var _deleteVoucherTurso = function(voucherId) {
+    return _tursoSql("UPDATE vouchers SET status='已删除', updated_at=? WHERE id=?", [new Date().toISOString(), String(voucherId)]);
+  };
+
+  var _updateVoucherFields = function(voucherId, voucherData) {
+    var now = new Date().toISOString();
+    return _tursoSql(
+      "UPDATE vouchers SET user_id=?, order_type=?, shop_name=?, shop_photo=?, order_photos=?, latitude=?, longitude=?, amount=?, discount=?, payment_method=?, remark=?, signature=?, platform=?, order_no=?, product_photo=?, shopping_photos=?, electric_category=?, electric_brand=?, electric_apply_amount=?, electric_subsidy_rate=?, electric_subsidy_amount=?, updated_at=? WHERE id=?",
+      [
+        voucherData.username || "",
+        voucherData.voucherType || "",
+        voucherData.shopName || "",
+        voucherData.shopPhoto || "",
+        Array.isArray(voucherData.orderPhotos) ? voucherData.orderPhotos.join("|") : (voucherData.orderPhotos || ""),
+        voucherData.latitude || "",
+        voucherData.longitude || "",
+        String(voucherData.amount || "0"),
+        voucherData.discount || "",
+        voucherData.paymentMethod || "",
+        voucherData.remark || "",
+        voucherData.signature || "",
+        voucherData.platform || "",
+        voucherData.orderNo || "",
+        voucherData.productPhoto || "",
+        Array.isArray(voucherData.shoppingPhotos) ? voucherData.shoppingPhotos.join("|") : (voucherData.shoppingPhotos || ""),
+        voucherData.electricCategory || "",
+        voucherData.electricBrand || "",
+        String(voucherData.electricApplyAmount || "0"),
+        voucherData.electricSubsidyRate || "",
+        String(voucherData.electricSubsidyAmount || "0"),
+        now, String(voucherId)
+      ]
+    );
+  };
+
+  // ===== 注册审核 Turso 版 =====
+  var _tursoRegistrationToIssue = function(row) {
+    var bodyLines = [];
+    bodyLines.push("｜ 用户名：" + (row.username || ""));
+    bodyLines.push("｜ 姓名：" + (row.full_name || ""));
+    bodyLines.push("｜ 出生日期：" + (row.birthdate || ""));
+    bodyLines.push("｜ 国家：" + (row.country || ""));
+    bodyLines.push("｜ 省份：" + (row.province || ""));
+    bodyLines.push("｜ 城市：" + (row.city || ""));
+    bodyLines.push("｜ 邀请人：" + (row.referrer || ""));
+    bodyLines.push("｜ 审核状态：" + (row.review_status || "pending"));
+    bodyLines.push("｜ 注册时间：" + (row.created_at || ""));
+
+    var labels = [];
+    if (row.review_status === "approved") labels.push({name: "registeredUser"});
+    else if (row.review_status === "rejected") labels.push({name: "rejected"});
+    labels.push({name: "registrationRequest"});
+
+    return {
+      number: String(row.id),
+      title: "注册申请 - " + (row.username || ""),
+      state: "open",
+      user: { login: row.username || "" },
+      labels: labels,
+      body: bodyLines.join("\n"),
+      created_at: row.created_at || ""
+    };
+  };
+
+  var _getAllRegistrationIssueObjects = function() {
+    return _tursoSql("SELECT * FROM registrations ORDER BY created_at DESC", []).then(function(result) {
+      var objs = _tursoRowsToObjects(result.columns, result.rows);
+      return objs.map(_tursoRegistrationToIssue);
+    });
+  };
+
+  var _approveRegistrationTurso = function(regId, regData) {
+    if (!regData) return Promise.reject(new Error("缺少注册数据"));
+    var now = new Date().toISOString();
+    return _tursoSql("UPDATE registrations SET review_status='approved' WHERE id=?", [String(regId)]).then(function() {
+      return _tursoSql(
+        "INSERT OR REPLACE INTO users (id, password_hash, full_name, birthdate, country, province, city, referrer, review_status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        [regData.username, regData.password_hash, regData.full_name || "", regData.birthdate || "", regData.country || "", regData.province || "", regData.city || "", regData.referrer || "", "approved", now, now]
+      );
+    });
+  };
+
+  var _rejectRegistrationTurso = function(regId) {
+    return _tursoSql("UPDATE registrations SET review_status='rejected' WHERE id=?", [String(regId)]);
+  };
+
+  // ===== 加急黑名单 Turso 版 =====
+  var _addToUrgentBlacklistTurso = function(username, reason, until, operator) {
+    var now = new Date().toISOString();
+    return _tursoSql(
+      "INSERT OR REPLACE INTO urgent_blacklist (username, reason, from_time, until, operator, created_at) VALUES (?,?,?,?,?,?)",
+      [username, reason || "", now, until || "permanent", operator || "admin", now]
+    );
+  };
+
+  var _removeFromUrgentBlacklistTurso = function(username) {
+    return _tursoSql("DELETE FROM urgent_blacklist WHERE username=?", [username]);
+  };
+
+  var _getUrgentBlacklistRows = function() {
+    return _tursoSql("SELECT * FROM urgent_blacklist ORDER BY created_at DESC", []).then(function(result) {
+      return _tursoRowsToObjects(result.columns, result.rows);
+    });
+  };
+
+  // ===== 普通黑名单 Turso 版 =====
+  var _addToBlacklistTurso = function(username, reason, type) {
+    var now = new Date().toISOString();
+    return _tursoSql(
+      "INSERT OR REPLACE INTO blacklist (username, reason, time, type, created_at) VALUES (?,?,?,?,?)",
+      [username, reason || "", now, type || "dynamic", now]
+    );
+  };
+
+  var _removeFromBlacklistTurso = function(username) {
+    return _tursoSql("DELETE FROM blacklist WHERE username=?", [username]);
+  };
+
+  var _getBlacklistRows = function() {
+    return _tursoSql("SELECT * FROM blacklist ORDER BY created_at DESC", []).then(function(result) {
+      return _tursoRowsToObjects(result.columns, result.rows);
+    });
+  };
+
   return {
     getVouchers: _getVouchers,
     getAllVouchers: _getAllVouchers,
@@ -1333,6 +1536,22 @@ var JITApi = (function() {
     getNotificationReplies: _getNotificationReplies,
     markUrgent: _markUrgent,
     removeUrgent: _removeUrgent,
-    getUrgentReason: _getUrgentReason
+    getUrgentReason: _getUrgentReason,
+    // 管理员端 Turso 版
+    getAllVoucherIssueObjects: _getAllVoucherIssueObjects,
+    updateVoucherStatusTurso: _updateVoucherStatusTurso,
+    deleteVoucherTurso: _deleteVoucherTurso,
+    updateVoucherFields: _updateVoucherFields,
+    getAllRegistrationIssueObjects: _getAllRegistrationIssueObjects,
+    approveRegistrationTurso: _approveRegistrationTurso,
+    rejectRegistrationTurso: _rejectRegistrationTurso,
+    addToUrgentBlacklistTurso: _addToUrgentBlacklistTurso,
+    removeFromUrgentBlacklistTurso: _removeFromUrgentBlacklistTurso,
+    getUrgentBlacklistRows: _getUrgentBlacklistRows,
+    addToBlacklistTurso: _addToBlacklistTurso,
+    removeFromBlacklistTurso: _removeFromBlacklistTurso,
+    getBlacklistRows: _getBlacklistRows,
+    _tursoSql: _tursoSql,
+    _tursoRowsToObjects: _tursoRowsToObjects
   };
 })();
