@@ -1310,44 +1310,31 @@ var JITAdmin = (function() {
   };
 
   var _getChatUsers = function() {
-    var users = {};
-    allIssues.forEach(function(issue) {
-      var data = _parseIssueBody(issue.body);
-      var userId = data.userId;
-      if (!userId && data.title) {
-        userId = data.title.replace(/\d+$/, "");
-      }
-      if (!userId) userId = issue.user ? issue.user.login : "";
-      if (userId && !users[userId]) {
-        users[userId] = { userId: userId, issues: [] };
-      }
-      if (userId) {
-        users[userId].issues.push(issue.number);
-      }
-    });
-    return Object.values(users);
+    return JITApi.getAllChatUsers();
   };
 
   var loadChatUsers = function() {
-    var users = _getChatUsers();
-    var listEl = document.getElementById("chatUsersList");
-    if (users.length === 0) {
-      listEl.innerHTML = '<div class="chat-user-item" style="color:#9e9e9e;">暂无客户</div>';
-      return;
-    }
-    var html = "";
-    users.forEach(function(u) {
-      var active = currentChatUser && currentChatUser.userId === u.userId ? " active" : "";
-      html += '<div class="chat-user-item' + active + '" data-user="' + _escapeHtml(u.userId) + '">';
-      html += '<div class="chat-user-name">' + _escapeHtml(u.userId) + '</div>';
-      html += '<div class="chat-user-last">' + u.issues.length + ' 个凭证</div>';
-      html += '</div>';
-    });
-    listEl.innerHTML = html;
-    listEl.querySelectorAll(".chat-user-item").forEach(function(item) {
-      item.addEventListener("click", function() {
-        selectChatUser(this.getAttribute("data-user"));
+    _getChatUsers().then(function(userIds) {
+      var listEl = document.getElementById("chatUsersList");
+      if (!Array.isArray(userIds) || userIds.length === 0) {
+        listEl.innerHTML = '<div class="chat-user-item" style="color:#9e9e9e;">暂无客户</div>';
+        return;
+      }
+      var html = "";
+      userIds.forEach(function(uid) {
+        var active = currentChatUser && currentChatUser.userId === uid ? " active" : "";
+        html += '<div class="chat-user-item' + active + '" data-user="' + _escapeHtml(uid) + '">';
+        html += '<div class="chat-user-name">' + _escapeHtml(uid) + '</div>';
+        html += '</div>';
       });
+      listEl.innerHTML = html;
+      listEl.querySelectorAll(".chat-user-item").forEach(function(item) {
+        item.addEventListener("click", function() {
+          selectChatUser(this.getAttribute("data-user"));
+        });
+      });
+    }).catch(function() {
+      document.getElementById("chatUsersList").innerHTML = '<div class="chat-user-item" style="color:#9e9e9e;">加载失败</div>';
     });
   };
 
@@ -1358,39 +1345,25 @@ var JITAdmin = (function() {
     document.getElementById("btnChatSend").disabled = false;
     var imgBtn = document.getElementById("btnChatImage");
     if (imgBtn) imgBtn.style.display = "inline-block";
+    JITApi.markChatRead(userId);
     loadChatMessages();
     loadChatUsers();
   };
 
   var loadChatMessages = function() {
     if (!currentChatUser) return;
-    var userIssues = [];
-    allIssues.forEach(function(issue) {
-      var data = _parseIssueBody(issue.body);
-      var userId = data.userId;
-      if (!userId && data.title) userId = data.title.replace(/\d+$/, "");
-      if (!userId) userId = issue.user ? issue.user.login : "";
-      if (userId === currentChatUser.userId) {
-        userIssues.push(issue.number);
-      }
-    });
     var msgEl = document.getElementById("chatMessages");
     msgEl.innerHTML = '<div style="text-align:center;color:#9e9e9e;">加载中...</div>';
-    Promise.all(userIssues.map(function(num) { return _getIssueComments(num); })).then(function(results) {
-      var allComments = [];
-      results.forEach(function(comments) {
-        comments.forEach(function(c) {
-          if (c.body && c.body.indexOf("｜CHAT｜") === 0) {
-            allComments.push({
-              type: c.user.login === "admin" || c.user.login === OWNER ? "admin" : "user",
-              body: c.body.replace("｜CHAT｜", ""),
-              time: c.created_at,
-              user: c.user.login
-            });
-          }
-        });
+    JITApi.getChatMessages(currentChatUser.userId).then(function(msgs) {
+      var allComments = msgs.map(function(c) {
+        return {
+          type: c.sender === "admin" ? "admin" : "user",
+          body: c.content || "",
+          image_url: c.image_url || "",
+          time: c.created_at,
+          user: c.sender
+        };
       });
-      allComments.sort(function(a, b) { return new Date(a.time) - new Date(b.time); });
       if (allComments.length === 0) {
         msgEl.innerHTML = '<div style="text-align:center;color:#9e9e9e;padding:40px;">暂无聊天记录</div>';
         return;
@@ -1398,6 +1371,9 @@ var JITAdmin = (function() {
       var html = "";
       allComments.forEach(function(c) {
         html += '<div class="chat-message ' + c.type + '">';
+        if (c.image_url) {
+          html += '<div><img src="' + _escapeHtml(encodeURI(c.image_url)) + '" style="max-width:200px;max-height:200px;border-radius:8px;cursor:pointer;" onclick="JITAdmin._previewImage(this.src)"></div>';
+        }
         if (c.body.indexOf("[IMG]") === 0) {
           html += '<div><img src="' + _escapeHtml(encodeURI(c.body.replace("[IMG]", ""))) + '" style="max-width:200px;max-height:200px;border-radius:8px;cursor:pointer;" onclick="JITAdmin._previewImage(this.src)"></div>';
         } else if (c.body.indexOf("[VOUCHER]") === 0) {
@@ -1420,19 +1396,10 @@ var JITAdmin = (function() {
     var input = document.getElementById("chatInput");
     var msg = input.value.trim();
     if (!msg || !currentChatUser) return;
-    var userIssues = [];
-    allIssues.forEach(function(issue) {
-      var data = _parseIssueBody(issue.body);
-      var userId = data.userId;
-      if (!userId && data.title) userId = data.title.replace(/\d+$/, "");
-      if (!userId) userId = issue.user ? issue.user.login : "";
-      if (userId === currentChatUser.userId) userIssues.push(issue.number);
-    });
-    if (userIssues.length === 0) { _showToast("该用户没有凭证"); return; }
     input.value = "";
     input.disabled = true;
     document.getElementById("btnChatSend").disabled = true;
-    _addIssueComment(userIssues[0], "｜CHAT｜" + msg).then(function() {
+    JITApi.sendChatMessage(currentChatUser.userId, "admin", msg, "").then(function() {
       input.disabled = false;
       document.getElementById("btnChatSend").disabled = false;
       loadChatMessages();
@@ -2247,16 +2214,7 @@ var JITAdmin = (function() {
         _showToast("上传图片中...");
         JITApi.uploadChatImage(file, "admin").then(function(url) {
           if (!url) { _showToast("图片上传失败"); return; }
-          var userIssues = [];
-          allIssues.forEach(function(issue) {
-            var data = _parseIssueBody(issue.body);
-            var uid = data.userId;
-            if (!uid && data.title) uid = data.title.replace(/\d+$/, "");
-            if (!uid) uid = issue.user ? issue.user.login : "";
-            if (uid === currentChatUser.userId) userIssues.push(issue.number);
-          });
-          if (userIssues.length === 0) { _showToast("该用户没有凭证"); return; }
-          return _addIssueComment(userIssues[0], "｜CHAT｜[IMG]" + url).then(function() {
+          return JITApi.sendChatMessage(currentChatUser.userId, "admin", "[IMG]" + url, url).then(function() {
             loadChatMessages();
           });
         }).catch(function(e) {

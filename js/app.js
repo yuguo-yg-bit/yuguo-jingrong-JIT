@@ -15,7 +15,6 @@ var JITApp = (function() {
   var _orderPhotoFiles = [];
   var _signatureData = null;
   var _editingVoucher = null;
-  var _chatIssueNumber = null;
 
   // 线上购物相关变量
   var _onlineProductFile = null;
@@ -254,8 +253,6 @@ var JITApp = (function() {
       }
       _currentUser = savedUser;
       _updateLogoutText();
-      var savedChat = localStorage.getItem("jit_chat_issue_" + savedUser);
-      if (savedChat) _chatIssueNumber = parseInt(savedChat, 10);
       _refreshPointsDisplay();
       _loadNotifications();
       return;
@@ -2747,75 +2744,30 @@ var JITApp = (function() {
     if (overlay) overlay.classList.remove("active");
   };
 
-  var _getUserIssues = function() {
-    var userIssues = [];
-    _allVouchers.forEach(function(v) {
-      if (v.username === _currentUser || v._username === _currentUser) {
-        userIssues.push(v._issueNumber);
-      }
-    });
-    if (_chatIssueNumber && userIssues.indexOf(_chatIssueNumber) === -1) {
-      userIssues.push(_chatIssueNumber);
-    }
-    return userIssues;
-  };
-
-  var _getOrCreateChatIssue = function() {
-    if (_chatIssueNumber) return Promise.resolve(_chatIssueNumber);
-    var issues = _getUserIssues();
-    if (issues.length > 0) {
-      _chatIssueNumber = issues[0];
-      localStorage.setItem("jit_chat_issue_" + _currentUser, String(_chatIssueNumber));
-      return Promise.resolve(_chatIssueNumber);
-    }
-    return JITApi.submitVoucher({
-      username: _currentUser,
-      shopName: "【聊天专用】",
-      amount: "0",
-      date: new Date().toISOString().split("T")[0],
-      paymentMethod: "chat",
-      remark: "聊天专用凭证"
-    }).then(function(result) {
-      _chatIssueNumber = result.number;
-      localStorage.setItem("jit_chat_issue_" + _currentUser, String(_chatIssueNumber));
-      return _chatIssueNumber;
-    });
-  };
-
   var _loadChatMessages = function() {
     var container = document.getElementById("chatMessages");
     if (!container) return;
     container.innerHTML = '<div class="chat-loading">加载中...</div>';
     if (!_currentUser) return;
-    var issues = _getUserIssues();
-    if (issues.length === 0) {
-      container.innerHTML = '<div class="chat-empty">欢迎！有问题随时提问～</div>';
-      return;
-    }
-    var promises = issues.map(function(num) {
-      return JITApi.getIssueComments(num);
-    });
-    Promise.all(promises).then(function(results) {
-      var allMsgs = [];
-      results.forEach(function(comments) {
-        comments.forEach(function(c) {
-          if (c.body && c.body.indexOf("｜CHAT｜") === 0) {
-            allMsgs.push({
-              type: c.user.login === JITConfig.getRepoOwner() ? "admin" : "user",
-              body: c.body.replace("｜CHAT｜", ""),
-              time: c.created_at,
-              user: c.user.login
-            });
-          }
-        });
+    JITApi.getChatMessages(_currentUser).then(function(msgs) {
+      var allMsgs = msgs.map(function(c) {
+        return {
+          type: c.sender === "admin" ? "admin" : "user",
+          body: c.content || "",
+          image_url: c.image_url || "",
+          time: c.created_at,
+          user: c.sender
+        };
       });
-      allMsgs.sort(function(a, b) { return new Date(a.time) - new Date(b.time); });
       if (allMsgs.length === 0) {
         container.innerHTML = '<div class="chat-empty">暂无消息，给客服发一条吧！</div>';
       } else {
         var html = "";
         allMsgs.forEach(function(msg) {
           html += '<div class="chat-message ' + msg.type + '">';
+          if (msg.image_url) {
+            html += '<div><img src="' + _escapeHtml(encodeURI(msg.image_url)) + '" style="max-width:200px;max-height:200px;border-radius:8px;cursor:pointer;" onclick="window.open(this.src)"></div>';
+          }
           if (msg.body.indexOf("[IMG]") === 0) {
             html += '<div><img src="' + _escapeHtml(encodeURI(msg.body.replace("[IMG]", ""))) + '" style="max-width:200px;max-height:200px;border-radius:8px;cursor:pointer;" onclick="window.open(this.src)"></div>';
           } else if (msg.body.indexOf("[VOUCHER]") === 0) {
@@ -2847,9 +2799,7 @@ var JITApp = (function() {
     input.value = "";
     input.disabled = true;
     document.getElementById("btnChatSend").disabled = true;
-    _getOrCreateChatIssue().then(function(issueNum) {
-      return JITApi.addIssueComment(issueNum, "｜CHAT｜" + msg);
-    }).then(function() {
+    JITApi.sendChatMessage(_currentUser, "user", msg, "").then(function() {
       _loadChatMessages();
       input.disabled = false;
       document.getElementById("btnChatSend").disabled = false;
@@ -2866,13 +2816,9 @@ var JITApp = (function() {
     _showToast("上传图片中...", "");
     var sendBtn = document.getElementById("btnChatSend");
     if (sendBtn) sendBtn.disabled = true;
-    _getOrCreateChatIssue().then(function(issueNum) {
-      return JITApi.uploadChatImage(file, _currentUser);
-    }).then(function(url) {
+    JITApi.uploadChatImage(file, _currentUser).then(function(url) {
       if (!url) { _showToast("图片上传失败", "error"); return; }
-      return _getOrCreateChatIssue().then(function(issueNum) {
-        return JITApi.addIssueComment(issueNum, "｜CHAT｜[IMG]" + url);
-      });
+      return JITApi.sendChatMessage(_currentUser, "user", "[IMG]" + url, url);
     }).then(function() {
       _loadChatMessages();
     }).catch(function(err) {
@@ -2909,9 +2855,7 @@ var JITApp = (function() {
       item.addEventListener("click", function() {
         var issueNum = this.getAttribute("data-issue");
         document.body.removeChild(overlay);
-        _getOrCreateChatIssue().then(function(chatIssueNum) {
-          return JITApi.addIssueComment(chatIssueNum, "｜CHAT｜[VOUCHER]" + issueNum);
-        }).then(function() {
+        JITApi.sendChatMessage(_currentUser, "user", "[VOUCHER]" + issueNum, "").then(function() {
           _showToast("凭证已发送", "success");
           _loadChatMessages();
         }).catch(function(err) {

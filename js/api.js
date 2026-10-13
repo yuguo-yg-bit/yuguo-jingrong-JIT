@@ -880,6 +880,40 @@ var JITApi = (function() {
     });
   };
 
+  // ======= 聊天系统（Turso） =======
+  var _getChatMessages = function(userId) {
+    return _tursoSql("SELECT * FROM chat_messages WHERE user_id=? ORDER BY created_at ASC", [userId]).then(function(result) {
+      return _tursoRowsToObjects(result.columns, result.rows);
+    });
+  };
+
+  var _sendChatMessage = function(userId, sender, content, imageUrl) {
+    var id = "chat_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+    var now = new Date().toISOString();
+    return _tursoSql(
+      "INSERT INTO chat_messages (id, user_id, sender, content, image_url, is_read, chat_mode, created_at) VALUES (?,?,?,?,?,?,?,?)",
+      [id, userId, sender, content, imageUrl || "", 0, "manual", now]
+    ).then(function() {
+      return { id: id, user_id: userId, sender: sender, content: content, image_url: imageUrl || "", created_at: now };
+    });
+  };
+
+  var _getAllChatUsers = function() {
+    return _tursoSql("SELECT DISTINCT user_id FROM chat_messages ORDER BY user_id", []).then(function(result) {
+      return _tursoRowsToObjects(result.columns, result.rows).map(function(r) { return r.user_id; });
+    });
+  };
+
+  var _getVoucherUsers = function() {
+    return _tursoSql("SELECT DISTINCT user_id FROM vouchers WHERE shop_name != '【聊天专用】' ORDER BY user_id", []).then(function(result) {
+      return _tursoRowsToObjects(result.columns, result.rows).map(function(r) { return r.user_id; });
+    });
+  };
+
+  var _markChatRead = function(userId) {
+    return _tursoSql("UPDATE chat_messages SET is_read=1 WHERE user_id=? AND sender='user'", [userId]);
+  };
+
   var _getIssueComments = function(issueNumber) {
     var url = _apiBase + "/repos/" + _repoFull + "/issues/" + issueNumber + "/comments?per_page=100";
     return _safeRequest(url, {
@@ -1264,6 +1298,11 @@ var JITApi = (function() {
     invalidateCache: _invalidateCache,
     getIssueComments: _getIssueComments,
     addIssueComment: _addIssueComment,
+    getChatMessages: _getChatMessages,
+    sendChatMessage: _sendChatMessage,
+    getAllChatUsers: _getAllChatUsers,
+    getVoucherUsers: _getVoucherUsers,
+    markChatRead: _markChatRead,
     uploadChatImage: _uploadChatImage,
     getIssue: _getIssue,
     markVoucherCompleted: _markVoucherCompleted,
