@@ -45,6 +45,17 @@ var JITApi = (function() {
       },
       body: JSON.stringify(body || {})
     }).then(function(resp) {
+      if (!resp.ok) {
+        return resp.text().then(function(txt) {
+          try {
+            var errJson = JSON.parse(txt);
+            throw new Error(errJson.error || "代理错误 HTTP " + resp.status);
+          } catch (parseErr) {
+            if (parseErr.message && parseErr.message.indexOf("代理错误 HTTP") === 0) throw parseErr;
+            throw new Error("代理错误 HTTP " + resp.status + ": " + txt.substring(0, 200));
+          }
+        });
+      }
       return resp.json();
     }).then(function(data) {
       if (data.error) throw new Error(data.error);
