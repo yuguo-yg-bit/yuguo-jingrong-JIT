@@ -6,27 +6,33 @@
 // ============================================================
 
 export default async function (req) {
-  const ALLOW_ORIGIN = "https://yuguoygbit.github.io";
+  const ALLOW_ORIGINS = ["https://www.yuguojinrong.cc.cd", "https://yuguo-yg-bit.github.io", "https://yuguoygbit.github.io"];
   const TURSO_API = process.env.TURSO_API_URL;
   const TURSO_TOKEN = process.env.TURSO_RW_TOKEN;
   const Github_TOKEN = process.env.GitHub_API_TOKEN;
 
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": ALLOW_ORIGIN,
-    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, X-Auth-Token",
-    "Access-Control-Max-Age": "86400",
-  };
+  function getCorsHeaders(origin) {
+    const allowed = ALLOW_ORIGINS.includes(origin) ? origin : ALLOW_ORIGINS[0];
+    return {
+      "Access-Control-Allow-Origin": allowed,
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, X-Auth-Token",
+      "Access-Control-Max-Age": "86400",
+    };
+  }
 
   function jsonResponse(data, status = 200) {
+    const origin = req.headers.get("origin") || "";
     return new Response(JSON.stringify(data), {
       status,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
     });
   }
 
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: corsHeaders });
+    const origin = req.headers.get("origin") || "";
+    const ch = getCorsHeaders(origin);
+    return new Response(null, { status: 204, headers: ch });
   }
 
   const url = new URL(req.url);
