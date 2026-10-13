@@ -660,7 +660,7 @@ var JITApi = (function() {
   var _submitVoucher = function(voucherData) {
     var id = String(voucherData.voucherId || Date.now());
     var now = new Date().toISOString();
-    var sql = "INSERT INTO vouchers (id, user_id, order_type, shop_name, shop_photo, order_photos, latitude, longitude, amount, discount, status, payment_status, payment_method, remark, signature, reject_reason, platform, order_no, product_photo, shopping_photos, electric_category, electric_brand, electric_apply_amount, electric_subsidy_rate, electric_subsidy_amount, review_result, final_price, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+    var sql = "INSERT INTO vouchers (id, user_id, order_type, shop_name, shop_photo, order_photos, latitude, longitude, amount, discounted_amount, discount, status, payment_status, payment_method, remark, signature, reject_reason, platform, order_no, product_photo, shopping_photos, electric_category, electric_brand, electric_apply_amount, electric_subsidy_rate, electric_subsidy_amount, review_result, final_price, is_urgent, urgent_reason, urgent_username, urgent_time, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
     var params = [
       id,
       voucherData.username || "",
@@ -671,6 +671,7 @@ var JITApi = (function() {
       voucherData.latitude || "",
       voucherData.longitude || "",
       String(voucherData.amount || "0"),
+      String(voucherData.discountedAmount || "0"),
       voucherData.discount || "",
       "待审核",
       "待支付",
@@ -689,6 +690,10 @@ var JITApi = (function() {
       String(voucherData.electricSubsidyAmount || "0"),
       voucherData.reviewResult || "",
       voucherData.finalPrice || "",
+      voucherData.isUrgent || voucherData.is_urgent ? "1" : "0",
+      voucherData.urgentReason || "",
+      voucherData.urgentUsername || "",
+      voucherData.urgentTime || "",
       now, now
     ];
     return _tursoSql(sql, params).then(function() {
