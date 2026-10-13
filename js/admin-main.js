@@ -438,7 +438,7 @@ var JITAdmin = (function() {
   };
 
   var openReview = function(issueNumber) {
-    var issue = allIssues.find(function(i) { return i.number === issueNumber; });
+    var issue = allIssues.find(function(i) { return String(i.number) === String(issueNumber); });
     if (!issue) return;
     currentIssue = issue;
     var data = _parseIssueBody(issue.body);
@@ -1248,11 +1248,111 @@ var JITAdmin = (function() {
   };
 
   var _openVoucherFromChat = function(issueNum) {
-    _apiGet(BASE_URL + "/repos/" + OWNER + "/" + REPO + "/issues/" + issueNum).then(function(issue) {
-      openReview(issue);
+    JITApi.getVoucherById(issueNum).then(function(v) {
+      if (!v) { _showToast("无法加载凭证 #" + issueNum); return; }
+      _showVoucherDetailPopup(v, issueNum);
     }).catch(function() {
       _showToast("无法加载凭证 #" + issueNum);
     });
+  };
+
+  var _showVoucherDetailPopup = function(v, issueNum) {
+    var overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px);";
+    var card = document.createElement("div");
+    card.style.cssText = "background:linear-gradient(135deg,#fdf8f0 0%,#faf3e6 30%,#fefefe 60%,#f8f2e8 100%);border-radius:16px;width:420px;max-width:94vw;max-height:82vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,0.25),0 2px 8px rgba(0,0,0,0.1);position:relative;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;";
+
+    var statusColor = "#9e9e9e";
+    var statusText = v.statusType || "pending";
+    if (statusText === "approved") { statusColor = "#4caf50"; statusText = "已通过"; }
+    else if (statusText === "rejected") { statusColor = "#f44336"; statusText = "已拒绝"; }
+    else if (statusText === "completed") { statusColor = "#2196f3"; statusText = "已完成"; }
+    else if (statusText === "paid") { statusColor = "#ff9800"; statusText = "已付款"; }
+    else { statusText = "待审核"; statusColor = "#ff9800"; }
+
+    var html = "";
+    html += '<div style="background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);color:#fff;padding:20px 24px;border-radius:16px 16px 0 0;position:relative;overflow:hidden;">';
+    html += '<div style="position:absolute;top:-20px;right:-20px;width:80px;height:80px;background:rgba(255,255,255,0.05);border-radius:50%;"></div>';
+    html += '<div style="position:absolute;bottom:-30px;left:-30px;width:100px;height:100px;background:rgba(255,255,255,0.03);border-radius:50%;"></div>';
+    html += '<div style="font-size:11px;opacity:0.7;letter-spacing:2px;text-transform:uppercase;">玉国金融 · 电子凭证</div>';
+    html += '<div style="font-size:22px;font-weight:700;margin-top:6px;position:relative;z-index:1;">' + _escapeHtml(v.shopName || "未知店铺") + '</div>';
+    html += '<div style="display:flex;align-items:center;gap:10px;margin-top:8px;position:relative;z-index:1;">';
+    html += '<span style="font-size:12px;opacity:0.75;">#' + _escapeHtml(String(issueNum)) + '</span>';
+    html += '<span style="background:' + statusColor + ';color:#fff;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;">' + statusText + '</span>';
+    html += '</div></div>';
+
+    html += '<div style="padding:16px 24px 6px;position:relative;">';
+    html += '<div style="position:absolute;left:12px;top:0;bottom:0;width:2px;background:repeating-linear-gradient(180deg,transparent,transparent 6px,rgba(180,160,130,0.3) 6px,rgba(180,160,130,0.3) 10px);"></div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;">';
+    html += _voucherField("📅 消费日期", v.date || "-");
+    html += _voucherField("💰 消费金额", v.originalPrice || v.amount || "-");
+    html += _voucherField("🏷️ 折扣", v.discount || "未抽奖");
+    html += _voucherField("💳 支付方式", v.paymentMethod || "-");
+    html += '</div>';
+
+    if (v.remark) {
+      html += '<div style="margin-top:8px;padding:10px 14px;background:rgba(0,0,0,0.03);border-radius:8px;border-left:3px solid #d4a853;">';
+      html += '<div style="font-size:10px;color:#999;margin-bottom:2px;">备注</div>';
+      html += '<div style="font-size:13px;color:#555;">' + _escapeHtml(v.remark) + '</div></div>';
+    }
+
+    if (v.rejectReason) {
+      html += '<div style="margin-top:8px;padding:10px 14px;background:rgba(244,67,54,0.07);border-radius:8px;border-left:3px solid #f44336;">';
+      html += '<div style="font-size:10px;color:#f44336;margin-bottom:2px;">拒绝原因</div>';
+      html += '<div style="font-size:13px;color:#d32f2f;">' + _escapeHtml(v.rejectReason) + '</div></div>';
+    }
+
+    if (v.shopPhoto) {
+      html += '<div style="margin-top:12px;"><div style="font-size:11px;color:#999;margin-bottom:4px;">📷 店铺照片</div>';
+      html += '<img src="' + encodeURI(v.shopPhoto) + '" style="width:100%;max-height:240px;object-fit:cover;border-radius:8px;border:1px solid rgba(0,0,0,0.08);"></div>';
+    }
+
+    if (v.orderPhotos) {
+      var urls = v.orderPhotos.split("|").map(function(s) { return s.trim(); }).filter(Boolean);
+      if (urls.length > 0) {
+        html += '<div style="margin-top:12px;"><div style="font-size:11px;color:#999;margin-bottom:4px;">📋 订单照片</div>';
+        urls.forEach(function(u) {
+          html += '<img src="' + encodeURI(u) + '" style="width:100%;max-height:200px;object-fit:cover;border-radius:8px;margin-top:6px;border:1px solid rgba(0,0,0,0.08);">';
+        });
+        html += '</div>';
+      }
+    }
+
+    if (v.signature) {
+      html += '<div style="margin-top:12px;"><div style="font-size:11px;color:#999;margin-bottom:4px;">✍️ 电子签名</div>';
+      html += '<img src="' + encodeURI(v.signature) + '" style="max-width:180px;max-height:80px;border-radius:6px;border:1px solid rgba(0,0,0,0.08);background:#fff;padding:4px;"></div>';
+    }
+
+    html += '</div>';
+
+    html += '<div style="padding:12px 24px 20px;display:flex;gap:8px;">';
+    html += '<button id="btnVoucherReview" style="flex:1;padding:10px;border:none;border-radius:10px;background:linear-gradient(135deg,#1a1a2e,#16213e);color:#fff;font-weight:600;cursor:pointer;font-size:13px;">📝 审核凭证</button>';
+    html += '<button id="btnVoucherClose" style="flex:1;padding:10px;border:1px solid #ddd;border-radius:10px;background:#fff;color:#666;cursor:pointer;font-size:13px;">关闭</button>';
+    html += '</div>';
+
+    card.innerHTML = html;
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+
+    document.getElementById("btnVoucherReview").addEventListener("click", function() {
+      document.body.removeChild(overlay);
+      var found = allIssues.find(function(i) { return String(i.number) === String(issueNum); });
+      if (found) {
+        openReview(issueNum);
+      } else {
+        _showToast("凭证 #" + issueNum + " 来自Turso数据库，请在凭证列表中审核");
+      }
+    });
+    document.getElementById("btnVoucherClose").addEventListener("click", function() {
+      document.body.removeChild(overlay);
+    });
+    overlay.addEventListener("click", function(e) {
+      if (e.target === overlay) document.body.removeChild(overlay);
+    });
+  };
+
+  var _voucherField = function(label, value) {
+    return '<div style="padding:6px 0;"><div style="font-size:10px;color:#aaa;letter-spacing:1px;text-transform:uppercase;">' + label + '</div><div style="font-size:14px;color:#333;font-weight:500;margin-top:2px;">' + _escapeHtml(String(value || "-")) + '</div></div>';
   };
 
   var _updateIssueStatus = function(issue, action, reason, extra) {
