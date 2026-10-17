@@ -1444,20 +1444,30 @@ var JITApi = (function() {
     bodyLines.push("｜ 邀请人：" + (row.referrer || ""));
     bodyLines.push("｜ 审核状态：" + (row.review_status || "pending"));
     bodyLines.push("｜ 注册时间：" + (row.created_at || ""));
+    if (row.oauth_provider) {
+      bodyLines.push("｜ 注册方式：大平台登录（" + row.oauth_provider + "）");
+      if (row.oauth_email) bodyLines.push("｜ 平台邮箱：" + row.oauth_email);
+      if (row.oauth_id) bodyLines.push("｜ 平台ID：" + row.oauth_id);
+    }
 
     var labels = [];
     if (row.review_status === "approved") labels.push({name: "registeredUser"});
     else if (row.review_status === "rejected") labels.push({name: "rejected"});
     labels.push({name: "registrationRequest"});
+    if (row.oauth_provider) labels.push({name: "oauthUser"});
 
     return {
       number: String(row.id),
-      title: "注册申请 - " + (row.username || ""),
+      title: "注册申请 - " + (row.username || "") + (row.oauth_provider ? " [GitHub]" : ""),
       state: "open",
       user: { login: row.username || "" },
       labels: labels,
       body: bodyLines.join("\n"),
-      created_at: row.created_at || ""
+      created_at: row.created_at || "",
+      _oauthProvider: row.oauth_provider || "",
+      _oauthEmail: row.oauth_email || "",
+      _oauthAvatar: row.oauth_avatar || "",
+      _oauthId: row.oauth_id || ""
     };
   };
 
@@ -1471,11 +1481,21 @@ var JITApi = (function() {
   var _approveRegistrationTurso = function(regId, regData) {
     if (!regData) return Promise.reject(new Error("缺少注册数据"));
     var now = new Date().toISOString();
+    var isOAuth = !!(regData._oauthProvider || regData.oauth_provider);
     return _tursoSql("UPDATE registrations SET review_status='approved' WHERE id=?", [String(regId)]).then(function() {
-      return _tursoSql(
-        "INSERT OR REPLACE INTO users (id, password_hash, full_name, birthdate, country, province, city, referrer, review_status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-        [regData.username, regData.password_hash, regData.full_name || "", regData.birthdate || "", regData.country || "", regData.province || "", regData.city || "", regData.referrer || "", "approved", now, now]
-      );
+      if (isOAuth) {
+        // OAuth 用户：UPDATE 已有的 users 记录
+        return _tursoSql(
+          "UPDATE users SET review_status='approved', full_name=?, updated_at=? WHERE id=?",
+          [regData.fullName || regData.full_name || "", now, regData.username]
+        );
+      } else {
+        // 普通注册用户：INSERT OR REPLACE users 记录
+        return _tursoSql(
+          "INSERT OR REPLACE INTO users (id, password_hash, full_name, birthdate, country, province, city, referrer, review_status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+          [regData.username, regData.password_hash, regData.full_name || "", regData.birthdate || "", regData.country || "", regData.province || "", regData.city || "", regData.referrer || "", "approved", now, now]
+        );
+      }
     });
   };
 
@@ -1512,6 +1532,45 @@ var JITApi = (function() {
   var _rejectRegistrationTurso = function(regId) {
     return _tursoSql("UPDATE registrations SET review_status='rejected' WHERE id=?", [String(regId)]);
   };
+
+  // ===== OAuth Token 验证 =====
+  var _oauthVerifyToken = function(token) {
+    return _tursoCall("/verify-oauth-token", { token: token }).then(function(result) {
+      if (!result.ok) throw new Error(result.error || "token 验证失败");
+      return result;
+    });
+  };
+
+  // ===== OAuth 数据库迁移（添加字段 + 创建 token 表）=====
+  var _runOAuthMigration = function() {
+    var migrations = [
+      "ALTER TABLE users ADD COLUMN oauth_provider TEXT DEFAULT ''",
+      "ALTER TABLE users ADD COLUMN oauth_id TEXT DEFAULT ''",
+      "ALTER TABLE registrations ADD COLUMN oauth_provider TEXT DEFAULT ''",
+      "ALTER TABLE registrations ADD COLUMN oauth_id TEXT DEFAULT ''",
+      "ALTER TABLE registrations ADD COLUMN oauth_email TEXT DEFAULT ''",
+      "ALTER TABLE registrations ADD COLUMN oauth_avatar TEXT DEFAULT ''",
+      "CREATE TABLE IF NOT EXISTS oauth_tokens (token TEXT PRIMARY KEY, username TEXT NOT NULL, oauth_id TEXT DEFAULT '', provider TEXT DEFAULT '', created_at TEXT DEFAULT '', expires_at TEXT DEFAULT '')"
+    ];
+    var chain = Promise.resolve();
+    migrations.forEach(function(sql) {
+      chain = chain.then(function() {
+        return _tursoSql(sql, []).catch(function(err) {
+          // ALTER TABLE 可能因为列已存在而失败，忽略错误
+          if (err.message && (err.message.indexOf("duplicate column") > -1 || err.message.indexOf("already exists") > -1)) {
+            return null;
+          }
+          throw err;
+        });
+      });
+    });
+    return chain;
+  };
+
+  // 初始化时运行迁移
+  _runOAuthMigration().catch(function(err) {
+    console.warn("OAuth 迁移跳过（可能已执行过）:", err.message);
+  });
 
   // ===== 加急黑名单 Turso 版 =====
   var _addToUrgentBlacklistTurso = function(username, reason, until, operator) {
@@ -1627,6 +1686,7 @@ var JITApi = (function() {
     addToBlacklistTurso: _addToBlacklistTurso,
     removeFromBlacklistTurso: _removeFromBlacklistTurso,
     getBlacklistRows: _getBlacklistRows,
+    oauthVerifyToken: _oauthVerifyToken,
     _tursoSql: _tursoSql,
     _tursoRowsToObjects: _tursoRowsToObjects
   };

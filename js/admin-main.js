@@ -2287,10 +2287,13 @@ var JITAdmin = (function() {
       list.forEach(function(item) {
         var d = item.data;
         var issueNum = item.issue.number;
+        var isOAuth = !!(item.issue._oauthProvider || d.oauth_provider || d["注册方式"]);
+        var oauthBadge = isOAuth ? '<span style="display:inline-block;background:#24292e;color:#fff;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:middle;" title="通过 ' + (item.issue._oauthProvider || d.oauth_provider || '大平台') + ' 注册">&#xf09b; GitHub</span>' : '';
         var status = d.reviewStatus || d.审核状态 || "待审核";
         var statusColor = status === "已通过" || status === "approved" ? "#4caf50" : (status === "已拒绝" || status === "rejected" ? "#f44336" : "#ff9800");
         var location = [d.country || d.国家, d.province || d.省份, d.city || d.城市].filter(Boolean).join(" / ") || "—";
         var tr = document.createElement("tr");
+        if (isOAuth) tr.style.background = "rgba(36,41,46,0.15)";
         var actionsHtml = "";
         if (status === "待审核" || status === "pending") {
           actionsHtml = '<button class="btn btn-approve" style="padding:4px 10px;font-size:12px;margin-right:4px;" onclick="JITAdmin._approveReg(\'' + issueNum + '\')">通过</button>' +
@@ -2299,7 +2302,7 @@ var JITAdmin = (function() {
           actionsHtml = '<span style="color:#999;font-size:12px;">已处理</span>';
         }
         tr.innerHTML = '<td>' + _escapeHtml(d.fullName || d.姓名 || "—") + '</td>' +
-          '<td>' + _escapeHtml(d.username || d.用户名 || "—") + '</td>' +
+          '<td>' + _escapeHtml(d.username || d.用户名 || "—") + oauthBadge + '</td>' +
           '<td>' + _escapeHtml(d.birthdate || d.出生日期 || "—") + '</td>' +
           '<td style="font-size:12px;">' + _escapeHtml(location) + '</td>' +
           '<td>' + _escapeHtml(d.referrer || d.邀请人 || "—") + '</td>' +
@@ -2321,6 +2324,8 @@ var JITAdmin = (function() {
       }
       if (!found) throw new Error("未找到注册申请");
       var bodyData = _parseIssueBody(found.body);
+      // 传递 OAuth 数据
+      var oauthProvider = found._oauthProvider || bodyData.oauth_provider || "";
       return JITApi.approveRegistrationTurso(regId, {
         username: bodyData.username || bodyData.用户名,
         password_hash: bodyData.password_hash || "",
@@ -2329,7 +2334,9 @@ var JITAdmin = (function() {
         country: bodyData.country || bodyData.国家,
         province: bodyData.province || bodyData.省份,
         city: bodyData.city || bodyData.城市,
-        referrer: bodyData.referrer || bodyData.邀请人
+        referrer: bodyData.referrer || bodyData.邀请人,
+        _oauthProvider: oauthProvider,
+        oauth_provider: oauthProvider
       }).then(function() {
         var promises = [];
         if (bodyData.username || bodyData.用户名) {

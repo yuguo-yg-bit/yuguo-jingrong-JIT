@@ -276,3 +276,22 @@ CREATE INDEX IF NOT EXISTS idx_lottery_tickets_user ON lottery_tickets(user_id);
 CREATE INDEX IF NOT EXISTS idx_lottery_tickets_status ON lottery_tickets(status);
 CREATE INDEX IF NOT EXISTS idx_win_wall_created ON win_wall(created_at);
 CREATE INDEX IF NOT EXISTS idx_user_monthly_user ON user_monthly_rewards(user_id, month_key);
+
+-- ============================================================
+-- v2.0 OAuth 大平台登录（GitHub / Microsoft / Apple / Email）
+-- ============================================================
+ALTER TABLE users ADD COLUMN oauth_provider TEXT DEFAULT '';
+ALTER TABLE users ADD COLUMN oauth_id TEXT DEFAULT '';
+ALTER TABLE registrations ADD COLUMN oauth_provider TEXT DEFAULT '';
+ALTER TABLE registrations ADD COLUMN oauth_id TEXT DEFAULT '';
+ALTER TABLE registrations ADD COLUMN oauth_email TEXT DEFAULT '';
+ALTER TABLE registrations ADD COLUMN oauth_avatar TEXT DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS oauth_tokens (
+  token TEXT PRIMARY KEY,
+  username TEXT NOT NULL,
+  oauth_id TEXT DEFAULT '',
+  provider TEXT DEFAULT '',
+  created_at TEXT DEFAULT '',
+  expires_at TEXT DEFAULT ''
+);

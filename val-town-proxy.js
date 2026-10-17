@@ -192,6 +192,177 @@ export default async function (req) {
       return jsonResponse({ ok: true, url: ghResult.content.download_url, path: filePath });
     }
 
+    // ========== GitHub OAuth 登录入口 ==========
+    if (path === "/oauth/github") {
+      const clientId = process.env.GITHUB_OAUTH_CLIENT_ID;
+      if (!clientId) return jsonResponse({ error: "GitHub OAuth 未配置，请设置 GITHUB_OAUTH_CLIENT_ID 环境变量" }, 500);
+      const state = url.searchParams.get("state") || "default";
+      const returnUrl = url.searchParams.get("return_url") || ALLOW_ORIGINS[0];
+      const githubAuthUrl = "https://github.com/login/oauth/authorize?" +
+        "client_id=" + encodeURIComponent(clientId) +
+        "&redirect_uri=" + encodeURIComponent("https://yuguoygbit--efeee912c58011f1af2f1607ee4eb77e.web.val.run/oauth/github/callback") +
+        "&scope=" + encodeURIComponent("user:email") +
+        "&state=" + encodeURIComponent(state + "|" + returnUrl);
+      return new Response(null, { status: 302, headers: { "Location": githubAuthUrl } });
+    }
+
+    // ========== GitHub OAuth 回调 ==========
+    if (path === "/oauth/github/callback") {
+      const code = url.searchParams.get("code");
+      const fullState = url.searchParams.get("state") || "default|" + ALLOW_ORIGINS[0];
+      const stateParts = fullState.split("|");
+      const state = stateParts[0] || "default";
+      const returnUrl = stateParts.slice(1).join("|") || ALLOW_ORIGINS[0];
+
+      if (!code) {
+        const redirectUrl = returnUrl + "/login?oauth_error=" + encodeURIComponent("授权被取消");
+        return new Response(null, { status: 302, headers: { "Location": redirectUrl } });
+      }
+
+      try {
+        const clientId = process.env.GITHUB_OAUTH_CLIENT_ID;
+        const clientSecret = process.env.GITHUB_OAUTH_CLIENT_SECRET;
+
+        // 1. 用 code 换取 access_token
+        const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json", "User-Agent": "ValTown-JIT" },
+          body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code: code })
+        });
+        const tokenData = await tokenRes.json();
+        const accessToken = tokenData.access_token;
+        if (!accessToken) throw new Error("获取 GitHub access_token 失败: " + (tokenData.error_description || tokenData.error || JSON.stringify(tokenData)));
+
+        // 2. 获取 GitHub 用户信息
+        const userRes = await fetch("https://api.github.com/user", {
+          headers: { "Authorization": "Bearer " + accessToken, "User-Agent": "ValTown-JIT" }
+        });
+        const githubUser = await userRes.json();
+        if (!githubUser.id) throw new Error("获取 GitHub 用户信息失败: " + (githubUser.message || ""));
+
+        // 3. 获取邮箱
+        const emailRes = await fetch("https://api.github.com/user/emails", {
+          headers: { "Authorization": "Bearer " + accessToken, "User-Agent": "ValTown-JIT" }
+        });
+        const emails = await emailRes.json();
+        const primaryEmail = Array.isArray(emails)
+          ? ((emails.find(function(e) { return e.primary; }) || emails[0] || {}).email || "")
+          : "";
+
+        const githubId = String(githubUser.id);
+        const githubUsername = (githubUser.login || "").replace(/[^a-zA-Z0-9_\\-]/g, "").substring(0, 39);
+        const githubName = githubUser.name || githubUsername || "";
+        const githubAvatar = githubUser.avatar_url || "";
+
+        if (!githubUsername) throw new Error("无法获取有效的 GitHub 用户名");
+
+        // 4. 查找是否已有该 OAuth 用户
+        const { data: lookupData } = await execTurso(
+          "SELECT id, review_status FROM users WHERE oauth_provider='github' AND oauth_id=?",
+          [githubId]
+        );
+        const lookupResult = lookupData.results?.[0];
+        let existingUsername = "";
+        let existingStatus = "";
+
+        if (lookupResult && lookupResult.type !== "error") {
+          const inner = lookupResult.response?.result || lookupResult.response?.results || {};
+          const rows = inner.rows || [];
+          if (rows.length > 0) {
+            existingUsername = typeof rows[0][0] === "object" && "value" in rows[0][0] ? rows[0][0].value : rows[0][0];
+            existingStatus = typeof rows[0][1] === "object" && "value" in rows[0][1] ? rows[0][1].value : rows[0][1];
+          }
+        }
+
+        const now = new Date().toISOString();
+
+        if (existingStatus === "approved") {
+          // 已审核用户 → 生成 token 直接登录
+          const token = crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).substring(2, 15));
+          const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+          await execTurso(
+            "INSERT INTO oauth_tokens (token, username, oauth_id, provider, created_at, expires_at) VALUES (?,?,?,?,?,?)",
+            [token, existingUsername, githubId, "github", now, expiresAt]
+          );
+          const redirectUrl = returnUrl + "/login?oauth_token=" + encodeURIComponent(token) + "&state=" + encodeURIComponent(state);
+          return new Response(null, { status: 302, headers: { "Location": redirectUrl } });
+        } else if (existingStatus === "pending") {
+          // 已有待审核记录
+          const redirectUrl = returnUrl + "/login?oauth_pending=1&username=" + encodeURIComponent(existingUsername) + "&state=" + encodeURIComponent(state);
+          return new Response(null, { status: 302, headers: { "Location": redirectUrl } });
+        }
+
+        // 5. 新用户 → 检查用户名是否被普通注册占用
+        const { data: nameCheck } = await execTurso(
+          "SELECT id FROM users WHERE id=?",
+          [githubUsername]
+        );
+        const nameResult = nameCheck.results?.[0];
+        let finalUsername = githubUsername;
+        if (nameResult && nameResult.type !== "error") {
+          const inner = nameResult.response?.result || nameResult.response?.results || {};
+          if ((inner.rows || []).length > 0) {
+            finalUsername = "gh_" + githubId.substring(0, 30);
+          }
+        }
+
+        // 6. 创建注册申请
+        const regId = crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).substring(2, 15));
+        await execTurso(
+          "INSERT OR REPLACE INTO registrations (id, username, password_hash, full_name, birthdate, country, province, city, referrer, review_status, oauth_provider, oauth_id, oauth_email, oauth_avatar, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          [regId, finalUsername, "", githubName, "", "", "", "", "", "pending", "github", githubId, primaryEmail, githubAvatar, now]
+        );
+
+        // 同时创建 users 记录（pending 状态，无密码哈希，OAuth 登录用）
+        await execTurso(
+          "INSERT OR IGNORE INTO users (id, password_hash, full_name, review_status, oauth_provider, oauth_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+          [finalUsername, "", githubName, "pending", "github", githubId, now, now]
+        );
+
+        const redirectUrl = returnUrl + "/login?oauth_pending=1&username=" + encodeURIComponent(finalUsername) + "&state=" + encodeURIComponent(state);
+        return new Response(null, { status: 302, headers: { "Location": redirectUrl } });
+
+      } catch (e) {
+        const redirectUrl = returnUrl + "/login?oauth_error=" + encodeURIComponent(e.message || "OAuth 处理失败");
+        return new Response(null, { status: 302, headers: { "Location": redirectUrl } });
+      }
+    }
+
+    // ========== 验证 OAuth Token ==========
+    if (path === "/verify-oauth-token" && req.method === "POST") {
+      const body = await req.json();
+      const { token } = body;
+      if (!token) return jsonResponse({ error: "缺少 token 参数" }, 400);
+
+      const { data } = await execTurso(
+        "SELECT username, provider, oauth_id, expires_at FROM oauth_tokens WHERE token=?",
+        [token]
+      );
+
+      const result = data.results?.[0];
+      if (!result || result.type === "error") return jsonResponse({ error: "无效的 token" }, 401);
+
+      const inner = result.response?.result || result.response?.results || {};
+      const rows = inner.rows || [];
+      if (rows.length === 0) return jsonResponse({ error: "无效的 token" }, 401);
+
+      const row = rows[0];
+      const uname = typeof row[0] === "object" && "value" in row[0] ? row[0].value : row[0];
+      const provider = typeof row[1] === "object" && "value" in row[1] ? row[1].value : row[1];
+      const oauthId = typeof row[2] === "object" && "value" in row[2] ? row[2].value : row[2];
+      const expiresAt = typeof row[3] === "object" && "value" in row[3] ? row[3].value : row[3];
+
+      if (new Date(expiresAt) < new Date()) {
+        await execTurso("DELETE FROM oauth_tokens WHERE token=?", [token]);
+        return jsonResponse({ error: "token 已过期，请重新登录" }, 401);
+      }
+
+      // 一次性 token，用完销毁
+      await execTurso("DELETE FROM oauth_tokens WHERE token=?", [token]);
+
+      return jsonResponse({ ok: true, username: uname, provider: provider, oauth_id: oauthId });
+    }
+
     return jsonResponse({ error: "未知路径" }, 404);
   } catch (e) {
     return jsonResponse({ error: e.message }, 500);
