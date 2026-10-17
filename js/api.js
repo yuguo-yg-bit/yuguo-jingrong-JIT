@@ -1551,7 +1551,21 @@ var JITApi = (function() {
     });
   };
 
+  // ===== v2.0 管理员后端登录验证（不从数据库拉哈希，用 SQL WHERE 比对）=====
+  var _adminLogin = function(passwordHash) {
+    return _tursoSql(
+      "SELECT id FROM users WHERE id='admin' AND password_hash=? AND is_admin=1",
+      [passwordHash]
+    ).then(function(result) {
+      var objs = _tursoRowsToObjects(result.columns, result.rows);
+      return objs.length > 0;
+    }).catch(function() {
+      return false;
+    });
+  };
+
   return {
+    adminLogin: _adminLogin,
     getVouchers: _getVouchers,
     getAllVouchers: _getAllVouchers,
     submitVoucher: _submitVoucher,

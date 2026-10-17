@@ -173,8 +173,12 @@ CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created
 -- ============================================================
 -- 初始数据
 -- ============================================================
+-- 管理员密码：JIT@2026#YuGuoAdmin（sha256盐+密码）
 INSERT OR IGNORE INTO users (id, password_hash, full_name, review_status, points, is_admin)
-VALUES ('admin', '86e1df29a846be596ceb035cec48c0d536c5549aa367722febb77ddb4b9e2556', '管理员', 'approved', 0, 1);
+VALUES ('admin', 'f0de2414c97026fb2298490f23d34a01bca8c0227f0d03580a2f41109dda172a', '管理员', 'approved', 0, 1);
+
+-- 如果是已有数据库升级，更新管理员密码哈希
+UPDATE users SET password_hash='f0de2414c97026fb2298490f23d34a01bca8c0227f0d03580a2f41109dda172a' WHERE id='admin';
 
 INSERT OR IGNORE INTO users (id, password_hash, full_name, review_status, points)
 VALUES ('谭绣云', 'a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3', '谭绣云', 'approved', 0);

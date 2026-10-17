@@ -6,11 +6,7 @@ var JITAdmin = (function() {
 
   // 管理员密码：SHA-256(盐 + 明文密码)
   // 盐: yuguo-jr-salt-2024
-  // 明文: 27015150111
-  // 生成方式: sha256("yuguo-jr-salt-2024" + "27015150111") => hash hex
-  // 可用 node -e "require('crypto').createHash('sha256').update('yuguo-jr-salt-202427015150111').digest('hex')" 生成
   var ADMIN_SALT = "yuguo-jr-salt-2024";
-  var ADMIN_PASSWORD_HASH = "86e1df29a846be596ceb035cec48c0d536c5549aa367722febb77ddb4b9e2556";
   var MAX_ATTEMPTS = 5;
   var LOCKOUT_MINUTES = 15;
   var currentIssue = null;
@@ -1871,32 +1867,39 @@ var JITAdmin = (function() {
       btn.disabled = true;
       btn.textContent = "验证中...";
       _sha256(ADMIN_SALT + password).then(function(hash) {
-        if (hash === ADMIN_PASSWORD_HASH) {
-          _isLoggedIn = true;
-          localStorage.removeItem(_attemptsKey);
-          localStorage.removeItem(_lockoutKey);
-          document.getElementById("loginOverlay").style.opacity = "0";
-          document.getElementById("loginOverlay").style.visibility = "hidden";
-          document.getElementById("adminUser").textContent = "管理员";
-          loadIssues();  // 首次进入：加载默认显示的「凭证审核」页
-        } else {
-          var attempts = parseInt(localStorage.getItem(_attemptsKey) || "0", 10) + 1;
-          localStorage.setItem(_attemptsKey, String(attempts));
-          var remain = MAX_ATTEMPTS - attempts;
-          document.getElementById("remainAttempts").textContent = Math.max(0, remain);
-          errorEl.style.display = "block";
-          errorEl.textContent = "密码错误！还剩 " + Math.max(0, remain) + " 次尝试";
-          if (remain <= 0) {
-            var lockoutTime = Date.now() + LOCKOUT_MINUTES * 60 * 1000;
-            localStorage.setItem(_lockoutKey, String(lockoutTime));
-            errorEl.textContent = "已锁定 " + LOCKOUT_MINUTES + " 分钟！";
-            document.getElementById("adminPassword").disabled = true;
+        JITApi.adminLogin(hash).then(function(ok) {
+          if (ok) {
+            _isLoggedIn = true;
+            localStorage.removeItem(_attemptsKey);
+            localStorage.removeItem(_lockoutKey);
+            document.getElementById("loginOverlay").style.opacity = "0";
+            document.getElementById("loginOverlay").style.visibility = "hidden";
+            document.getElementById("adminUser").textContent = "管理员";
+            loadIssues();
           } else {
-            btn.disabled = false;
-            btn.textContent = "登录";
+            var attempts = parseInt(localStorage.getItem(_attemptsKey) || "0", 10) + 1;
+            localStorage.setItem(_attemptsKey, String(attempts));
+            var remain = MAX_ATTEMPTS - attempts;
+            document.getElementById("remainAttempts").textContent = Math.max(0, remain);
+            errorEl.style.display = "block";
+            errorEl.textContent = "密码错误！还剩 " + Math.max(0, remain) + " 次尝试";
+            if (remain <= 0) {
+              var lockoutTime = Date.now() + LOCKOUT_MINUTES * 60 * 1000;
+              localStorage.setItem(_lockoutKey, String(lockoutTime));
+              errorEl.textContent = "已锁定 " + LOCKOUT_MINUTES + " 分钟！";
+              document.getElementById("adminPassword").disabled = true;
+            } else {
+              btn.disabled = false;
+              btn.textContent = "登录";
+            }
+            document.getElementById("adminPassword").value = "";
           }
-          document.getElementById("adminPassword").value = "";
-        }
+        }).catch(function() {
+          errorEl.style.display = "block";
+          errorEl.textContent = "验证失败，请重试";
+          btn.disabled = false;
+          btn.textContent = "登录";
+        });
       }).catch(function() {
         errorEl.style.display = "block";
         errorEl.textContent = "验证失败，请重试";
