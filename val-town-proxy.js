@@ -313,9 +313,9 @@ export default async function (req) {
           [regId, finalUsername, "", githubName, "", "", "", "", "", "pending", "github", githubId, primaryEmail, githubAvatar, now]
         );
 
-        // 同时创建 users 记录（pending 状态，无密码哈希，OAuth 登录用）
+        // 同时创建/更新 users 记录（pending 状态，即使已有同名用户也写入 OAuth 字段）
         await execTurso(
-          "INSERT OR IGNORE INTO users (id, password_hash, full_name, review_status, oauth_provider, oauth_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+          "INSERT INTO users (id, password_hash, full_name, review_status, oauth_provider, oauth_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET oauth_provider=EXCLUDED.oauth_provider, oauth_id=EXCLUDED.oauth_id, updated_at=EXCLUDED.updated_at",
           [finalUsername, "", githubName, "pending", "github", githubId, now, now]
         );
 

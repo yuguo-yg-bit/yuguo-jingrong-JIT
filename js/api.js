@@ -1484,10 +1484,10 @@ var JITApi = (function() {
     var isOAuth = !!(regData._oauthProvider || regData.oauth_provider);
     return _tursoSql("UPDATE registrations SET review_status='approved' WHERE id=?", [String(regId)]).then(function() {
       if (isOAuth) {
-        // OAuth 用户：UPDATE 已有的 users 记录
+        // OAuth 用户：UPSERT 确保 users 记录存在且 OAuth 字段写入
         return _tursoSql(
-          "UPDATE users SET review_status='approved', full_name=?, updated_at=? WHERE id=?",
-          [regData.fullName || regData.full_name || "", now, regData.username]
+          "INSERT INTO users (id, password_hash, full_name, review_status, oauth_provider, oauth_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET review_status='approved', full_name=EXCLUDED.full_name, oauth_provider=COALESCE(NULLIF(EXCLUDED.oauth_provider,''), users.oauth_provider), oauth_id=COALESCE(NULLIF(EXCLUDED.oauth_id,''), users.oauth_id), updated_at=EXCLUDED.updated_at",
+          [regData.username, "", regData.fullName || regData.full_name || "", "approved", oauthProvider, (regData.oauth_id || regData._oauthId || ""), now, now]
         );
       } else {
         // 普通注册用户：INSERT OR REPLACE users 记录
