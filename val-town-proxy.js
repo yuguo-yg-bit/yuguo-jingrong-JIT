@@ -492,7 +492,7 @@ export default async function (req) {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            from: "玉国金融 <noreply@yuguojinrong.cc.cd>",
+            from: "玉国金融 <onboarding@resend.dev>",
             to: [email],
             subject: "玉国金融 - 登录链接",
             html: '<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:20px;">' +
