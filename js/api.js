@@ -856,7 +856,7 @@ var JITApi = (function() {
 
   var _getAllVouchers = function() {
     return _getCachedOrFetch("allVouchers", function() {
-      return _tursoSql("SELECT * FROM vouchers ORDER BY created_at DESC", []).then(function(result) {
+      return _tursoSql("SELECT * FROM vouchers WHERE user_id NOT LIKE '【%】%' AND shop_name NOT LIKE '【%】%' ORDER BY created_at DESC", []).then(function(result) {
         var objs = _tursoRowsToObjects(result.columns, result.rows);
         return objs.map(_dbRowToVoucherData);
       });
@@ -1046,7 +1046,7 @@ var JITApi = (function() {
         method: "POST",
         headers: _headers(),
         body: JSON.stringify({
-          title: "【注册申请】" + data.fullName + "（" + username + "）",
+          title: "注册申请 - " + data.fullName + "（" + username + "）",
           body: _formatUserBody(data),
           labels: ["voucher", label]
         })
@@ -1372,7 +1372,7 @@ var JITApi = (function() {
   };
 
   var _getAllVoucherIssueObjects = function() {
-    return _tursoSql("SELECT * FROM vouchers WHERE status != '已删除' ORDER BY created_at DESC", []).then(function(result) {
+    return _tursoSql("SELECT * FROM vouchers WHERE status != '已删除' AND user_id NOT LIKE '【%】%' AND shop_name NOT LIKE '【%】%' ORDER BY created_at DESC", []).then(function(result) {
       var objs = _tursoRowsToObjects(result.columns, result.rows);
       return objs.map(_tursoVoucherToIssue);
     });

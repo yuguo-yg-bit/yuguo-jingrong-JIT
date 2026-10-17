@@ -141,7 +141,7 @@ var JITPoints = (function() {
       lastSignIn: "",
       streakDays: 0
     };
-    var title = "【积分】" + username;
+    var title = "积分 - " + username;
     var url = _apiBase + "/repos/" + _repoFull + "/issues";
     return _req(url, {
       method: "POST",
