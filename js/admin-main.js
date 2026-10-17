@@ -17,6 +17,46 @@ var JITAdmin = (function() {
   var _attemptsKey = "jit_admin_attempts";
   var _lockoutKey = "jit_admin_lockout";
 
+  // ===== 快捷：重置管理员密码（浏览器 console 调用） =====
+  window.resetAdminPassword = function(newPassword) {
+    if (!newPassword || newPassword.length < 3) {
+      console.log("用法: resetAdminPassword('新密码')");
+      return;
+    }
+    console.log("正在重置管理员密码...");
+    _sha256(ADMIN_SALT + newPassword).then(function(hash) {
+      console.log("Hash:", hash);
+      JITApi.updateUserPassword("admin", hash).then(function(r) {
+        console.log("✅ 管理员密码已重置为:", newPassword, r);
+        alert("管理员密码已重置为: " + newPassword);
+      }).catch(function(e) {
+        console.error("❌ 重置失败:", e);
+        alert("重置失败: " + e.message);
+      });
+    });
+  };
+
+  // ===== 快捷：清除管理员锁定（浏览器 console 调用） =====
+  window.clearAdminLockout = function() {
+    localStorage.removeItem(_lockoutKey);
+    localStorage.removeItem(_attemptsKey);
+    var passField = document.getElementById("adminPassword");
+    if (passField) {
+      passField.disabled = false;
+      passField.placeholder = "请输入管理员密码";
+      passField.focus();
+    }
+    var errEl = document.getElementById("loginError");
+    if (errEl) { errEl.style.display = "none"; errEl.textContent = ""; }
+    var btnEl = document.getElementById("btnAdminLogin");
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = "登录"; }
+    var remainEl = document.getElementById("remainAttempts");
+    if (remainEl) remainEl.textContent = String(5);
+    console.log("✅ 已清除管理员锁定，剩余5次尝试");
+    alert("已解除锁定！请刷新页面后登录");
+  };
+  console.log("🔧 管理工具已加载: clearAdminLockout() 解除锁定 | resetAdminPassword('新密码') 重置密码");
+
   // SHA-256 哈希辅助函数（异步）
   var _sha256 = function(text) {
     if (window.crypto && window.crypto.subtle) {
