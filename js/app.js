@@ -59,6 +59,7 @@ var JITApp = (function() {
   var _currentPoints = 0;
   var _pendingPaymentVoucher = null;  // 当前打开支付弹窗的凭证
   var _pointsOffsetUsed = false;      // 该笔是否已用积分抵消
+  var _renderTaskRefreshing = false; // 防_renderTasks无限递归
 
   var _currentFrozen = false;
 
@@ -2494,8 +2495,12 @@ var JITApp = (function() {
     // 保存奖励记录
     _setTaskRewards(rewards);
 
-    // 刷新用户中心
-    _refreshUserCenterUI();
+    // 刷新用户中心（带防递归标志）
+    if (!_renderTaskRefreshing) {
+      _renderTaskRefreshing = true;
+      _refreshUserCenterUI();
+      _renderTaskRefreshing = false;
+    }
   };
 
   // ===== v2.0 风控状态 =====
