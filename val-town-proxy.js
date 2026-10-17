@@ -459,6 +459,153 @@ export default async function (req) {
       }
     }
 
+    // ========== Email 魔法链接登录 ==========
+    if (path === "/oauth/email/send" && req.method === "POST") {
+      const { email, returnUrl } = await req.json();
+      if (!email) return jsonResponse({ error: "缺少邮箱地址" }, 400);
+      // 简单邮箱格式校验
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonResponse({ error: "邮箱格式不正确" }, 400);
+
+      try {
+        const token = crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).substring(2, 15));
+        const now = new Date().toISOString();
+        const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+
+        await execTurso(
+          "INSERT INTO oauth_tokens (token, username, oauth_id, provider, created_at, expires_at) VALUES (?,?,?,?,?,?)",
+          [token, "", email.toLowerCase(), "email", now, expiresAt]
+        );
+
+        const baseUrl = returnUrl || process.env.SITE_URL || ALLOW_ORIGINS[0];
+        const magicLink = baseUrl + "/login?email_token=" + encodeURIComponent(token) + "&email=" + encodeURIComponent(email);
+
+        const resendKey = process.env.RESEND_API_KEY;
+        if (!resendKey) {
+          // 没有配置 Resend 时，直接返回链接（调试用）
+          return jsonResponse({ ok: true, magicLink: magicLink, note: "RESEND_API_KEY 未配置，手动使用此链接测试" });
+        }
+
+        const emailRes = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Authorization": "Bearer " + resendKey,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            from: "玉国金融 <noreply@yuguojinrong.cc.cd>",
+            to: [email],
+            subject: "玉国金融 - 登录链接",
+            html: '<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:20px;">' +
+              '<h2 style="color:#b8860b;">玉国金融</h2>' +
+              '<p>您好！</p>' +
+              '<p>点击下方按钮即可登录：</p>' +
+              '<a href="' + magicLink + '" style="display:inline-block;background:#b8860b;color:#fff;padding:12px 30px;text-decoration:none;border-radius:6px;font-size:16px;margin:16px 0;">登录玉国金融</a>' +
+              '<p style="color:#999;font-size:12px;">此链接 15 分钟内有效。如非本人操作请忽略。</p>' +
+              '<p style="color:#999;font-size:12px;">链接：' + magicLink + '</p>' +
+              '</div>'
+          })
+        });
+
+        const emailData = await emailRes.json();
+        if (emailData.id) return jsonResponse({ ok: true, message: "登录链接已发送" });
+        return jsonResponse({ ok: true, message: "登录链接已发送" });
+      } catch (e) {
+        return jsonResponse({ error: "发送失败: " + (e.message || "未知错误") }, 500);
+      }
+    }
+
+    // ========== Email 魔法链接验证 ==========
+    if (path === "/oauth/email/verify" && req.method === "POST") {
+      const { token, email } = await req.json();
+      if (!token || !email) return jsonResponse({ error: "缺少 token 或 email 参数" }, 400);
+
+      try {
+        // 1. 验证 token
+        const now = new Date().toISOString();
+        const { data: tokenData } = await execTurso(
+          "SELECT username, oauth_id, provider, expires_at FROM oauth_tokens WHERE token=? AND provider='email' AND oauth_id=?",
+          [token, email.toLowerCase()]
+        );
+        const tokenResult = tokenData.results?.[0];
+        if (!tokenResult || tokenResult.type === "error" || !tokenResult.response?.result?.rows?.length) {
+          return jsonResponse({ error: "链接无效或已过期" }, 401);
+        }
+        const rows = tokenResult.response.result.rows;
+        const tokenExpires = (typeof rows[0][3] === "object" && "value" in rows[0][3]) ? rows[0][3].value : rows[0][3];
+        if (tokenExpires < now) return jsonResponse({ error: "链接已过期，请重新发送" }, 401);
+
+        // 2. 删除已用的 token
+        await execTurso("DELETE FROM oauth_tokens WHERE token=?", [token]);
+
+        const emailLower = email.toLowerCase();
+        const emailUsername = emailLower.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "").substring(0, 30);
+
+        // 3. 查找是否已有该 email 注册的用户
+        const { data: lookupData } = await execTurso(
+          "SELECT id, review_status FROM users WHERE oauth_provider='email' AND oauth_id=?",
+          [emailLower]
+        );
+        const lookupResult = lookupData.results?.[0];
+        let existingUsername = "";
+        let existingStatus = "";
+
+        if (lookupResult && lookupResult.type !== "error") {
+          const inner = lookupResult.response?.result || lookupResult.response?.results || {};
+          const r = inner.rows || [];
+          if (r.length > 0) {
+            existingUsername = typeof r[0][0] === "object" && "value" in r[0][0] ? r[0][0].value : r[0][0];
+            existingStatus = typeof r[0][1] === "object" && "value" in r[0][1] ? r[0][1].value : r[0][1];
+          }
+        }
+
+        // 4. 已审核 → 发 OAuth token
+        if (existingStatus === "approved") {
+          const loginToken = crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).substring(2, 15));
+          const loginExpires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+          await execTurso(
+            "INSERT INTO oauth_tokens (token, username, oauth_id, provider, created_at, expires_at) VALUES (?,?,?,?,?,?)",
+            [loginToken, existingUsername, emailLower, "email", now, loginExpires]
+          );
+          return jsonResponse({ ok: true, oauth_token: loginToken, username: existingUsername });
+        }
+
+        if (existingStatus === "pending") {
+          return jsonResponse({ pending: true, username: existingUsername, message: "账户审核中" });
+        }
+
+        // 5. 新用户 → 检查用户名
+        const { data: nameCheck } = await execTurso(
+          "SELECT id FROM users WHERE id=?",
+          [emailUsername]
+        );
+        const nameResult = nameCheck.results?.[0];
+        let finalUsername = emailUsername;
+        if (nameResult && nameResult.type !== "error") {
+          const inner = nameResult.response?.result || nameResult.response?.results || {};
+          if ((inner.rows || []).length > 0) {
+            finalUsername = "em_" + emailLower.replace(/[^a-z0-9]/g, "").substring(0, 27);
+          }
+        }
+
+        // 6. 创建注册申请
+        const regId = crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).substring(2, 15));
+        await execTurso(
+          "INSERT OR REPLACE INTO registrations (id, username, password_hash, full_name, birthdate, country, province, city, referrer, review_status, oauth_provider, oauth_id, oauth_email, oauth_avatar, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          [regId, finalUsername, "", "", "", "", "", "", "", "pending", "email", emailLower, emailLower, "", now]
+        );
+
+        await execTurso(
+          "INSERT INTO users (id, password_hash, full_name, review_status, oauth_provider, oauth_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET oauth_provider=EXCLUDED.oauth_provider, oauth_id=EXCLUDED.oauth_id, updated_at=EXCLUDED.updated_at",
+          [finalUsername, "", "", "pending", "email", emailLower, now, now]
+        );
+
+        return jsonResponse({ pending: true, username: finalUsername, message: "注册申请已提交，请等待管理员审核" });
+
+      } catch (e) {
+        return jsonResponse({ error: "验证失败: " + (e.message || "未知错误") }, 500);
+      }
+    }
+
     // ========== 验证 OAuth Token ==========
     if (path === "/verify-oauth-token" && req.method === "POST") {
       const body = await req.json();

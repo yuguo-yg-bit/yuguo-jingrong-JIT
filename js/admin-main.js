@@ -2294,6 +2294,8 @@ var JITAdmin = (function() {
           oauthBadge = '<span style="display:inline-block;background:#24292e;color:#fff;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:middle;" title="通过 GitHub 注册">GitHub</span>';
         } else if (provider === "microsoft") {
           oauthBadge = '<span style="display:inline-block;background:#00a4ef;color:#fff;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:middle;" title="通过 Microsoft 注册">Microsoft</span>';
+        } else if (provider === "email") {
+          oauthBadge = '<span style="display:inline-block;background:#b8860b;color:#fff;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:middle;" title="通过 Email 注册">Email</span>';
         } else if (isOAuth) {
           oauthBadge = '<span style="display:inline-block;background:#666;color:#fff;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:middle;" title="通过大平台注册">OAuth</span>';
         }

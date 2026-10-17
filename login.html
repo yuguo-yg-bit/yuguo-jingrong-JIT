@@ -260,6 +260,11 @@
   background: #f0f0f0;
   border-color: #aaa;
 }
+.email-login { margin-top: 12px; }
+.email-login-input { display: flex; gap: 8px; }
+.email-login-input .form-input { flex: 1; margin-bottom: 0; }
+.btn-oauth.email { background: #b8860b; color: #fff; border-color: #b8860b; white-space: nowrap; min-width: auto; padding: 0 16px; }
+.btn-oauth.email:hover { background: #9a7209; }
 .btn-oauth svg {
   width: 20px;
   height: 20px;
@@ -427,6 +432,14 @@
             <svg viewBox="0 0 21 21" fill="currentColor" style="width:20px;height:20px;"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>
             使用 Microsoft 登录
           </button>
+        </div>
+        <div class="email-login">
+          <div class="email-login-input">
+            <input type="email" class="form-input" id="emailMagicInput" placeholder="输入邮箱地址">
+            <button class="btn-oauth email" id="btnEmailLogin">发送登录链接</button>
+          </div>
+          <div class="form-success" id="emailSuccess" style="display:none;margin-top:8px;">登录链接已发送，请检查邮箱</div>
+          <div class="form-error" id="emailError" style="display:none;margin-top:8px;"></div>
         </div>
       </div>
 
@@ -888,6 +901,40 @@
     window.location.href = msUrl;
   });
 
+  // ========= Email 魔法链接登录 =========
+  document.getElementById("btnEmailLogin").addEventListener("click", function() {
+    var emailInput = document.getElementById("emailMagicInput");
+    var email = (emailInput.value || "").trim();
+    var errEl = document.getElementById("emailError");
+    var okEl = document.getElementById("emailSuccess");
+    errEl.style.display = "none";
+    okEl.style.display = "none";
+    if (!email) { errEl.style.display = "block"; errEl.textContent = "请输入邮箱地址"; return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { errEl.style.display = "block"; errEl.textContent = "邮箱格式不正确"; return; }
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = "发送中...";
+    fetch(_proxyBase + "/oauth/email/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email, returnUrl: _currentPageUrl })
+    }).then(function(r) { return r.json(); }).then(function(data) {
+      if (data.ok) {
+        okEl.style.display = "block";
+        okEl.textContent = "登录链接已发送到 " + email + "，请查收邮件";
+      } else {
+        errEl.style.display = "block";
+        errEl.textContent = data.error || "发送失败";
+      }
+    }).catch(function(e) {
+      errEl.style.display = "block";
+      errEl.textContent = "网络错误: " + e.message;
+    }).finally(function() {
+      btn.disabled = false;
+      btn.textContent = "发送登录链接";
+    });
+  });
+
   // ========= OAuth 回调处理 =========
   (function() {
     var params = new URLSearchParams(window.location.search);
@@ -895,6 +942,8 @@
     var oauthPending = params.get("oauth_pending");
     var oauthError = params.get("oauth_error");
     var oauthState = params.get("state");
+    var emailToken = params.get("email_token");
+    var emailParam = params.get("email");
 
     // 清除 URL 参数
     if (oauthToken || oauthPending || oauthError) {
@@ -913,6 +962,46 @@
       var errorBanner = document.getElementById("oauthErrorBanner");
       errorBanner.style.display = "block";
       errorBanner.textContent = "⚠️ 大平台登录失败：" + decodeURIComponent(oauthError).replace(/\+/g, " ");
+    }
+
+    // ========= Email 魔法链接回调 =========
+    if (emailToken && emailParam) {
+      var cleanUrl2 = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl2);
+
+      var btn = document.getElementById("btnEmailLogin");
+      btn.disabled = true;
+      btn.textContent = "验证中...";
+      fetch(_proxyBase + "/oauth/email/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: emailToken, email: emailParam })
+      }).then(function(r) { return r.json(); }).then(function(data) {
+        if (data.oauth_token) {
+          return JITApi.oauthVerifyToken(data.oauth_token);
+        } else if (data.pending) {
+          var pendingBanner = document.getElementById("oauthPendingBanner");
+          pendingBanner.style.display = "block";
+          if (data.username) document.getElementById("oauthPendingUser").textContent = data.username;
+          _switchTab("login");
+          return Promise.resolve();
+        } else {
+          throw new Error(data.error || "验证失败");
+        }
+      }).then(function(result) {
+        if (result && result.username) {
+          localStorage.setItem("jit_current_user", result.username);
+          _showToast("登录成功，欢迎 " + result.username, "success");
+          setTimeout(function() { window.location.replace("/work"); }, 600);
+        }
+      }).catch(function(err) {
+        var errorBanner = document.getElementById("oauthErrorBanner");
+        errorBanner.style.display = "block";
+        errorBanner.textContent = "⚠️ 邮箱登录失败：" + (err.message || "请重试");
+      }).finally(function() {
+        btn.disabled = false;
+        btn.textContent = "发送登录链接";
+      });
     }
 
     if (oauthToken) {
