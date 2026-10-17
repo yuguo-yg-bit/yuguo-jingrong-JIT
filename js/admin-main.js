@@ -272,7 +272,7 @@ var JITAdmin = (function() {
     row.querySelectorAll(".action-btn[data-issue]").forEach(function(btn) {
       if (btn.classList.contains("urgent-toggle-btn") || btn.classList.contains("urgent-bl-btn")) return;
       btn.addEventListener("click", function() {
-        openReview(parseInt(this.getAttribute("data-issue")));
+        openReview(this.getAttribute("data-issue"));
       });
     });
     row.querySelectorAll(".urgent-toggle-btn").forEach(function(btn) {
