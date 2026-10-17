@@ -33,10 +33,14 @@ var JITApp = (function() {
     _syncUrgentBlFromCloud(); // 启动时拉取加急黑名单到内存
     _initLogin();
     _bindEvents();
+    _initWinWall(); // v2.0 中奖墙初始化
     // 确保积分 label 存在
     if (JITPoints && JITPoints.ensureLabel) JITPoints.ensureLabel().catch(function() {});
     _loadData();
     _refreshPointsDisplay();
+    _dailyLoginBonus(); // v2.0 每日签到
+    _checkExpiredTickets(); // v2.0 过期券提醒
+    _initTheme(); // v2.0 主题初始化
     // 每10秒自动刷新
     setInterval(function() {
       _loadData();
@@ -255,6 +259,9 @@ var JITApp = (function() {
       _updateLogoutText();
       _refreshPointsDisplay();
       _loadNotifications();
+      _dailyLoginBonus(); // v2.0 每日签到
+      _checkExpiredTickets(); // v2.0 过期券提醒
+      _initTheme(); // v2.0 主题初始化
       return;
     }
     _showLoginPrompt();
@@ -819,6 +826,68 @@ var JITApp = (function() {
         if (e.target === wheelOverlay) _closeWheelModal();
       });
     }
+
+    // ===== v2.0 老虎机弹窗事件 =====
+    var btnSlotClose = document.getElementById("btnSlotClose");
+    if (btnSlotClose) btnSlotClose.addEventListener("click", _closeSlotMachine);
+    var slotMachineOverlay = document.getElementById("slotMachineOverlay");
+    if (slotMachineOverlay) {
+      slotMachineOverlay.addEventListener("click", function(e) {
+        if (e.target === slotMachineOverlay) _closeSlotMachine();
+      });
+    }
+    var btnSlotSpin = document.getElementById("btnSlotSpin");
+    if (btnSlotSpin) btnSlotSpin.addEventListener("click", function() {
+      _openSlotMachine(_currentVoucher, _currentScratchPrize);
+    });
+
+    // ===== v2.0 刮刮乐结果弹窗事件 =====
+    var btnScratchResultNext = document.getElementById("btnScratchResultNext");
+    if (btnScratchResultNext) btnScratchResultNext.addEventListener("click", function() {
+      var resultOverlay = document.getElementById("scratchResultOverlay");
+      if (resultOverlay) resultOverlay.classList.remove("active");
+      _openSlotMachine(_currentVoucher, _currentScratchPrize);
+    });
+    var btnScratchResultClose = document.getElementById("btnScratchResultClose");
+    if (btnScratchResultClose) btnScratchResultClose.addEventListener("click", _closeScratchResult);
+    var scratchResultOverlay = document.getElementById("scratchResultOverlay");
+    if (scratchResultOverlay) {
+      scratchResultOverlay.addEventListener("click", function(e) {
+        if (e.target === scratchResultOverlay) _closeScratchResult();
+      });
+    }
+
+    // ===== v2.0 用户中心事件 =====
+    var btnUserCenterClose = document.getElementById("btnUserCenterClose");
+    if (btnUserCenterClose) btnUserCenterClose.addEventListener("click", _closeUserCenter);
+    var userCenterOverlay = document.getElementById("userCenterOverlay");
+    if (userCenterOverlay) {
+      userCenterOverlay.addEventListener("click", function(e) {
+        if (e.target === userCenterOverlay) _closeUserCenter();
+      });
+    }
+    var btnChangeAvatar = document.getElementById("btnChangeAvatar");
+    if (btnChangeAvatar) btnChangeAvatar.addEventListener("click", function() {
+      var fileInput = document.getElementById("avatarFileInput");
+      if (fileInput) fileInput.click();
+    });
+    var avatarFileInput = document.getElementById("avatarFileInput");
+    if (avatarFileInput) avatarFileInput.addEventListener("change", _handleAvatarUpload);
+    var btnChangePassword = document.getElementById("btnChangePassword");
+    if (btnChangePassword) btnChangePassword.addEventListener("click", _doChangePassword);
+
+    // 顶部头像/用户中心入口
+    var btnUserCenter = document.getElementById("btnUserCenter");
+    if (btnUserCenter) btnUserCenter.addEventListener("click", _openUserCenter);
+
+    // v2.0 主题选择器
+    var themeOptions = document.querySelectorAll(".theme-option");
+    themeOptions.forEach(function(opt) {
+      opt.addEventListener("click", function() {
+        var theme = this.getAttribute("data-theme");
+        _setTheme(theme);
+      });
+    });
 
     var btnModalClose = document.getElementById("btnModalClose");
     if (btnModalClose) {
@@ -1730,21 +1799,15 @@ var JITApp = (function() {
       var targetVoucher = voucher;
       setTimeout(function() {
         JITLottery.start("lotteryCanvas", function(prize) {
-          // 刮开后显示匹配结果
-          var matched = JITLottery.getMatchedCount();
-          if (matched > 0) {
-            _showToast("🎉 匹配" + matched + "个号码！获得 " + prize.discount, "success");
-          } else {
-            _showToast("😅 未中奖，下次好运！", "");
-          }
+          // 刮开后：隐藏刮刮乐，显示美颜结果弹窗
+          _currentScratchPrize = prize;
+          _currentVoucher = targetVoucher;
+          var lotOverlay = document.getElementById("lotteryOverlay");
+          if (lotOverlay) lotOverlay.classList.remove("active");
+          _showScratchResultPopup(prize);
           // 抽奖结果确定后，本轮幸运模式自动失效
           JITLottery.disableLuckyMode();
         });
-        // 随机后立刻保存折数，不等用户刮！
-        var prize = JITLottery.getCurrentPrize();
-        if (prize) {
-          _saveLotteryResult(prize, targetVoucher);
-        }
       }, 300);
     }
   };
@@ -1756,6 +1819,709 @@ var JITApp = (function() {
     }
     // 关闭弹窗时也清理幸运模式状态
     JITLottery.disableLuckyMode();
+  };
+
+  // ======================== v2.0 游戏化系统 ========================
+
+  // 全局变量：当前抽奖上下文
+  var _currentVoucher = null;
+  var _currentScratchPrize = null;
+  var _slotLastDrawn = null; // 老虎机抽奖结果缓存
+  var _slotResultSaved = false; // 防止重复保存
+
+  // 用户等级配置
+  var LEVEL_CONFIG = [
+    { level: 0, name: "消费新人", expNeed: 0, perks: "" },
+    { level: 1, name: "铜牌消费者", expNeed: 100, perks: "每日1张抽奖券" },
+    { level: 2, name: "银牌消费者", expNeed: 300, perks: "每日2张抽奖券" },
+    { level: 3, name: "金牌消费者", expNeed: 600, perks: "解锁稀有奖池" },
+    { level: 4, name: "铂金VIP", expNeed: 1200, perks: "抽奖券上限+1" },
+    { level: 5, name: "钻石VIP", expNeed: 2500, perks: "审核优先通道" },
+    { level: 6, name: "王者VIP", expNeed: 5000, perks: "双倍积分日" },
+    { level: 7, name: "至尊VIP", expNeed: 10000, perks: "所有奖品概率提升" }
+  ];
+
+  var _getUserLevel = function(userId) {
+    var key = "jit_user_levels";
+    var all = {};
+    try { all = JSON.parse(localStorage.getItem(key) || "{}"); } catch(e) {}
+    var data = all[userId] || { level: 0, exp: 0, streak: 0 };
+    return data;
+  };
+
+  var _getLevelInfo = function(level) {
+    return LEVEL_CONFIG[Math.min(level, LEVEL_CONFIG.length - 1)] || LEVEL_CONFIG[0];
+  };
+
+  // 刮刮乐结果美颜弹窗
+  var _showScratchResultPopup = function(prize) {
+    var overlay = document.getElementById("scratchResultOverlay");
+    if (!overlay) return;
+
+    var icon = document.getElementById("scratchResultIcon");
+    var title = document.getElementById("scratchResultTitle");
+    var discount = document.getElementById("scratchResultDiscount");
+    var sub = document.getElementById("scratchResultSub");
+    var reward = document.getElementById("scratchResultReward");
+
+    var matched = JITLottery.getMatchedCount();
+
+    if (prize.value <= 0.7 && prize.value > 0) {
+      icon.textContent = "🎉";
+      title.textContent = "大奖降临！";
+      sub.textContent = "匹配 " + matched + " 个号码，获得超值折扣！";
+    } else if (prize.value === 0) {
+      icon.textContent = "🤑";
+      title.textContent = "免单！全场最佳！";
+      sub.textContent = "匹配 " + matched + " 个号码，运气爆棚！";
+    } else if (prize.value >= 1.2) {
+      icon.textContent = "💸";
+      title.textContent = "公司请客啦！";
+      sub.textContent = "匹配 " + matched + " 个号码，老板大气！";
+    } else {
+      icon.textContent = "🎊";
+      title.textContent = "恭喜中奖！";
+      sub.textContent = "匹配 " + matched + " 个号码，手气不错~";
+    }
+
+    discount.textContent = prize.discount;
+
+    // 显示奖励（如果有现金返现）
+    reward.style.display = "none";
+
+    overlay.classList.add("active");
+
+    // 音效
+    if (typeof window.AudioContext !== "undefined" || typeof window.webkitAudioContext !== "undefined") {
+      try {
+        var ACTX = window.AudioContext || window.webkitAudioContext;
+        var ctx2 = new ACTX();
+        var osc = ctx2.createOscillator();
+        var gain = ctx2.createGain();
+        osc.connect(gain); gain.connect(ctx2.destination);
+        osc.type = "sine";
+        gain.gain.value = 0.15;
+        osc.frequency.setValueAtTime(523, ctx2.currentTime);
+        osc.frequency.setValueAtTime(659, ctx2.currentTime + 0.1);
+        osc.frequency.setValueAtTime(784, ctx2.currentTime + 0.2);
+        osc.frequency.setValueAtTime(1047, ctx2.currentTime + 0.3);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx2.currentTime + 0.6);
+        osc.start(ctx2.currentTime);
+        osc.stop(ctx2.currentTime + 0.6);
+      } catch(e) {}
+    }
+  };
+
+  var _closeScratchResult = function() {
+    var overlay = document.getElementById("scratchResultOverlay");
+    if (overlay) overlay.classList.remove("active");
+    // 用户关闭结果但不进行老虎机，直接保存
+    if (_currentVoucher && _currentScratchPrize) {
+      _saveFullLotteryResult(_currentVoucher, _currentScratchPrize, null);
+    }
+    _currentVoucher = null;
+    _currentScratchPrize = null;
+    _slotLastDrawn = null;
+    _slotResultSaved = false;
+  };
+
+  // 老虎机弹窗
+  var _openSlotMachine = function(voucher, scratchPrize) {
+    var overlay = document.getElementById("slotMachineOverlay");
+    if (!overlay) return;
+
+    _currentVoucher = voucher;
+    _currentScratchPrize = scratchPrize;
+    _slotLastDrawn = null;
+    _slotResultSaved = false;
+
+    // 重置 UI
+    var subtitle = document.getElementById("slotSubtitle");
+    var totalDiv = document.getElementById("slotTotal");
+    var spinBtn = document.getElementById("btnSlotSpin");
+    if (subtitle) subtitle.textContent = "日常基础奖池 ×2 + 稀有奖池";
+    if (totalDiv) totalDiv.style.display = "none";
+    if (spinBtn) spinBtn.style.display = "none";
+
+    var rowLabels = ["日常基础奖池 1", "日常基础奖池 2", "稀有奖池"];
+    for (var i = 0; i < 3; i++) {
+      var reel = document.querySelector("#slotRow" + i + " .slot-symbol");
+      var resultEl = document.querySelector("#slotRow" + i + " .slot-row-result");
+      if (reel) { reel.textContent = "🎰"; reel.className = "slot-symbol"; }
+      if (resultEl) resultEl.textContent = "";
+    }
+
+    overlay.classList.add("active");
+
+    // 自动开始老虎机
+    var userLevel = _getUserLevel(_currentUser).level;
+    var voucherAmount = parseFloat(voucher.amount || voucher.originalPrice || 0) || 0;
+    var result = JITSlot.drawDualPool(voucherAmount, _currentUser, userLevel);
+    if (!result) {
+      if (subtitle) subtitle.textContent = "⚠️ 抽奖出错，请重试";
+      return;
+    }
+    _slotLastDrawn = result;
+    var slotResultEl = document.getElementById("slotTotalAmount");
+    JITSlot.play(function(poolType, rowIndex, rowResult, isDone) {
+      if (poolType === "rare_locked") {
+        var labelEl2 = document.querySelector("#slotRow" + rowIndex + " .slot-row-label");
+        var resultEl2 = document.querySelector("#slotRow" + rowIndex + " .slot-row-result");
+        if (labelEl2) labelEl2.textContent = "稀有奖池（Lv3解锁）";
+        if (resultEl2) resultEl2.textContent = "🔒 未解锁";
+        var reel2 = document.querySelector("#slotRow" + rowIndex + " .slot-symbol");
+        if (reel2) { reel2.textContent = "🔒"; reel2.className = "slot-symbol slot-stop"; }
+        return;
+      }
+      var labelEl = document.querySelector("#slotRow" + rowIndex + " .slot-row-label");
+      var resultEl = document.querySelector("#slotRow" + rowIndex + " .slot-row-result");
+      if (rowResult.icon) {
+        var reel = document.querySelector("#slotRow" + rowIndex + " .slot-symbol");
+        if (reel) { reel.textContent = rowResult.icon; reel.className = "slot-symbol slot-stop"; }
+      }
+      var isWin = rowResult && rowResult.isWin && rowResult.cashRate > 0;
+      var rareWin = rowResult && rowResult.isWin && rowResult.cashAmount > 0;
+      if (rareWin) {
+        if (resultEl) resultEl.textContent = "¥" + rowResult.cashAmount + " 返现!";
+        resultEl.style.color = "#ffd700";
+      } else if (isWin) {
+        if (resultEl) resultEl.textContent = "返现 " + (rowResult.cashRate * 100) + "% 👍";
+        resultEl.style.color = "#ffd700";
+      } else {
+        if (resultEl) resultEl.textContent = "🎪 未中奖";
+        resultEl.style.color = "var(--text-secondary)";
+      }
+
+      if (isDone) {
+        // 所有行都停了，显示总计
+        _showSlotTotal(result);
+      }
+    });
+  };
+
+  var _showSlotTotal = function(result) {
+    var totalDiv = document.getElementById("slotTotal");
+    var totalAmount = document.getElementById("slotTotalAmount");
+    var spinBtn = document.getElementById("btnSlotSpin");
+    var subtitle = document.getElementById("slotSubtitle");
+
+    var bestCash = 0;
+    var bestName = "";
+    if (result.basicResults) {
+      for (var i = 0; i < result.basicResults.length; i++) {
+        var r = result.basicResults[i];
+        if (r && r.isWin && r.cashRate > 0) {
+          var voucherAmount = parseFloat(_currentVoucher && _currentVoucher.amount || 0);
+          if (!isNaN(voucherAmount)) {
+            var cash = voucherAmount * r.cashRate;
+            if (cash > bestCash) { bestCash = cash; bestName = r.name; }
+          }
+        }
+      }
+    }
+    if (result.rareResult && result.rareResult.isWin && result.rareResult.cashAmount > 0) {
+      if (result.rareResult.cashAmount > bestCash) {
+        bestCash = result.rareResult.cashAmount;
+        bestName = result.rareResult.name;
+      }
+    }
+
+    if (bestCash > 0) {
+      if (totalDiv) totalDiv.style.display = "flex";
+      if (totalAmount) totalAmount.textContent = "¥" + bestCash.toFixed(2);
+    } else {
+      if (totalDiv) totalDiv.style.display = "flex";
+      if (totalAmount) { totalAmount.textContent = "🌧️ 未中"; totalAmount.style.fontSize = "18px"; }
+    }
+    if (subtitle) subtitle.textContent = "抽奖完成！✨";
+    if (spinBtn) spinBtn.style.display = "block";
+
+    // 保存完整结果
+    _saveFullLotteryResult(_currentVoucher, _currentScratchPrize, _slotLastDrawn);
+  };
+
+  var _closeSlotMachine = function() {
+    var overlay = document.getElementById("slotMachineOverlay");
+    if (overlay) overlay.classList.remove("active");
+    // 如果还没保存就关了，强制保存
+    if (_currentVoucher && _currentScratchPrize) {
+      _saveFullLotteryResult(_currentVoucher, _currentScratchPrize, _slotLastDrawn);
+    }
+    _currentVoucher = null;
+    _currentScratchPrize = null;
+    _slotLastDrawn = null;
+    _slotResultSaved = false;
+  };
+
+  // 完整保存：刮刮乐 + 老虎机 + 积分 + 中奖墙
+  var _saveFullLotteryResult = function(voucher, scratchPrize, slotResult) {
+    if (!voucher || !scratchPrize) return;
+    if (_slotResultSaved) return;
+    _slotResultSaved = true;
+
+    // 先调用旧的刮刮乐结果保存
+    var oldSaveDone = false;
+    try {
+      _saveLotteryResult(scratchPrize, voucher);
+      oldSaveDone = true;
+    } catch(e) {}
+
+    // 保存老虎机记录
+    var slotRecords = JSON.parse(localStorage.getItem("jit_slot_records") || "[]");
+    var totalReward = 0;
+    var bestPrizeName = scratchPrize.discount;
+    var allPrizeNames = [scratchPrize.discount];
+
+    if (slotResult) {
+      if (slotResult.basicResults) {
+        for (var i = 0; i < slotResult.basicResults.length; i++) {
+          var r = slotResult.basicResults[i];
+          if (r) {
+            allPrizeNames.push(r.name || "基础奖池");
+            if (r.isWin && r.cashRate > 0) {
+              var va = parseFloat(voucher.amount || 0);
+              if (!isNaN(va)) totalReward += va * r.cashRate;
+            }
+          }
+        }
+      }
+      if (slotResult.rareResult && slotResult.rareResult.isWin && slotResult.rareResult.cashAmount > 0) {
+        totalReward += slotResult.rareResult.cashAmount;
+        bestPrizeName = slotResult.rareResult.name;
+        allPrizeNames.push(slotResult.rareResult.name);
+      }
+    }
+
+    slotRecords.push({
+      date: new Date().toISOString(),
+      username: _currentUser,
+      voucherAmount: voucher.amount || 0,
+      shopName: voucher.shopName || "",
+      scratchDiscount: scratchPrize.discount,
+      slotPrizes: allPrizeNames.join(", "),
+      totalReward: totalReward.toFixed(2),
+      bestPrize: bestPrizeName
+    });
+    localStorage.setItem("jit_slot_records", JSON.stringify(slotRecords));
+
+    // 积分发放
+    var ptsDelta = 10;
+    if (scratchPrize.value <= 0.7) ptsDelta += 40;
+    if (totalReward > 0) ptsDelta += 20;
+    var ptsPromise = Promise.resolve();
+    if (JITPoints && JITPoints.changePoints) {
+      ptsPromise = JITPoints.changePoints(_currentUser, ptsDelta, "完整抽奖奖励").then(function() {
+        _refreshPointsDisplay(true);
+      }).catch(function() {});
+    }
+
+    // 等级经验增加
+    var levelData = _getUserLevel(_currentUser);
+    levelData.exp = (levelData.exp || 0) + 30;
+    while (true) {
+      var info = _getLevelInfo(levelData.level);
+      var nextInfo = _getLevelInfo(levelData.level + 1);
+      if (nextInfo && levelData.exp >= nextInfo.expNeed) {
+        levelData.level++;
+      } else { break; }
+    }
+    var allLevels = {};
+    try { allLevels = JSON.parse(localStorage.getItem("jit_user_levels") || "{}"); } catch(e) {}
+    allLevels[_currentUser] = levelData;
+    localStorage.setItem("jit_user_levels", JSON.stringify(allLevels));
+
+    // 中奖墙记录
+    _addToWinWall(_currentUser, scratchPrize.discount, totalReward.toFixed(2));
+
+    // 刷新用户中心
+    _refreshUserCenterUI();
+
+    ptsPromise.then(function() {
+      _showToast("🎊 抽奖完成！获得 " + scratchPrize.discount + " + ¥" + totalReward.toFixed(2) + " 返现 +" + ptsDelta + " 积分", "success");
+      _loadData();
+    });
+  };
+
+  // 中奖墙
+  var _addToWinWall = function(username, prizeName, amount) {
+    var wwData = JSON.parse(localStorage.getItem("jit_winwall") || "[]");
+    wwData.unshift({
+      user: username || "匿名",
+      prize: prizeName,
+      amount: amount,
+      time: Date.now()
+    });
+    if (wwData.length > 50) wwData = wwData.slice(0, 50);
+    localStorage.setItem("jit_winwall", JSON.stringify(wwData));
+    _renderWinWall();
+  };
+
+  var _renderWinWall = function() {
+    var inner = document.getElementById("winWallInner");
+    if (!inner) return;
+    var wwData = JSON.parse(localStorage.getItem("jit_winwall") || "[]");
+    if (wwData.length === 0) {
+      inner.innerHTML = '<span class="win-wall-item" style="color:var(--text-muted);">暂无中奖记录，快来抽奖吧~</span>';
+      return;
+    }
+    var html = "";
+    for (var i = 0; i < wwData.length; i++) {
+      var w = wwData[i];
+      var timeStr = "";
+      if (w.time) {
+        var d = new Date(w.time);
+        timeStr = d.getHours().toString().padStart(2,"0") + ":" + d.getMinutes().toString().padStart(2,"0");
+      }
+      html += '<span class="win-wall-item"><span class="ww-user">' + _escapeHtml(w.user) + '</span> 获得 <span class="ww-prize">' + _escapeHtml(w.prize) + '</span> ';
+      if (w.amount && parseFloat(w.amount) > 0) {
+        html += '<span class="ww-amount">¥' + _escapeHtml(w.amount) + '</span> ';
+      }
+      html += timeStr + '</span>';
+    }
+    inner.innerHTML = html;
+  };
+
+  // 用户中心
+  var _openUserCenter = function() {
+    if (!_currentUser) { _showToast("请先登录", "error"); return; }
+    _refreshUserCenterUI();
+    var overlay = document.getElementById("userCenterOverlay");
+    if (overlay) overlay.classList.add("active");
+  };
+
+  var _closeUserCenter = function() {
+    var overlay = document.getElementById("userCenterOverlay");
+    if (overlay) overlay.classList.remove("active");
+  };
+
+  var _refreshUserCenterUI = function() {
+    if (!_currentUser) return;
+
+    var levelData = _getUserLevel(_currentUser);
+    var levelInfo = _getLevelInfo(levelData.level);
+    var nextInfo = _getLevelInfo(levelData.level + 1);
+    var expPct = 0;
+    if (nextInfo) {
+      expPct = Math.min(100, ((levelData.exp - levelInfo.expNeed) / (nextInfo.expNeed - levelInfo.expNeed)) * 100);
+    } else {
+      expPct = 100;
+    }
+
+    var profileName = document.getElementById("profileName");
+    var profileRealName = document.getElementById("profileRealName");
+    var profileLevelBadge = document.getElementById("profileLevelBadge");
+    var profileLevelFill = document.getElementById("profileLevelFill");
+    var profileExp = document.getElementById("profileExp");
+    if (profileName) profileName.textContent = _currentUser;
+    if (profileRealName) profileRealName.textContent = "真实姓名: 加载中...";
+    // 异步加载真实姓名
+    JITApi.getUserProfile(_currentUser).then(function(profile) {
+      if (profile && profile.fullName && profileRealName) {
+        profileRealName.textContent = "真实姓名: " + profile.fullName;
+      } else if (profileRealName) {
+        profileRealName.textContent = "真实姓名: —";
+      }
+    }).catch(function() {
+      if (profileRealName) profileRealName.textContent = "真实姓名: —";
+    });
+    if (profileLevelBadge) profileLevelBadge.textContent = "Lv" + levelData.level + " " + levelInfo.name;
+    if (profileLevelFill) profileLevelFill.style.width = expPct + "%";
+    if (profileExp) profileExp.textContent = "经验值: " + levelData.exp + " / " + (nextInfo ? nextInfo.expNeed : "MAX");
+
+    // 头像首字母
+    var avatarSaved = localStorage.getItem("jit_avatar_" + _currentUser);
+    var avatarCircle = document.getElementById("avatarCircle");
+    var avatarInitial = document.getElementById("avatarInitial");
+    if (avatarSaved) {
+      if (avatarCircle) avatarCircle.innerHTML = '<img src="' + avatarSaved + '" alt="avatar">';
+    } else {
+      if (avatarInitial) avatarInitial.textContent = (_currentUser || "用").charAt(0).toUpperCase();
+    }
+
+    // 统计数据
+    var allVouchers = _allVouchers || [];
+    var statVouchers = document.getElementById("statVouchers");
+    var statStreak = document.getElementById("statStreak");
+    var statTickets = document.getElementById("statTickets");
+    var statRewards = document.getElementById("statRewards");
+    if (statVouchers) statVouchers.textContent = allVouchers.length;
+    if (statStreak) statStreak.textContent = levelData.streak || 0;
+
+    var tickets = JSON.parse(localStorage.getItem("jit_user_tickets") || "{}");
+    var myTickets = tickets[_currentUser] || 0;
+    if (statTickets) statTickets.textContent = myTickets;
+
+    var slotRecords = JSON.parse(localStorage.getItem("jit_slot_records") || "[]");
+    var totalReward = 0;
+    for (var i = 0; i < slotRecords.length; i++) {
+      if (slotRecords[i].username === _currentUser) {
+        totalReward += parseFloat(slotRecords[i].totalReward || 0);
+      }
+    }
+    if (statRewards) statRewards.textContent = "¥" + totalReward.toFixed(2);
+
+    // 小票墙
+    var ticketWall = document.getElementById("ticketWall");
+    if (ticketWall) {
+      var usersSlotRecords = slotRecords.filter(function(r) { return r.username === _currentUser; });
+      if (usersSlotRecords.length === 0) {
+        ticketWall.innerHTML = '<div class="ticket-wall-empty">暂无抽过的凭证</div>';
+      } else {
+        var twHtml = "";
+        for (var j = 0; j < usersSlotRecords.length; j++) {
+          var rec = usersSlotRecords[j];
+          twHtml += '<div class="ticket-wall-item">';
+          twHtml += '<span class="tw-discount">' + _escapeHtml(rec.scratchDiscount || "") + '</span>';
+          twHtml += '<div class="tw-shop">' + _escapeHtml(rec.shopName || "未知店铺") + '</div>';
+          twHtml += '<div class="tw-date">' + (rec.date || "").substring(0, 10) + '</div>';
+          if (parseFloat(rec.totalReward || 0) > 0) {
+            twHtml += '<div class="tw-reward">¥' + rec.totalReward + '</div>';
+          }
+          twHtml += '</div>';
+        }
+        ticketWall.innerHTML = twHtml;
+      }
+    }
+
+    // 动态徽章
+    _renderBadges(levelData.level);
+
+    // 任务进度
+    _renderTasks(levelData);
+
+    // 风控状态
+    _renderRiskStatus();
+
+    // 抽奖券数量
+    _renderTicketCount();
+  };
+
+  // ===== v2.0 动态徽章 =====
+  var BADGES_CONFIG = [
+    { id: "first_voucher", name: "初次凭证", icon: "📜", req: "添加第1张凭证", check: function() { return (_allVouchers || []).length >= 1; } },
+    { id: "voucher_10", name: "凭证达人", icon: "📚", req: "累计10张凭证", check: function() { return (_allVouchers || []).length >= 10; } },
+    { id: "lottery_5", name: "抽奖新手", icon: "🎰", req: "完成5次抽奖", check: function() { var records = JSON.parse(localStorage.getItem("jit_slot_records") || "[]"); return records.filter(function(r) { return r.username === _currentUser; }).length >= 5; } },
+    { id: "level_3", name: "金牌用户", icon: "🥇", req: "达到Lv3", check: function(level) { return level >= 3; } },
+    { id: "level_5", name: "钻石VIP", icon: "💎", req: "达到Lv5", check: function(level) { return level >= 5; } },
+    { id: "streak_7", name: "连续打卡7天", icon: "🔥", req: "连续打卡7天", check: function(levelData) { return (levelData.streak || 0) >= 7; } }
+  ];
+
+  var _renderBadges = function(level) {
+    var grid = document.getElementById("badgesGrid");
+    if (!grid) return;
+    var levelData = _getUserLevel(_currentUser);
+    var html = "";
+    BADGES_CONFIG.forEach(function(badge) {
+      var unlocked;
+      if (badge.id === "level_3" || badge.id === "level_5") {
+        unlocked = badge.check(level);
+      } else if (badge.id === "streak_7") {
+        unlocked = badge.check(levelData);
+      } else {
+        unlocked = badge.check();
+      }
+      if (unlocked) {
+        html += '<span class="badge-item badge-unlocked" style="background:rgba(76,175,80,0.12);border-color:rgba(76,175,80,0.3);">' + badge.icon + ' ' + badge.name + '</span>';
+      } else {
+        html += '<span class="badge-item badge-locked">🔒 ' + badge.req + '</span>';
+      }
+    });
+    grid.innerHTML = html;
+  };
+
+  // ===== v2.0 任务进度 =====
+  var _renderTasks = function(levelData) {
+    // 任务1: 今日添加凭证
+    var today = new Date().toISOString().split("T")[0];
+    var todayVouchers = (_allVouchers || []).filter(function(v) {
+      return v.date && v.date.substring(0, 10) === today;
+    }).length;
+    var taskVoucher = document.getElementById("taskVoucher");
+    if (taskVoucher) {
+      taskVoucher.textContent = todayVouchers + "/1";
+      if (todayVouchers >= 1) taskVoucher.classList.add("task-done");
+      else taskVoucher.classList.remove("task-done");
+    }
+
+    // 任务2: 今日完成抽奖
+    var slotRecords = JSON.parse(localStorage.getItem("jit_slot_records") || "[]");
+    var todaySlots = slotRecords.filter(function(r) {
+      return r.username === _currentUser && r.date && r.date.substring(0, 10) === today;
+    }).length;
+    var taskLottery = document.getElementById("taskLottery");
+    if (taskLottery) {
+      taskLottery.textContent = todaySlots + "/3";
+      if (todaySlots >= 3) taskLottery.classList.add("task-done");
+      else taskLottery.classList.remove("task-done");
+    }
+
+    // 任务3: 连续打卡
+    var taskStreak = document.getElementById("taskStreak");
+    if (taskStreak) {
+      taskStreak.textContent = (levelData.streak || 0) + "天";
+    }
+
+    // 任务4: 本月消费额
+    var thisMonth = today.substring(0, 7);
+    var monthSpend = (_allVouchers || []).filter(function(v) {
+      return v.date && v.date.substring(0, 7) === thisMonth;
+    }).reduce(function(sum, v) { return sum + parseFloat(v.amount || 0); }, 0);
+    var taskSpend = document.getElementById("taskSpend");
+    if (taskSpend) {
+      taskSpend.textContent = Math.min(monthSpend, 5000) + "/5000";
+      if (monthSpend >= 5000) taskSpend.classList.add("task-done");
+      else taskSpend.classList.remove("task-done");
+    }
+  };
+
+  // ===== v2.0 风控状态 =====
+  var _renderRiskStatus = function() {
+    var budget = parseFloat(localStorage.getItem("jit_risk_budget") || "5000");
+    var riskBudget = document.getElementById("riskBudget");
+    var riskSpentEl = document.getElementById("riskSpent");
+    var riskRemain = document.getElementById("riskRemain");
+    var riskBarFill = document.getElementById("riskBarFill");
+    if (!riskRemain) return;
+
+    var today = new Date().toISOString().split("T")[0];
+    var thisMonth = today.substring(0, 7);
+    var slotRecords = JSON.parse(localStorage.getItem("jit_slot_records") || "[]");
+    var monthSpent = slotRecords.filter(function(r) {
+      return r.date && r.date.substring(0, 7) === thisMonth;
+    }).reduce(function(sum, r) { return sum + parseFloat(r.totalReward || 0); }, 0);
+    monthSpent = Math.round(monthSpent * 100) / 100;
+    var remain = Math.max(0, budget - monthSpent);
+
+    if (riskBudget) riskBudget.textContent = "¥" + budget;
+    if (riskSpentEl) riskSpentEl.textContent = "¥" + monthSpent.toFixed(2);
+    if (riskRemain) {
+      riskRemain.textContent = "¥" + remain.toFixed(2);
+      riskRemain.style.color = remain < budget * 0.2 ? "#f44336" : remain < budget * 0.5 ? "#ff9800" : "#4caf50";
+    }
+    if (riskBarFill) {
+      var pct = Math.min(100, (monthSpent / budget) * 100);
+      riskBarFill.style.width = pct + "%";
+      if (pct >= 80) riskBarFill.classList.add("risk-warning");
+      else riskBarFill.classList.remove("risk-warning");
+    }
+  };
+
+  // ===== v2.0 抽奖券数量 =====
+  var _renderTicketCount = function() {
+    var statTickets = document.getElementById("statTickets");
+    if (!statTickets) return;
+    var tickets = JSON.parse(localStorage.getItem("jit_user_tickets") || "{}");
+    var count = tickets[_currentUser] || 0;
+    statTickets.textContent = String(count);
+  };
+
+  // 修改密码
+  var _doChangePassword = function() {
+    var newPwd = document.getElementById("inputNewPassword");
+    if (!newPwd || !newPwd.value.trim()) {
+      _showToast("请输入新密码", "error");
+      return;
+    }
+    var pwd = newPwd.value.trim();
+    JITApi.updateUserPassword(_currentUser, pwd).then(function() {
+      _showToast("密码修改成功", "success");
+      newPwd.value = "";
+    }).catch(function(err) {
+      _showToast("密码修改失败: " + (err.message || ""), "error");
+    });
+  };
+
+  // 头像上传
+  var _handleAvatarUpload = function(e) {
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (file.size > 500 * 1024) { _showToast("头像文件不能超过500KB", "error"); return; }
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+      var dataUrl = ev.target.result;
+      localStorage.setItem("jit_avatar_" + _currentUser, dataUrl);
+      var avatarCircle = document.getElementById("avatarCircle");
+      if (avatarCircle) avatarCircle.innerHTML = '<img src="' + dataUrl + '" alt="avatar">';
+      _showToast("头像更新成功", "success");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // ===== v2.0 工作台主题装扮 =====
+  var _initTheme = function() {
+    var savedTheme = localStorage.getItem("jit_theme") || "default";
+    _applyTheme(savedTheme);
+  };
+
+  var _applyTheme = function(theme) {
+    var body = document.body;
+    body.classList.remove("theme-ocean", "theme-forest", "theme-rose");
+    if (theme && theme !== "default") {
+      body.classList.add("theme-" + theme);
+    }
+    // 更新选择器高亮
+    var options = document.querySelectorAll(".theme-option");
+    options.forEach(function(opt) {
+      opt.classList.toggle("theme-active", opt.getAttribute("data-theme") === theme);
+    });
+  };
+
+  var _setTheme = function(theme) {
+    localStorage.setItem("jit_theme", theme);
+    _applyTheme(theme);
+    _showToast("🎨 主题装扮已切换", "success");
+  };
+
+  // 初始化中奖墙
+  var _initWinWall = function() {
+    _renderWinWall();
+  };
+
+  // 抽奖券过期提醒
+  var _checkExpiredTickets = function() {
+    if (!_currentUser) return;
+    var tickets = JSON.parse(localStorage.getItem("jit_user_tickets") || "{}");
+    var expired = JSON.parse(localStorage.getItem("jit_expired_tickets") || "{}");
+    var expiredToday = expired[_currentUser] || 0;
+    if (expiredToday > 0) {
+      _showToast("⚠️ 您有 " + expiredToday + " 张抽奖券已过期！记得及时使用~", "");
+      expired[_currentUser] = 0;
+      localStorage.setItem("jit_expired_tickets", JSON.stringify(expired));
+    }
+  };
+
+  // 每日签到/登录奖励抽奖券
+  var _dailyLoginBonus = function() {
+    if (!_currentUser) return;
+    var today = new Date().toISOString().split("T")[0];
+    var lastLogin = localStorage.getItem("jit_last_login_" + _currentUser);
+    if (lastLogin === today) return; // 今天已经领过了
+
+    var levelData = _getUserLevel(_currentUser);
+    // 更新连续打卡
+    var yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+    if (lastLogin === yesterday) {
+      levelData.streak = (levelData.streak || 0) + 1;
+    } else {
+      levelData.streak = 1;
+    }
+    var allLevels = {};
+    try { allLevels = JSON.parse(localStorage.getItem("jit_user_levels") || "{}"); } catch(e) {}
+    allLevels[_currentUser] = levelData;
+    localStorage.setItem("jit_user_levels", JSON.stringify(allLevels));
+    localStorage.setItem("jit_last_login_" + _currentUser, today);
+
+    // 根据等级发抽奖券
+    var tickets = JSON.parse(localStorage.getItem("jit_user_tickets") || "{}");
+    var dailyTickets = 1;
+    if (levelData.level >= 2) dailyTickets = 2;
+    if (levelData.level >= 4) dailyTickets = 3;
+    tickets[_currentUser] = (tickets[_currentUser] || 0) + dailyTickets;
+    localStorage.setItem("jit_user_tickets", JSON.stringify(tickets));
+
+    if (levelData.streak > 1) {
+      _showToast("🎁 连续打卡 " + levelData.streak + " 天！获得 " + dailyTickets + " 张抽奖券", "success");
+    }
   };
 
   var _resetForm = function() {
@@ -1939,6 +2705,14 @@ var JITApp = (function() {
       _issueNumber: _editingVoucher ? _editingVoucher._issueNumber : null,
       _createdAt: _editingVoucher ? _editingVoucher._createdAt : Date.now()
     };
+
+    // v2.0: Lv5+ 钻石VIP优先审核
+    var userLevel = _getUserLevel(_currentUser);
+    if (userLevel.level >= 5) {
+      voucherData.priority = true;
+      voucherData.priorityLabel = "⚡VIP优先";
+      voucherData.userLevel = userLevel.level;
+    }
 
     if (_editingVoucher) {
       voucherData.discount = _editingVoucher.discount;

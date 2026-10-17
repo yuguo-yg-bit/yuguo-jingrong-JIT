@@ -1479,6 +1479,36 @@ var JITApi = (function() {
     });
   };
 
+  // ===== v2.0 修改密码 =====
+  var _updateUserPassword = function(username, newPassword) {
+    var now = new Date().toISOString();
+    return _tursoSql(
+      "UPDATE users SET password_hash=?, updated_at=? WHERE id=?",
+      [newPassword, now, username]
+    ).then(function(result) {
+      if (!result || !result.rowsAffected && result.rowsAffected !== 0) {
+        throw new Error("未找到用户或更新失败");
+      }
+      return { success: true };
+    });
+  };
+
+  // ===== v2.0 获取用户档案 =====
+  var _getUserProfile = function(username) {
+    return _tursoSql("SELECT id, full_name, review_status, created_at, updated_at FROM users WHERE id=?", [username]).then(function(result) {
+      var rows = (result && result.rows) ? result.rows : [];
+      if (rows.length === 0) return null;
+      var r = rows[0];
+      return {
+        username: r[0],
+        fullName: r[1] || "",
+        reviewStatus: r[2] || "",
+        createdAt: r[3] || "",
+        updatedAt: r[4] || ""
+      };
+    });
+  };
+
   var _rejectRegistrationTurso = function(regId) {
     return _tursoSql("UPDATE registrations SET review_status='rejected' WHERE id=?", [String(regId)]);
   };
@@ -1575,6 +1605,8 @@ var JITApi = (function() {
     getAllRegistrationIssueObjects: _getAllRegistrationIssueObjects,
     approveRegistrationTurso: _approveRegistrationTurso,
     rejectRegistrationTurso: _rejectRegistrationTurso,
+    updateUserPassword: _updateUserPassword,
+    getUserProfile: _getUserProfile,
     addToUrgentBlacklistTurso: _addToUrgentBlacklistTurso,
     removeFromUrgentBlacklistTurso: _removeFromUrgentBlacklistTurso,
     getUrgentBlacklistRows: _getUrgentBlacklistRows,

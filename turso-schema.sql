@@ -181,3 +181,94 @@ VALUES ('谭绣云', 'a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7
 
 INSERT OR IGNORE INTO users (id, password_hash, full_name, review_status, points)
 VALUES ('江睿博', 'a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3', '江睿博', 'approved', 0);
+
+-- ============================================================
+-- 大改造：游戏化升级 v2.0
+-- ============================================================
+
+-- 用户等级/成长表
+CREATE TABLE IF NOT EXISTS user_levels (
+  user_id TEXT PRIMARY KEY,
+  level INTEGER DEFAULT 0,
+  exp INTEGER DEFAULT 0,
+  streak_days INTEGER DEFAULT 0,
+  total_vouchers INTEGER DEFAULT 0,
+  basic_tickets INTEGER DEFAULT 0,
+  rare_tickets INTEGER DEFAULT 0,
+  last_login TEXT DEFAULT '',
+  last_upload TEXT DEFAULT '',
+  badges TEXT DEFAULT '[]',
+  avatar TEXT DEFAULT '',
+  nickname TEXT DEFAULT '',
+  real_name TEXT DEFAULT '',
+  updated_at TEXT DEFAULT ''
+);
+
+-- 抽奖券表（30天有效期）
+CREATE TABLE IF NOT EXISTS lottery_tickets (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  ticket_type TEXT DEFAULT 'basic',
+  source TEXT DEFAULT '',
+  status TEXT DEFAULT 'unused',
+  voucher_id TEXT DEFAULT '',
+  expires_at TEXT DEFAULT '',
+  created_at TEXT DEFAULT ''
+);
+
+-- 抽奖记录表
+CREATE TABLE IF NOT EXISTS lottery_records (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  voucher_id TEXT DEFAULT '',
+  pool_type TEXT DEFAULT 'basic',
+  prize_id TEXT DEFAULT '',
+  prize_name TEXT DEFAULT '',
+  prize_cash REAL DEFAULT 0,
+  prize_rate REAL DEFAULT 0,
+  voucher_amount REAL DEFAULT 0,
+  final_reward REAL DEFAULT 0,
+  is_win INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT ''
+);
+
+-- 中奖墙（全局展示）
+CREATE TABLE IF NOT EXISTS win_wall (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  prize_name TEXT DEFAULT '',
+  prize_cash REAL DEFAULT 0,
+  pool_type TEXT DEFAULT 'basic',
+  voucher_amount REAL DEFAULT 0,
+  created_at TEXT DEFAULT ''
+);
+
+-- 风险控制表
+CREATE TABLE IF NOT EXISTS risk_control (
+  id TEXT PRIMARY KEY DEFAULT 'global',
+  monthly_budget REAL DEFAULT 5000,
+  monthly_spent REAL DEFAULT 0,
+  per_user_monthly_cap REAL DEFAULT 500,
+  per_ticket_cap REAL DEFAULT 200,
+  rare_pool_open INTEGER DEFAULT 1,
+  month_key TEXT DEFAULT '',
+  updated_at TEXT DEFAULT ''
+);
+
+-- 用户月度奖励统计
+CREATE TABLE IF NOT EXISTS user_monthly_rewards (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  month_key TEXT NOT NULL,
+  total_reward REAL DEFAULT 0,
+  draw_count INTEGER DEFAULT 0,
+  updated_at TEXT DEFAULT ''
+);
+
+-- 索引
+CREATE INDEX IF NOT EXISTS idx_lottery_records_user ON lottery_records(user_id);
+CREATE INDEX IF NOT EXISTS idx_lottery_records_created ON lottery_records(created_at);
+CREATE INDEX IF NOT EXISTS idx_lottery_tickets_user ON lottery_tickets(user_id);
+CREATE INDEX IF NOT EXISTS idx_lottery_tickets_status ON lottery_tickets(status);
+CREATE INDEX IF NOT EXISTS idx_win_wall_created ON win_wall(created_at);
+CREATE INDEX IF NOT EXISTS idx_user_monthly_user ON user_monthly_rewards(user_id, month_key);

@@ -76,6 +76,7 @@
         <span style="font-size:12px;color:var(--text-secondary);">积分：</span>
         <span id="pointsTotal" style="font-size:18px;font-weight:700;color:var(--gold);">0</span>
         <button id="btnPointsHistory" title="积分明细" style="background:rgba(255,213,79,0.15);border:1px solid rgba(255,213,79,0.4);color:var(--gold);padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;">📋 明细</button>
+        <button id="btnUserCenter" title="个人中心" style="background:rgba(66,165,245,0.15);border:1px solid rgba(66,165,245,0.4);color:var(--accent);padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;">👤 我的</button>
       </div>
       <div class="member-progress" id="memberProgress">
         <div class="progress-labels">
@@ -822,6 +823,212 @@
         <div style="text-align:center;padding:30px;color:var(--text-muted);">加载中...</div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ===== v2.0 老虎机弹窗 ===== -->
+<div class="modal-overlay" id="slotMachineOverlay" style="z-index:2100;">
+  <div class="slot-machine-container">
+    <div class="slot-machine-header">
+      <h2 class="slot-machine-title">🎰 老虎机 · 双奖池抽奖</h2>
+      <button class="modal-close" id="btnSlotClose">&times;</button>
+    </div>
+    <div class="slot-machine-body">
+      <div class="slot-machine-subtitle" id="slotSubtitle">日常基础奖池 ×2 + 稀有奖池</div>
+      <div class="slot-rows">
+        <!-- 行 0: 基础奖池 -->
+        <div class="slot-row" id="slotRow0">
+          <div class="slot-row-info">
+            <span class="slot-row-label">日常基础奖池 1</span>
+            <span class="slot-row-result"></span>
+          </div>
+          <div class="slot-reel">
+            <span class="slot-symbol">🎰</span>
+          </div>
+        </div>
+        <!-- 行 1: 基础奖池 -->
+        <div class="slot-row" id="slotRow1">
+          <div class="slot-row-info">
+            <span class="slot-row-label">日常基础奖池 2</span>
+            <span class="slot-row-result"></span>
+          </div>
+          <div class="slot-reel">
+            <span class="slot-symbol">🎰</span>
+          </div>
+        </div>
+        <!-- 行 2: 稀有奖池 -->
+        <div class="slot-row slot-row-rare" id="slotRow2">
+          <div class="slot-row-info">
+            <span class="slot-row-label">稀有奖池</span>
+            <span class="slot-row-result"></span>
+          </div>
+          <div class="slot-reel slot-reel-rare">
+            <span class="slot-symbol">🎰</span>
+          </div>
+        </div>
+      </div>
+      <div class="slot-total" id="slotTotal" style="display:none;">
+        <span class="slot-total-label">🏆 最佳奖励</span>
+        <span class="slot-total-amount" id="slotTotalAmount">¥0</span>
+      </div>
+      <button class="slot-spin-btn" id="btnSlotSpin" style="display:none;">🎯 再来一次</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== v2.0 刮刮乐结果美颜弹窗 ===== -->
+<div class="modal-overlay" id="scratchResultOverlay" style="z-index:2150;">
+  <div class="scratch-result-container" id="scratchResultContainer">
+    <div class="scratch-result-glow"></div>
+    <div class="scratch-result-body">
+      <div class="scratch-result-icon" id="scratchResultIcon">🎉</div>
+      <div class="scratch-result-title" id="scratchResultTitle">恭喜中奖！</div>
+      <div class="scratch-result-discount" id="scratchResultDiscount">9折</div>
+      <div class="scratch-result-sub" id="scratchResultSub">手气不错！继续加油~</div>
+      <div class="scratch-result-reward" id="scratchResultReward" style="display:none;">
+        <span class="reward-label">💰 实际返现奖励</span>
+        <span class="reward-amount" id="rewardAmount">¥0</span>
+      </div>
+      <button class="scratch-result-btn" id="btnScratchResultNext">🎰 开始老虎机抽奖</button>
+      <button class="scratch-result-btn-secondary" id="btnScratchResultClose">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== v2.0 用户中心弹窗 ===== -->
+<div class="modal-overlay" id="userCenterOverlay" style="z-index:2000;">
+  <div class="user-center-container">
+    <div class="user-center-header">
+      <h2 class="user-center-title">👤 个人中心</h2>
+      <button class="modal-close" id="btnUserCenterClose">&times;</button>
+    </div>
+    <div class="user-center-body">
+      <div class="user-center-profile">
+        <div class="avatar-section">
+          <div class="avatar-circle" id="avatarCircle">
+            <span id="avatarInitial">用</span>
+          </div>
+          <button class="avatar-change-btn" id="btnChangeAvatar">📷 更换头像</button>
+          <input type="file" accept="image/*" id="avatarFileInput" style="display:none;">
+        </div>
+        <div class="profile-info">
+          <div class="profile-name" id="profileName">用户名</div>
+          <div class="profile-real-name" id="profileRealName">真实姓名: —</div>
+          <div class="profile-level-badge" id="profileLevelBadge">Lv0 消费新人</div>
+          <div class="profile-level-bar">
+            <div class="profile-level-fill" id="profileLevelFill"></div>
+          </div>
+          <div class="profile-exp" id="profileExp">经验值: 0 / 100</div>
+        </div>
+      </div>
+      <div class="user-center-stats">
+        <div class="stat-item">
+          <span class="stat-num" id="statVouchers">0</span>
+          <span class="stat-label">凭证数</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-num" id="statStreak">0</span>
+          <span class="stat-label">连续打卡天</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-num" id="statTickets">0</span>
+          <span class="stat-label">抽奖券</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-num" id="statRewards">¥0</span>
+          <span class="stat-label">累计返现</span>
+        </div>
+      </div>
+      <div class="user-center-section">
+        <h3 class="section-sub-title">📋 每日任务</h3>
+        <div class="task-list" id="taskList">
+          <div class="task-item">
+            <span class="task-icon">✅</span>
+            <span class="task-name">添加凭证</span>
+            <span class="task-progress" id="taskVoucher">0/1</span>
+            <span class="task-reward">+15积分 +50经验</span>
+          </div>
+          <div class="task-item">
+            <span class="task-icon">🔮</span>
+            <span class="task-name">完成抽奖</span>
+            <span class="task-progress" id="taskLottery">0/3</span>
+            <span class="task-reward">+30积分 +100经验</span>
+          </div>
+          <div class="task-item">
+            <span class="task-icon">📅</span>
+            <span class="task-name">连续打卡</span>
+            <span class="task-progress" id="taskStreak">—</span>
+            <span class="task-reward">每日+10积分</span>
+          </div>
+          <div class="task-item">
+            <span class="task-icon">🏆</span>
+            <span class="task-name">消费达人（月消费≥¥5000）</span>
+            <span class="task-progress" id="taskSpend">0/5000</span>
+            <span class="task-reward">+100积分 +200经验</span>
+          </div>
+        </div>
+      </div>
+      <div class="user-center-section">
+        <h3 class="section-sub-title">🛡️ 风控状态</h3>
+        <div class="risk-status" id="riskStatus">
+          <div class="risk-row">
+            <span>本月预算</span>
+            <span id="riskBudget">¥5000</span>
+          </div>
+          <div class="risk-row">
+            <span>已返现</span>
+            <span id="riskSpent">¥0</span>
+          </div>
+          <div class="risk-row">
+            <span>剩余额度</span>
+            <span id="riskRemain" style="color:#4caf50;">¥5000</span>
+          </div>
+          <div class="risk-bar"><div class="risk-bar-fill" id="riskBarFill"></div></div>
+        </div>
+      </div>
+      <div class="user-center-section">
+        <h3 class="section-sub-title">🔐 账号设置</h3>
+        <div class="setting-item">
+          <label>修改密码</label>
+          <div class="setting-input-row">
+            <input type="password" class="form-input" id="inputNewPassword" placeholder="新密码（留空不修改）">
+            <button class="btn-submit btn-sm" id="btnChangePassword">修改</button>
+          </div>
+        </div>
+      </div>
+      <div class="user-center-section">
+        <h3 class="section-sub-title">🧾 小票墙</h3>
+        <div class="ticket-wall" id="ticketWall">
+          <div class="ticket-wall-empty">暂无抽过的凭证</div>
+        </div>
+      </div>
+      <div class="user-center-section">
+        <h3 class="section-sub-title">🏅 徽章</h3>
+        <div class="badges-grid" id="badgesGrid">
+          <span class="badge-item badge-locked">🔒 Lv3解锁</span>
+          <span class="badge-item badge-locked">🔒 Lv5解锁</span>
+        </div>
+      </div>
+      <div class="user-center-section">
+        <h3 class="section-sub-title">🎨 装扮工作台</h3>
+        <div class="theme-picker" id="themePicker">
+          <div class="theme-option theme-default" data-theme="default" title="暗金默认">🌙</div>
+          <div class="theme-option theme-ocean-sw" data-theme="ocean" title="深海蓝">🌊</div>
+          <div class="theme-option theme-forest-sw" data-theme="forest" title="森林绿">🌿</div>
+          <div class="theme-option theme-rose-sw" data-theme="rose" title="玫瑰金">🌹</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== v2.0 中奖动态墙 ===== -->
+<div class="win-wall" id="winWall">
+  <div class="win-wall-header">
+    <span class="win-wall-title">🎉 实时中奖动态</span>
+  </div>
+  <div class="win-wall-scroll" id="winWallScroll">
+    <div class="win-wall-inner" id="winWallInner"></div>
   </div>
 </div>
 
