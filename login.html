@@ -265,6 +265,15 @@
 .email-login-input .form-input { flex: 1; margin-bottom: 0; }
 .btn-oauth.email { background: #b8860b; color: #fff; border-color: #b8860b; white-space: nowrap; min-width: auto; padding: 0 16px; }
 .btn-oauth.email:hover { background: #9a7209; }
+.email-login-verify { margin-top: 12px; }
+.email-verify-label { font-size: 13px; color: #52c41a; margin-bottom: 10px; text-align: center; }
+.email-verify-label strong { color: #b8860b; }
+.email-verify-input-row { display: flex; gap: 8px; }
+.email-code-input { flex: 1; text-align: center; font-size: 24px !important; letter-spacing: 12px; font-family: 'SF Mono','Courier New',monospace; font-weight: 700; padding-left: 16px !important; }
+.email-code-input::placeholder { letter-spacing: 2px; font-size: 14px; font-weight: 400; }
+.email-verify-resend { text-align: center; margin-top: 10px; font-size: 13px; color: #888; }
+.email-verify-resend a { color: #b8860b; cursor: pointer; text-decoration: none; }
+.email-verify-resend a:hover { text-decoration: underline; }
 .btn-oauth svg {
   width: 20px;
   height: 20px;
@@ -434,9 +443,22 @@
           </button>
         </div>
         <div class="email-login">
-          <div class="email-login-input">
+          <div class="email-login-input" id="emailInputRow">
             <input type="email" class="form-input" id="emailMagicInput" placeholder="输入邮箱地址">
-            <button class="btn-oauth email" id="btnEmailLogin">发送登录链接</button>
+            <button class="btn-oauth email" id="btnEmailLogin">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4l-10 9L2 4"/></svg>
+              发送验证码
+            </button>
+          </div>
+          <div class="email-login-verify" id="emailVerifyRow" style="display:none;">
+            <div class="email-verify-label">已发送验证码到 <strong id="emailVerifySentTo"></strong></div>
+            <div class="email-verify-input-row">
+              <input type="text" class="form-input email-code-input" id="emailCodeInput" placeholder="输入6位验证码" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+              <button class="btn-oauth email" id="btnEmailVerify">验证登录</button>
+            </div>
+            <div class="email-verify-resend">
+              没收到？<a href="#" id="btnEmailResend">重新发送</a> 或 <a href="#" id="btnEmailChange">更换邮箱</a>
+            </div>
           </div>
           <div class="form-success" id="emailSuccess" style="display:none;margin-top:8px;">登录链接已发送，请检查邮箱</div>
           <div class="form-error" id="emailError" style="display:none;margin-top:8px;"></div>
@@ -902,11 +924,13 @@
   });
 
   // ========= Email 魔法链接登录 =========
+  var _emailLastSent = "";
   document.getElementById("btnEmailLogin").addEventListener("click", function() {
     var emailInput = document.getElementById("emailMagicInput");
     var email = (emailInput.value || "").trim();
     var errEl = document.getElementById("emailError");
     var okEl = document.getElementById("emailSuccess");
+    var verifyRow = document.getElementById("emailVerifyRow");
     errEl.style.display = "none";
     okEl.style.display = "none";
     if (!email) { errEl.style.display = "block"; errEl.textContent = "请输入邮箱地址"; return; }
@@ -914,19 +938,26 @@
     var btn = this;
     btn.disabled = true;
     btn.textContent = "发送中...";
+    _emailLastSent = email;
     fetch(_proxyBase + "/oauth/email/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: email, returnUrl: _currentPageUrl })
     }).then(function(r) { return r.json(); }).then(function(data) {
       if (data.ok) {
-        okEl.style.display = "block";
         if (data.magicLink) {
+          okEl.style.display = "block";
           okEl.innerHTML = '<div style="margin-bottom:6px;">邮件发送失败，请手动点击下方链接登录：</div>' +
             '<a href="' + data.magicLink + '" style="color:#b8860b;word-break:break-all;font-weight:bold;">' + data.magicLink + '</a>' +
             '<div style="margin-top:8px;font-size:12px;color:#999;">此链接 15 分钟内有效。也可以直接复制到浏览器打开。</div>';
         } else {
-          okEl.textContent = "登录链接已发送到 " + email + "，请查收邮件";
+          okEl.style.display = "block";
+          okEl.innerHTML = '<span style="color:#52c41a;">✅ 验证码已发送</span>';
+          setTimeout(function() { okEl.style.display = "none"; }, 2000);
+          document.getElementById("emailVerifySentTo").textContent = email;
+          document.getElementById("emailInputRow").style.display = "none";
+          verifyRow.style.display = "block";
+          document.getElementById("emailCodeInput").focus();
         }
       } else {
         errEl.style.display = "block";
@@ -937,8 +968,68 @@
       errEl.textContent = "网络错误: " + e.message;
     }).finally(function() {
       btn.disabled = false;
-      btn.textContent = "发送登录链接";
+      btn.textContent = "发送验证码";
     });
+  });
+
+  // 验证码输入验证
+  document.getElementById("btnEmailVerify").addEventListener("click", function() {
+    var codeInput = document.getElementById("emailCodeInput");
+    var code = (codeInput.value || "").trim();
+    var errEl = document.getElementById("emailError");
+    if (!/^\d{6}$/.test(code)) { errEl.style.display = "block"; errEl.textContent = "请输入6位数字验证码"; return; }
+    errEl.style.display = "none";
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = "验证中...";
+    fetch(_proxyBase + "/oauth/email/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: code, email: _emailLastSent })
+    }).then(function(r) { return r.json(); }).then(function(data) {
+      if (data.oauth_token) {
+        return JITApi.oauthVerifyToken(data.oauth_token);
+      }
+      if (data.pending) {
+        var pendingBanner = document.getElementById("oauthPendingBanner");
+        pendingBanner.style.display = "block";
+        if (data.username) document.getElementById("oauthPendingUser").textContent = data.username;
+        document.getElementById("emailVerifyRow").style.display = "none";
+        return;
+      }
+      errEl.style.display = "block";
+      errEl.textContent = data.error || "验证失败";
+    }).catch(function(e) {
+      errEl.style.display = "block";
+      errEl.textContent = "网络错误: " + e.message;
+    }).finally(function() {
+      btn.disabled = false;
+      btn.textContent = "验证登录";
+    });
+  });
+
+  // 验证码输入自动提交（输入满6位）
+  document.getElementById("emailCodeInput").addEventListener("input", function() {
+    if (this.value.length === 6) {
+      document.getElementById("btnEmailVerify").click();
+    }
+  });
+
+  // 重新发送
+  document.getElementById("btnEmailResend").addEventListener("click", function(e) {
+    e.preventDefault();
+    document.getElementById("emailVerifyRow").style.display = "none";
+    document.getElementById("emailInputRow").style.display = "flex";
+    document.getElementById("btnEmailLogin").click();
+  });
+
+  // 更换邮箱
+  document.getElementById("btnEmailChange").addEventListener("click", function(e) {
+    e.preventDefault();
+    document.getElementById("emailVerifyRow").style.display = "none";
+    document.getElementById("emailInputRow").style.display = "flex";
+    document.getElementById("emailCodeInput").value = "";
+    document.getElementById("emailError").style.display = "none";
   });
 
   // ========= OAuth 回调处理 =========
