@@ -480,35 +480,39 @@ export default async function (req) {
         const magicLink = baseUrl + "/login?email_token=" + encodeURIComponent(token) + "&email=" + encodeURIComponent(email);
 
         const resendKey = process.env.RESEND_API_KEY;
-        if (!resendKey) {
-          // 没有配置 Resend 时，直接返回链接（调试用）
-          return jsonResponse({ ok: true, magicLink: magicLink, note: "RESEND_API_KEY 未配置，手动使用此链接测试" });
+        let emailSent = false;
+        if (resendKey) {
+          try {
+            const emailRes = await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: {
+                "Authorization": "Bearer " + resendKey,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                from: "玉国金融 <onboarding@resend.dev>",
+                to: [email],
+                subject: "玉国金融 - 登录链接",
+                html: '<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:20px;">' +
+                  '<h2 style="color:#b8860b;">玉国金融</h2>' +
+                  '<p>您好！</p>' +
+                  '<p>点击下方按钮即可登录：</p>' +
+                  '<a href="' + magicLink + '" style="display:inline-block;background:#b8860b;color:#fff;padding:12px 30px;text-decoration:none;border-radius:6px;font-size:16px;margin:16px 0;">登录玉国金融</a>' +
+                  '<p style="color:#999;font-size:12px;">此链接 15 分钟内有效。如非本人操作请忽略。</p>' +
+                  '<p style="color:#999;font-size:12px;">链接：' + magicLink + '</p>' +
+                  '</div>'
+              })
+            });
+            if (emailRes.ok) {
+              const emailData = await emailRes.json();
+              emailSent = emailData.id;
+            }
+          } catch (ignored) {}
         }
-
-        const emailRes = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            "Authorization": "Bearer " + resendKey,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            from: "玉国金融 <onboarding@resend.dev>",
-            to: [email],
-            subject: "玉国金融 - 登录链接",
-            html: '<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:20px;">' +
-              '<h2 style="color:#b8860b;">玉国金融</h2>' +
-              '<p>您好！</p>' +
-              '<p>点击下方按钮即可登录：</p>' +
-              '<a href="' + magicLink + '" style="display:inline-block;background:#b8860b;color:#fff;padding:12px 30px;text-decoration:none;border-radius:6px;font-size:16px;margin:16px 0;">登录玉国金融</a>' +
-              '<p style="color:#999;font-size:12px;">此链接 15 分钟内有效。如非本人操作请忽略。</p>' +
-              '<p style="color:#999;font-size:12px;">链接：' + magicLink + '</p>' +
-              '</div>'
-          })
-        });
-
-        const emailData = await emailRes.json();
-        if (emailData.id) return jsonResponse({ ok: true, message: "登录链接已发送" });
-        return jsonResponse({ ok: true, message: "登录链接已发送" });
+        if (emailSent) {
+          return jsonResponse({ ok: true, message: "登录链接已发送" });
+        }
+        return jsonResponse({ ok: true, magicLink: magicLink, message: "邮件发送失败，请使用下方链接直接登录" });
       } catch (e) {
         return jsonResponse({ error: "发送失败: " + (e.message || "未知错误") }, 500);
       }

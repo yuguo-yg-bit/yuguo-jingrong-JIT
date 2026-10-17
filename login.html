@@ -921,7 +921,13 @@
     }).then(function(r) { return r.json(); }).then(function(data) {
       if (data.ok) {
         okEl.style.display = "block";
-        okEl.textContent = "登录链接已发送到 " + email + "，请查收邮件";
+        if (data.magicLink) {
+          okEl.innerHTML = '<div style="margin-bottom:6px;">邮件发送失败，请手动点击下方链接登录：</div>' +
+            '<a href="' + data.magicLink + '" style="color:#b8860b;word-break:break-all;font-weight:bold;">' + data.magicLink + '</a>' +
+            '<div style="margin-top:8px;font-size:12px;color:#999;">此链接 15 分钟内有效。也可以直接复制到浏览器打开。</div>';
+        } else {
+          okEl.textContent = "登录链接已发送到 " + email + "，请查收邮件";
+        }
       } else {
         errEl.style.display = "block";
         errEl.textContent = data.error || "发送失败";
