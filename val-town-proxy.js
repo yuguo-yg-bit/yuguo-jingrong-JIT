@@ -5,8 +5,6 @@
 //   https://yuguoygbit--efeee912c58011f1af2f1607ee4eb77e.web.val.run
 // ============================================================
 
-import { MailKite } from "npm:mailkite";
-
 export default async function (req) {
   const ALLOW_ORIGINS = ["https://www.yuguojinrong.cc.cd", "https://yuguo-yg-bit.github.io", "https://yuguoygbit.github.io"];
   const TURSO_API = process.env.TURSO_API_URL;
@@ -485,21 +483,30 @@ export default async function (req) {
         let emailSent = false;
         if (mailkiteKey) {
           try {
-            const mk = new MailKite(mailkiteKey);
-            const mkResult = await mk.send({
-              from: "hello@yuguojinrongemail.cc.cd",
-              to: email,
-              subject: "玉国金融 - 登录链接",
-              html: '<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:20px;">' +
-                '<h2 style="color:#b8860b;">玉国金融</h2>' +
-                '<p>您好！</p>' +
-                '<p>点击下方按钮即可登录：</p>' +
-                '<a href="' + magicLink + '" style="display:inline-block;background:#b8860b;color:#fff;padding:12px 30px;text-decoration:none;border-radius:6px;font-size:16px;margin:16px 0;">登录玉国金融</a>' +
-                '<p style="color:#999;font-size:12px;">此链接 15 分钟内有效。如非本人操作请忽略。</p>' +
-                '<p style="color:#999;font-size:12px;">链接：' + magicLink + '</p>' +
-                '</div>'
+            const mkRes = await fetch("https://api.mailkite.dev/v1/send", {
+              method: "POST",
+              headers: {
+                "Authorization": "Bearer " + mailkiteKey,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                from: "hello@yuguojinrongemail.cc.cd",
+                to: [email],
+                subject: "玉国金融 - 登录链接",
+                html: '<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:20px;">' +
+                  '<h2 style="color:#b8860b;">玉国金融</h2>' +
+                  '<p>您好！</p>' +
+                  '<p>点击下方按钮即可登录：</p>' +
+                  '<a href="' + magicLink + '" style="display:inline-block;background:#b8860b;color:#fff;padding:12px 30px;text-decoration:none;border-radius:6px;font-size:16px;margin:16px 0;">登录玉国金融</a>' +
+                  '<p style="color:#999;font-size:12px;">此链接 15 分钟内有效。如非本人操作请忽略。</p>' +
+                  '<p style="color:#999;font-size:12px;">链接：' + magicLink + '</p>' +
+                  '</div>'
+              })
             });
-            emailSent = mkResult && mkResult.id;
+            if (mkRes.ok) {
+              const mkData = await mkRes.json();
+              emailSent = mkData.id;
+            }
           } catch (ignored) {}
         }
         if (emailSent) {
