@@ -1011,11 +1011,67 @@
       </div>
       <div class="user-center-section">
         <h3 class="section-sub-title">🎨 装扮工作台</h3>
+        <div class="outfit-points-info" id="outfitPointsInfo">我的积分: <span id="outfitPointCount">0</span></div>
+        <h4 class="outfit-sub-title">🌈 主题装扮</h4>
         <div class="theme-picker" id="themePicker">
-          <div class="theme-option theme-default" data-theme="default" title="暗金默认">🌙</div>
-          <div class="theme-option theme-ocean-sw" data-theme="ocean" title="深海蓝">🌊</div>
-          <div class="theme-option theme-forest-sw" data-theme="forest" title="森林绿">🌿</div>
-          <div class="theme-option theme-rose-sw" data-theme="rose" title="玫瑰金">🌹</div>
+          <div class="theme-option theme-default" data-theme="default" data-cost="0" title="暗金默认（免费）">
+            <span class="theme-icon">🌙</span>
+            <span class="theme-label">默认</span>
+            <span class="theme-cost free">免费</span>
+          </div>
+          <div class="theme-option theme-ocean-sw" data-theme="ocean" data-cost="0" title="深海蓝（免费）">
+            <span class="theme-icon">🌊</span>
+            <span class="theme-label">深海</span>
+            <span class="theme-cost free">免费</span>
+          </div>
+          <div class="theme-option theme-forest-sw" data-theme="forest" data-cost="100" title="森林绿（100积分解锁）">
+            <span class="theme-icon">🌿</span>
+            <span class="theme-label">森林</span>
+            <span class="theme-cost">100分</span>
+          </div>
+          <div class="theme-option theme-rose-sw" data-theme="rose" data-cost="200" title="玫瑰金（200积分解锁）">
+            <span class="theme-icon">🌹</span>
+            <span class="theme-label">玫瑰</span>
+            <span class="theme-cost">200分</span>
+          </div>
+          <div class="theme-option theme-sunset" data-theme="sunset" data-cost="300" title="日落橙（300积分解锁）">
+            <span class="theme-icon">🌅</span>
+            <span class="theme-label">日落</span>
+            <span class="theme-cost">300分</span>
+          </div>
+          <div class="theme-option theme-galaxy" data-theme="galaxy" data-cost="500" title="星云紫（500积分解锁）">
+            <span class="theme-icon">🌌</span>
+            <span class="theme-label">星云</span>
+            <span class="theme-cost">500分</span>
+          </div>
+        </div>
+        <h4 class="outfit-sub-title">🖼️ 头像装扮框</h4>
+        <div class="theme-picker" id="avatarFramePicker">
+          <div class="theme-option avatar-frame-option" data-frame="none" data-cost="0" title="默认无框（免费）">
+            <span class="frame-preview frame-none">👤</span>
+            <span class="theme-label">无框</span>
+            <span class="theme-cost free">免费</span>
+          </div>
+          <div class="theme-option avatar-frame-option" data-frame="gold" data-cost="150" title="金框（150积分解锁）">
+            <span class="frame-preview frame-gold">👤</span>
+            <span class="theme-label">金框</span>
+            <span class="theme-cost">150分</span>
+          </div>
+          <div class="theme-option avatar-frame-option" data-frame="diamond" data-cost="300" title="钻石框（300积分解锁）">
+            <span class="frame-preview frame-diamond">👤</span>
+            <span class="theme-label">钻石</span>
+            <span class="theme-cost">300分</span>
+          </div>
+          <div class="theme-option avatar-frame-option" data-frame="ruby" data-cost="500" title="红宝石框（500积分解锁）">
+            <span class="frame-preview frame-ruby">👤</span>
+            <span class="theme-label">红宝石</span>
+            <span class="theme-cost">500分</span>
+          </div>
+          <div class="theme-option avatar-frame-option" data-frame="rainbow" data-cost="800" title="彩虹框（800积分解锁）">
+            <span class="frame-preview frame-rainbow">👤</span>
+            <span class="theme-label">彩虹</span>
+            <span class="theme-cost">800分</span>
+          </div>
         </div>
       </div>
     </div>

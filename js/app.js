@@ -40,7 +40,7 @@ var JITApp = (function() {
     _refreshPointsDisplay();
     _dailyLoginBonus(); // v2.0 每日签到
     _checkExpiredTickets(); // v2.0 过期券提醒
-    _initTheme(); // v2.0 主题初始化
+    _initOutfits(); // v2.0 装扮初始化
     // 每10秒自动刷新
     setInterval(function() {
       _loadData();
@@ -261,7 +261,7 @@ var JITApp = (function() {
       _loadNotifications();
       _dailyLoginBonus(); // v2.0 每日签到
       _checkExpiredTickets(); // v2.0 过期券提醒
-      _initTheme(); // v2.0 主题初始化
+      _initOutfits(); // v2.0 装扮初始化
       return;
     }
     _showLoginPrompt();
@@ -880,14 +880,8 @@ var JITApp = (function() {
     var btnUserCenter = document.getElementById("btnUserCenter");
     if (btnUserCenter) btnUserCenter.addEventListener("click", _openUserCenter);
 
-    // v2.0 主题选择器
-    var themeOptions = document.querySelectorAll(".theme-option");
-    themeOptions.forEach(function(opt) {
-      opt.addEventListener("click", function() {
-        var theme = this.getAttribute("data-theme");
-        _setTheme(theme);
-      });
-    });
+    // v2.0 装扮选择器（主题+头像框事件绑定）
+    _initOutfitEvents();
 
     var btnModalClose = document.getElementById("btnModalClose");
     if (btnModalClose) {
@@ -1605,7 +1599,7 @@ var JITApp = (function() {
       if (v.statusType === "paid") statusText = "已付款·待确认";
       var isElectric = !!(v.electric || v.voucherType === "电器凭证");
       var discount = v.discount || "-";
-      var paymentNote = v.paymentNote || v.paymentMethod || "-";
+      var paymentNote = v.paymentNote || _translatePaymentMethod(v.paymentMethod) || "-";
       var originalPrice = v.originalPrice || "-";
       var finalPrice = v.finalPrice || "-";
 
@@ -1799,14 +1793,24 @@ var JITApp = (function() {
       var targetVoucher = voucher;
       setTimeout(function() {
         JITLottery.start("lotteryCanvas", function(prize) {
-          // 刮开后：隐藏刮刮乐，显示美颜结果弹窗
+          // 刮开后：隐藏刮刮乐，立即保存折扣，显示美颜结果弹窗
           _currentScratchPrize = prize;
           _currentVoucher = targetVoucher;
           var lotOverlay = document.getElementById("lotteryOverlay");
           if (lotOverlay) lotOverlay.classList.remove("active");
+          // 立即保存刮刮乐折扣（防止丢失，异步更新券信息）
+          _saveScratchDiscountQuick(prize, targetVoucher);
           _showScratchResultPopup(prize);
           // 抽奖结果确定后，本轮幸运模式自动失效
           JITLottery.disableLuckyMode();
+          // 自动打开老虎机（延迟让用户看到刮刮乐结果）
+          setTimeout(function() {
+            var srOverlay = document.getElementById("scratchResultOverlay");
+            if (!srOverlay || !srOverlay.classList.contains("active")) return;
+            // 关闭刮刮乐结果弹窗
+            srOverlay.classList.remove("active");
+            _openSlotMachine(targetVoucher, prize);
+          }, 2500);
         });
       }, 300);
     }
@@ -1851,6 +1855,26 @@ var JITApp = (function() {
 
   var _getLevelInfo = function(level) {
     return LEVEL_CONFIG[Math.min(level, LEVEL_CONFIG.length - 1)] || LEVEL_CONFIG[0];
+  };
+
+  // 增加经验值并自动升级
+  var _addExp = function(userId, amount) {
+    var key = "jit_user_levels";
+    var all = {};
+    try { all = JSON.parse(localStorage.getItem(key) || "{}"); } catch(e) {}
+    var data = all[userId] || { level: 0, exp: 0, streak: 0 };
+    data.exp = (data.exp || 0) + amount;
+    var leveledUp = false;
+    while (true) {
+      var nextInfo = _getLevelInfo(data.level + 1);
+      if (nextInfo && data.exp >= nextInfo.expNeed) {
+        data.level++;
+        leveledUp = true;
+      } else { break; }
+    }
+    all[userId] = data;
+    localStorage.setItem(key, JSON.stringify(all));
+    return { levelData: data, leveledUp: leveledUp };
   };
 
   // 刮刮乐结果美颜弹窗
@@ -1923,6 +1947,7 @@ var JITApp = (function() {
     _currentScratchPrize = null;
     _slotLastDrawn = null;
     _slotResultSaved = false;
+    _scratchDiscountSaved = false;
   };
 
   // 老虎机弹窗
@@ -2053,13 +2078,52 @@ var JITApp = (function() {
     _slotResultSaved = false;
   };
 
+  // 快速保存刮刮乐折扣（刮开时立即调用，防止丢失）
+  var _scratchDiscountSaved = false;
+  var _saveScratchDiscountQuick = function(prize, voucher) {
+    if (_scratchDiscountSaved) return;
+    _scratchDiscountSaved = true;
+    // 同步保存到 localStorage
+    var lotteryResults = JSON.parse(localStorage.getItem("jit_lottery_results") || "[]");
+    lotteryResults.push({
+      discount: prize.discount,
+      value: prize.value,
+      label: prize.label,
+      date: new Date().toISOString().split("T")[0],
+      username: _currentUser
+    });
+    localStorage.setItem("jit_lottery_results", JSON.stringify(lotteryResults));
+    // 异步更新券信息
+    if (voucher && voucher._issueNumber) {
+      var updatedVoucher = Object.assign({}, voucher);
+      updatedVoucher.discount = prize.discount;
+      updatedVoucher.discountValue = prize.value;
+      var amountValue = parseFloat(updatedVoucher.amount || updatedVoucher.originalPrice || 0);
+      if (!isNaN(amountValue)) {
+        updatedVoucher.finalPrice = (amountValue * prize.value).toFixed(2) + "元";
+      }
+      JITApi.updateVoucherWithLottery(voucher._issueNumber, updatedVoucher).then(function() {
+        JITApi.invalidateCache("allVouchers");
+        JITApi.invalidateCache("allVouchersForId");
+        _loadData();
+      }).catch(function(err) {
+        console.error("保存刮刮乐折扣失败:", err);
+      });
+    }
+  };
+
   // 完整保存：刮刮乐 + 老虎机 + 积分 + 中奖墙
   var _saveFullLotteryResult = function(voucher, scratchPrize, slotResult) {
     if (!voucher || !scratchPrize) return;
     if (_slotResultSaved) return;
     _slotResultSaved = true;
 
-    // 先调用旧的刮刮乐结果保存
+    // 如果快速保存还没做，现在做
+    if (!_scratchDiscountSaved) {
+      _saveScratchDiscountQuick(scratchPrize, voucher);
+    }
+
+    // 先调用旧的刮刮乐结果保存（兼容）
     var oldSaveDone = false;
     try {
       _saveLotteryResult(scratchPrize, voucher);
@@ -2116,19 +2180,10 @@ var JITApp = (function() {
     }
 
     // 等级经验增加
-    var levelData = _getUserLevel(_currentUser);
-    levelData.exp = (levelData.exp || 0) + 30;
-    while (true) {
-      var info = _getLevelInfo(levelData.level);
-      var nextInfo = _getLevelInfo(levelData.level + 1);
-      if (nextInfo && levelData.exp >= nextInfo.expNeed) {
-        levelData.level++;
-      } else { break; }
+    var result = _addExp(_currentUser, 30);
+    if (result.leveledUp) {
+      _showToast("🎉 升级了！达到 " + _getLevelInfo(result.levelData.level).name + "！", "success");
     }
-    var allLevels = {};
-    try { allLevels = JSON.parse(localStorage.getItem("jit_user_levels") || "{}"); } catch(e) {}
-    allLevels[_currentUser] = levelData;
-    localStorage.setItem("jit_user_levels", JSON.stringify(allLevels));
 
     // 中奖墙记录
     _addToWinWall(_currentUser, scratchPrize.discount, totalReward.toFixed(2));
@@ -2196,6 +2251,15 @@ var JITApp = (function() {
 
   var _refreshUserCenterUI = function() {
     if (!_currentUser) return;
+
+    // 先刷新积分（确保装扮解锁检查准确），等积分加载完再刷装扮
+    _refreshPointsDisplay(false).then(function() {
+      _refreshThemePickerUI();
+      _refreshFramePickerUI();
+      // 恢复保存的头像框
+      var savedFrame = localStorage.getItem("jit_avatar_frame") || "none";
+      _applyAvatarFrame(savedFrame);
+    }).catch(function() {});
 
     var levelData = _getUserLevel(_currentUser);
     var levelInfo = _getLevelInfo(levelData.level);
@@ -2329,10 +2393,24 @@ var JITApp = (function() {
     grid.innerHTML = html;
   };
 
-  // ===== v2.0 任务进度 =====
+  // ===== v2.0 任务进度 + 奖励发放 =====
+  var _taskRewardsKey = "jit_task_rewards";
+  var _getTaskRewards = function() {
+    try { return JSON.parse(localStorage.getItem(_taskRewardsKey) || "{}"); } catch(e) { return {}; }
+  };
+  var _setTaskRewards = function(rewards) {
+    localStorage.setItem(_taskRewardsKey, JSON.stringify(rewards));
+  };
+
   var _renderTasks = function(levelData) {
-    // 任务1: 今日添加凭证
     var today = new Date().toISOString().split("T")[0];
+    var thisMonth = today.substring(0, 7);
+    var rewards = _getTaskRewards();
+    var userId = _currentUser;
+    if (!rewards[userId]) rewards[userId] = {};
+    var userRewards = rewards[userId];
+
+    // 任务1: 今日添加凭证
     var todayVouchers = (_allVouchers || []).filter(function(v) {
       return v.date && v.date.substring(0, 10) === today;
     }).length;
@@ -2341,6 +2419,15 @@ var JITApp = (function() {
       taskVoucher.textContent = todayVouchers + "/1";
       if (todayVouchers >= 1) taskVoucher.classList.add("task-done");
       else taskVoucher.classList.remove("task-done");
+    }
+    // 发放任务1奖励
+    if (todayVouchers >= 1 && !userRewards["task_voucher_" + today]) {
+      userRewards["task_voucher_" + today] = true;
+      _addExp(_currentUser, 50);
+      if (JITPoints && JITPoints.changePoints) {
+        JITPoints.changePoints(_currentUser, 15, "完成每日「添加凭证」任务").then(function() { _refreshPointsDisplay(true); }).catch(function() {});
+      }
+      _showToast("✅ 完成任务：添加凭证！+50经验 +15积分", "success");
     }
 
     // 任务2: 今日完成抽奖
@@ -2354,24 +2441,60 @@ var JITApp = (function() {
       if (todaySlots >= 3) taskLottery.classList.add("task-done");
       else taskLottery.classList.remove("task-done");
     }
+    // 发放任务2奖励
+    if (todaySlots >= 3 && !userRewards["task_lottery_" + today]) {
+      userRewards["task_lottery_" + today] = true;
+      _addExp(_currentUser, 100);
+      if (JITPoints && JITPoints.changePoints) {
+        JITPoints.changePoints(_currentUser, 30, "完成每日「完成3次抽奖」任务").then(function() { _refreshPointsDisplay(true); }).catch(function() {});
+      }
+      _showToast("🔮 完成任务：完成3次抽奖！+100经验 +30积分", "success");
+    }
 
     // 任务3: 连续打卡
+    var streak = levelData.streak || 0;
     var taskStreak = document.getElementById("taskStreak");
     if (taskStreak) {
-      taskStreak.textContent = (levelData.streak || 0) + "天";
+      taskStreak.textContent = streak + "天";
+    }
+    // 发放打卡奖励（每日）
+    if (streak > 0 && !userRewards["task_streak_" + today]) {
+      userRewards["task_streak_" + today] = true;
+      var streakBonus = Math.min(streak * 5, 50);
+      _addExp(_currentUser, streakBonus);
+      if (JITPoints && JITPoints.changePoints) {
+        JITPoints.changePoints(_currentUser, 10, "连续打卡" + streak + "天奖励").then(function() { _refreshPointsDisplay(true); }).catch(function() {});
+      }
+      if (streak >= 7) {
+        _showToast("🔥 连续打卡" + streak + "天！+" + streakBonus + "经验 +10积分", "success");
+      }
     }
 
     // 任务4: 本月消费额
-    var thisMonth = today.substring(0, 7);
     var monthSpend = (_allVouchers || []).filter(function(v) {
       return v.date && v.date.substring(0, 7) === thisMonth;
     }).reduce(function(sum, v) { return sum + parseFloat(v.amount || 0); }, 0);
     var taskSpend = document.getElementById("taskSpend");
     if (taskSpend) {
-      taskSpend.textContent = Math.min(monthSpend, 5000) + "/5000";
+      taskSpend.textContent = Math.round(Math.min(monthSpend, 5000)) + "/5000";
       if (monthSpend >= 5000) taskSpend.classList.add("task-done");
       else taskSpend.classList.remove("task-done");
     }
+    // 发放任务4奖励（每月一次）
+    if (monthSpend >= 5000 && !userRewards["task_spend_" + thisMonth]) {
+      userRewards["task_spend_" + thisMonth] = true;
+      _addExp(_currentUser, 200);
+      if (JITPoints && JITPoints.changePoints) {
+        JITPoints.changePoints(_currentUser, 100, "完成「消费达人」任务（月消费≥¥5000）").then(function() { _refreshPointsDisplay(true); }).catch(function() {});
+      }
+      _showToast("🏆 消费达人！月消费≥¥5000！+200经验 +100积分", "success");
+    }
+
+    // 保存奖励记录
+    _setTaskRewards(rewards);
+
+    // 刷新用户中心
+    _refreshUserCenterUI();
   };
 
   // ===== v2.0 风控状态 =====
@@ -2447,29 +2570,178 @@ var JITApp = (function() {
     reader.readAsDataURL(file);
   };
 
-  // ===== v2.0 工作台主题装扮 =====
-  var _initTheme = function() {
+  // ===== v2.0 工作台主题装扮 + 头像框 =====
+  var _initOutfits = function() {
     var savedTheme = localStorage.getItem("jit_theme") || "default";
+    var savedFrame = localStorage.getItem("jit_avatar_frame") || "none";
+    // 确保当前使用的主题在已解锁列表中
+    if (savedTheme !== "default" && !_isOutfitUnlocked("theme", savedTheme)) {
+      var unlocked = _getUnlockedOutfits();
+      unlocked.push("theme_" + savedTheme);
+      _saveUnlockedOutfits(unlocked);
+    }
+    if (savedFrame !== "none" && !_isOutfitUnlocked("frame", savedFrame)) {
+      var unlockedF = _getUnlockedOutfits();
+      unlockedF.push("frame_" + savedFrame);
+      _saveUnlockedOutfits(unlockedF);
+    }
     _applyTheme(savedTheme);
+    _applyAvatarFrame(savedFrame);
+  };
+
+  // 获取已解锁的主题列表
+  var _getUnlockedOutfits = function() {
+    try { return JSON.parse(localStorage.getItem("jit_unlocked_outfits") || "[]"); } catch(e) { return []; }
+  };
+  var _saveUnlockedOutfits = function(outfits) {
+    localStorage.setItem("jit_unlocked_outfits", JSON.stringify(outfits));
+  };
+
+  // 检查装扮是否已解锁
+  var _isOutfitUnlocked = function(type, id) {
+    if (id === "default" || id === "none") return true;
+    var unlocked = _getUnlockedOutfits();
+    return unlocked.indexOf(type + "_" + id) !== -1;
+  };
+
+  // 用积分解锁装扮
+  var _unlockOutfit = function(type, id, cost) {
+    if (_isOutfitUnlocked(type, id)) return true;
+    if (_currentPoints < cost) return false;
+    var unlocked = _getUnlockedOutfits();
+    unlocked.push(type + "_" + id);
+    _saveUnlockedOutfits(unlocked);
+    // 扣除积分
+    if (JITPoints && JITPoints.changePoints) {
+      JITPoints.changePoints(_currentUser, -cost, "解锁装扮: " + id).then(function() {
+        _refreshPointsDisplay(true);
+      }).catch(function() {});
+    } else {
+      _refreshPointsDisplay(true);
+    }
+    return true;
   };
 
   var _applyTheme = function(theme) {
     var body = document.body;
-    body.classList.remove("theme-ocean", "theme-forest", "theme-rose");
+    body.classList.remove("theme-ocean", "theme-forest", "theme-rose", "theme-sunset", "theme-galaxy");
     if (theme && theme !== "default") {
       body.classList.add("theme-" + theme);
     }
-    // 更新选择器高亮
-    var options = document.querySelectorAll(".theme-option");
+    localStorage.setItem("jit_theme", theme || "default");
+    _refreshThemePickerUI();
+  };
+
+  var _setTheme = function(theme, cost) {
+    // 检查是否已解锁
+    if (!_isOutfitUnlocked("theme", theme) && cost > 0) {
+      if (!_unlockOutfit("theme", theme, cost)) {
+        _showToast("积分不足！需要 " + cost + " 积分解锁该主题", "error");
+        return;
+      }
+      _showToast("🎨 已解锁新主题装扮！（消耗 " + cost + " 积分）", "success");
+    }
+    _applyTheme(theme);
+    _showToast("🎨 主题装扮已切换", "success");
+    _refreshUserCenterUI();
+  };
+
+  // ===== 头像装扮框 =====
+  var _applyAvatarFrame = function(frame) {
+    var avatarCircle = document.getElementById("avatarCircle");
+    if (avatarCircle) {
+      avatarCircle.classList.remove("frame-gold", "frame-diamond", "frame-ruby", "frame-rainbow");
+      if (frame && frame !== "none") {
+        avatarCircle.classList.add("frame-" + frame);
+      }
+    }
+    localStorage.setItem("jit_avatar_frame", frame || "none");
+    _refreshFramePickerUI();
+  };
+
+  var _setAvatarFrame = function(frame, cost) {
+    if (!_isOutfitUnlocked("frame", frame) && cost > 0) {
+      if (!_unlockOutfit("frame", frame, cost)) {
+        _showToast("积分不足！需要 " + cost + " 积分解锁该头像框", "error");
+        return;
+      }
+      _showToast("🖼️ 已解锁新头像框！（消耗 " + cost + " 积分）", "success");
+    }
+    _applyAvatarFrame(frame);
+    _showToast("🖼️ 头像框已切换", "success");
+    _refreshUserCenterUI();
+  };
+
+  // 刷新主题选择器 UI（高亮 + 锁状态）
+  var _refreshThemePickerUI = function() {
+    var currentTheme = localStorage.getItem("jit_theme") || "default";
+    var options = document.querySelectorAll("#themePicker .theme-option");
     options.forEach(function(opt) {
-      opt.classList.toggle("theme-active", opt.getAttribute("data-theme") === theme);
+      var theme = opt.getAttribute("data-theme");
+      var cost = parseInt(opt.getAttribute("data-cost") || "0");
+      var isCurrent = theme === currentTheme;
+      var isUnlocked = _isOutfitUnlocked("theme", theme);
+      opt.classList.toggle("theme-active", isCurrent);
+      opt.classList.toggle("theme-locked", !isUnlocked);
+      var costEl = opt.querySelector(".theme-cost");
+      if (costEl) {
+        if (isUnlocked) {
+          costEl.textContent = "已解锁";
+          costEl.className = "theme-cost unlocked";
+        } else {
+          costEl.textContent = cost + "分";
+          costEl.className = "theme-cost";
+        }
+      }
+    });
+    // 更新积分显示
+    var ptsEl = document.getElementById("outfitPointCount");
+    if (ptsEl) ptsEl.textContent = String(_currentPoints);
+  };
+
+  // 刷新头像框选择器 UI
+  var _refreshFramePickerUI = function() {
+    var currentFrame = localStorage.getItem("jit_avatar_frame") || "none";
+    var options = document.querySelectorAll("#avatarFramePicker .theme-option");
+    options.forEach(function(opt) {
+      var frame = opt.getAttribute("data-frame");
+      var cost = parseInt(opt.getAttribute("data-cost") || "0");
+      var isCurrent = frame === currentFrame;
+      var isUnlocked = _isOutfitUnlocked("frame", frame);
+      opt.classList.toggle("theme-active", isCurrent);
+      opt.classList.toggle("theme-locked", !isUnlocked);
+      var costEl = opt.querySelector(".theme-cost");
+      if (costEl) {
+        if (isUnlocked) {
+          costEl.textContent = "已解锁";
+          costEl.className = "theme-cost unlocked";
+        } else {
+          costEl.textContent = cost + "分";
+          costEl.className = "theme-cost";
+        }
+      }
     });
   };
 
-  var _setTheme = function(theme) {
-    localStorage.setItem("jit_theme", theme);
-    _applyTheme(theme);
-    _showToast("🎨 主题装扮已切换", "success");
+  // 初始化主题选择器事件
+  var _initOutfitEvents = function() {
+    var themeOptions = document.querySelectorAll("#themePicker .theme-option");
+    themeOptions.forEach(function(opt) {
+      opt.addEventListener("click", function() {
+        var theme = opt.getAttribute("data-theme");
+        var cost = parseInt(opt.getAttribute("data-cost") || "0");
+        _setTheme(theme, cost);
+      });
+    });
+
+    var frameOptions = document.querySelectorAll("#avatarFramePicker .theme-option");
+    frameOptions.forEach(function(opt) {
+      opt.addEventListener("click", function() {
+        var frame = opt.getAttribute("data-frame");
+        var cost = parseInt(opt.getAttribute("data-cost") || "0");
+        _setAvatarFrame(frame, cost);
+      });
+    });
   };
 
   // 初始化中奖墙
@@ -3504,6 +3776,20 @@ var JITApp = (function() {
     var div = document.createElement("div");
     div.textContent = str;
     return div.innerHTML;
+  };
+
+  var _translatePaymentMethod = function(method) {
+    if (!method) return "";
+    var map = {
+      "userFirst": "用户先支付",
+      "unionFirst": "工会先支付",
+      "chat": "聊天消息",
+      "电汇": "电汇",
+      "现金": "现金",
+      "微信": "微信",
+      "支付宝": "支付宝"
+    };
+    return map[method] || method;
   };
 
   var _openChatModal = function() {

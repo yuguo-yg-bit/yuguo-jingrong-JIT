@@ -102,6 +102,20 @@ var JITAdmin = (function() {
     return div.innerHTML;
   };
 
+  var _translatePaymentMethod = function(method) {
+    if (!method) return "";
+    var map = {
+      "userFirst": "用户先支付",
+      "unionFirst": "工会先支付",
+      "chat": "聊天消息",
+      "电汇": "电汇",
+      "现金": "现金",
+      "微信": "微信",
+      "支付宝": "支付宝"
+    };
+    return map[method] || method;
+  };
+
   var _parseIssueBody = function(body) {
     var data = {};
     if (!body) return data;
@@ -248,7 +262,7 @@ var JITAdmin = (function() {
     html += '<td>' + _escapeHtml(data.date || data.createTime || "—") + '</td>';
     html += '<td>' + _escapeHtml(amtDisplay) + '</td>';
     html += '<td><span class="discount-badge"' + discountStyle + '>' + _escapeHtml(discountDisplay) + '</span></td>';
-    html += '<td>' + _escapeHtml((data.paymentMethod || "—").substring(0, 15)) + '</td>';
+    html += '<td>' + _escapeHtml(_translatePaymentMethod(data.paymentMethod) || "—") + '</td>';
     html += '<td><span class="status-badge ' + status + '">' + statusText + '</span></td>';
     // ===== 操作列：审核 + 加急切换 + 加急黑名单 =====
     var urgentBtn = '';
@@ -421,7 +435,7 @@ var JITAdmin = (function() {
     } else {
       html += _infoItem("中奖折扣", data.discount || "未抽奖");
     }
-    html += _infoItem("支付方式", data.paymentMethodText || data.paymentMethod || "—");
+    html += _infoItem("支付方式", data.paymentMethodText || _translatePaymentMethod(data.paymentMethod) || "—");
     html += _infoItem("定位", data.location || "未提供");
     html += _infoItem("创建时间", data.createTime || "—");
     // 线上购物额外字段
@@ -1223,7 +1237,7 @@ var JITAdmin = (function() {
     html += _voucherField("📅 消费日期", v.date || "-");
     html += _voucherField("💰 消费金额", v.originalPrice || v.amount || "-");
     html += _voucherField("🏷️ 折扣", v.discount || "未抽奖");
-    html += _voucherField("💳 支付方式", v.paymentMethod || "-");
+    html += _voucherField("💳 支付方式", _translatePaymentMethod(v.paymentMethod) || "-");
     html += '</div>';
 
     if (v.remark) {
