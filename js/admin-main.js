@@ -435,7 +435,7 @@ var JITAdmin = (function() {
     } else {
       html += _infoItem("中奖折扣", data.discount || "未抽奖");
     }
-    html += _infoItem("支付方式", data.paymentMethodText || _translatePaymentMethod(data.paymentMethod) || "—");
+    html += _infoItem("支付方式", _translatePaymentMethod(data.paymentMethod) || data.paymentMethodText || "—");
     html += _infoItem("定位", data.location || "未提供");
     html += _infoItem("创建时间", data.createTime || "—");
     // 线上购物额外字段

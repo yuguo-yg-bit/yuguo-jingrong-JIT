@@ -1599,7 +1599,7 @@ var JITApp = (function() {
       if (v.statusType === "paid") statusText = "已付款·待确认";
       var isElectric = !!(v.electric || v.voucherType === "电器凭证");
       var discount = v.discount || "-";
-      var paymentNote = v.paymentNote || _translatePaymentMethod(v.paymentMethod) || "-";
+      var paymentNote = _translatePaymentMethod(v.paymentMethod) || v.paymentNote || "-";
       var originalPrice = v.originalPrice || "-";
       var finalPrice = v.finalPrice || "-";
 
@@ -2252,14 +2252,8 @@ var JITApp = (function() {
   var _refreshUserCenterUI = function() {
     if (!_currentUser) return;
 
-    // 先刷新积分（确保装扮解锁检查准确），等积分加载完再刷装扮
-    _refreshPointsDisplay(false).then(function() {
-      _refreshThemePickerUI();
-      _refreshFramePickerUI();
-      // 恢复保存的头像框
-      var savedFrame = localStorage.getItem("jit_avatar_frame") || "none";
-      _applyAvatarFrame(savedFrame);
-    }).catch(function() {});
+    // 刷新积分
+    _refreshPointsDisplay(false);
 
     var levelData = _getUserLevel(_currentUser);
     var levelInfo = _getLevelInfo(levelData.level);
@@ -2358,6 +2352,13 @@ var JITApp = (function() {
 
     // 抽奖券数量
     _renderTicketCount();
+
+    // 装扮 UI
+    _refreshThemePickerUI();
+    _refreshFramePickerUI();
+    // 恢复头像框样式
+    var savedFrame = localStorage.getItem("jit_avatar_frame") || "none";
+    _applyAvatarFrame(savedFrame);
   };
 
   // ===== v2.0 动态徽章 =====
