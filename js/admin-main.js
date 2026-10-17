@@ -2288,7 +2288,15 @@ var JITAdmin = (function() {
         var d = item.data;
         var issueNum = item.issue.number;
         var isOAuth = !!(item.issue._oauthProvider || d.oauth_provider || d["注册方式"]);
-        var oauthBadge = isOAuth ? '<span style="display:inline-block;background:#24292e;color:#fff;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:middle;" title="通过 ' + (item.issue._oauthProvider || d.oauth_provider || '大平台') + ' 注册">&#xf09b; GitHub</span>' : '';
+        var provider = (item.issue._oauthProvider || d.oauth_provider || "").toLowerCase();
+        var oauthBadge = "";
+        if (provider === "github") {
+          oauthBadge = '<span style="display:inline-block;background:#24292e;color:#fff;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:middle;" title="通过 GitHub 注册">GitHub</span>';
+        } else if (provider === "microsoft") {
+          oauthBadge = '<span style="display:inline-block;background:#00a4ef;color:#fff;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:middle;" title="通过 Microsoft 注册">Microsoft</span>';
+        } else if (isOAuth) {
+          oauthBadge = '<span style="display:inline-block;background:#666;color:#fff;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:middle;" title="通过大平台注册">OAuth</span>';
+        }
         var status = d.reviewStatus || d.审核状态 || "待审核";
         var statusColor = status === "已通过" || status === "approved" ? "#4caf50" : (status === "已拒绝" || status === "rejected" ? "#f44336" : "#ff9800");
         var location = [d.country || d.国家, d.province || d.省份, d.city || d.城市].filter(Boolean).join(" / ") || "—";

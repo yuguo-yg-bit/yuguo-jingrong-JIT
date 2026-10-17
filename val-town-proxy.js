@@ -328,6 +328,137 @@ export default async function (req) {
       }
     }
 
+    // ========== Microsoft OAuth 登录入口 ==========
+    if (path === "/oauth/microsoft") {
+      const clientId = process.env.MICROSOFT_OAUTH_CLIENT_ID;
+      if (!clientId) return jsonResponse({ error: "Microsoft OAuth 未配置，请设置 MICROSOFT_OAUTH_CLIENT_ID 环境变量" }, 500);
+      const state = url.searchParams.get("state") || "default";
+      const returnUrl = url.searchParams.get("return_url") || ALLOW_ORIGINS[0];
+      const msAuthUrl = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?" +
+        "client_id=" + encodeURIComponent(clientId) +
+        "&response_type=code" +
+        "&redirect_uri=" + encodeURIComponent("https://yuguoygbit--efeee912c58011f1af2f1607ee4eb77e.web.val.run/oauth/microsoft/callback") +
+        "&scope=" + encodeURIComponent("openid profile email User.Read") +
+        "&state=" + encodeURIComponent(state + "|" + returnUrl);
+      return new Response(null, { status: 302, headers: { "Location": msAuthUrl } });
+    }
+
+    // ========== Microsoft OAuth 回调 ==========
+    if (path === "/oauth/microsoft/callback") {
+      const code = url.searchParams.get("code");
+      const fullState = url.searchParams.get("state") || "default|" + ALLOW_ORIGINS[0];
+      const stateParts = fullState.split("|");
+      const state = stateParts[0] || "default";
+      const returnUrl = stateParts.slice(1).join("|") || ALLOW_ORIGINS[0];
+
+      if (!code) {
+        const redirectUrl = returnUrl + "/login?oauth_error=" + encodeURIComponent("授权被取消");
+        return new Response(null, { status: 302, headers: { "Location": redirectUrl } });
+      }
+
+      try {
+        const clientId = process.env.MICROSOFT_OAUTH_CLIENT_ID;
+        const clientSecret = process.env.MICROSOFT_OAUTH_CLIENT_SECRET;
+
+        // 1. 用 code 换取 access_token
+        const tokenRes = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            client_id: clientId,
+            client_secret: clientSecret,
+            code: code,
+            redirect_uri: "https://yuguoygbit--efeee912c58011f1af2f1607ee4eb77e.web.val.run/oauth/microsoft/callback",
+            grant_type: "authorization_code"
+          }).toString()
+        });
+        const tokenData = await tokenRes.json();
+        const accessToken = tokenData.access_token;
+        if (!accessToken) throw new Error("获取 Microsoft access_token 失败: " + (tokenData.error_description || tokenData.error || JSON.stringify(tokenData)));
+
+        // 2. 获取 Microsoft 用户信息（Graph API）
+        const userRes = await fetch("https://graph.microsoft.com/v1.0/me", {
+          headers: { "Authorization": "Bearer " + accessToken }
+        });
+        const msUser = await userRes.json();
+        if (!msUser.id) throw new Error("获取 Microsoft 用户信息失败: " + (msUser.error?.message || JSON.stringify(msUser)));
+
+        const msId = String(msUser.id);
+        const msDisplayName = msUser.displayName || "";
+        const msEmail = msUser.mail || msUser.userPrincipalName || "";
+        const msUsernameBase = msEmail ? msEmail.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "").substring(0, 30) : ("ms_" + msId.replace(/-/g, "").substring(0, 25));
+
+        if (!msUsernameBase) throw new Error("无法获取有效的 Microsoft 用户名");
+
+        // 3. 查找是否已有该 OAuth 用户
+        const { data: lookupData } = await execTurso(
+          "SELECT id, review_status FROM users WHERE oauth_provider='microsoft' AND oauth_id=?",
+          [msId]
+        );
+        const lookupResult = lookupData.results?.[0];
+        let existingUsername = "";
+        let existingStatus = "";
+
+        if (lookupResult && lookupResult.type !== "error") {
+          const inner = lookupResult.response?.result || lookupResult.response?.results || {};
+          const rows = inner.rows || [];
+          if (rows.length > 0) {
+            existingUsername = typeof rows[0][0] === "object" && "value" in rows[0][0] ? rows[0][0].value : rows[0][0];
+            existingStatus = typeof rows[0][1] === "object" && "value" in rows[0][1] ? rows[0][1].value : rows[0][1];
+          }
+        }
+
+        const now = new Date().toISOString();
+
+        if (existingStatus === "approved") {
+          const token = crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).substring(2, 15));
+          const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+          await execTurso(
+            "INSERT INTO oauth_tokens (token, username, oauth_id, provider, created_at, expires_at) VALUES (?,?,?,?,?,?)",
+            [token, existingUsername, msId, "microsoft", now, expiresAt]
+          );
+          const redirectUrl = returnUrl + "/login?oauth_token=" + encodeURIComponent(token) + "&state=" + encodeURIComponent(state);
+          return new Response(null, { status: 302, headers: { "Location": redirectUrl } });
+        } else if (existingStatus === "pending") {
+          const redirectUrl = returnUrl + "/login?oauth_pending=1&username=" + encodeURIComponent(existingUsername) + "&state=" + encodeURIComponent(state);
+          return new Response(null, { status: 302, headers: { "Location": redirectUrl } });
+        }
+
+        // 4. 新用户 → 检查用户名是否被占用
+        const { data: nameCheck } = await execTurso(
+          "SELECT id FROM users WHERE id=?",
+          [msUsernameBase]
+        );
+        const nameResult = nameCheck.results?.[0];
+        let finalUsername = msUsernameBase;
+        if (nameResult && nameResult.type !== "error") {
+          const inner = nameResult.response?.result || nameResult.response?.results || {};
+          if ((inner.rows || []).length > 0) {
+            finalUsername = "ms_" + msId.replace(/-/g, "").substring(0, 30);
+          }
+        }
+
+        // 5. 创建注册申请
+        const regId = crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).substring(2, 15));
+        await execTurso(
+          "INSERT OR REPLACE INTO registrations (id, username, password_hash, full_name, birthdate, country, province, city, referrer, review_status, oauth_provider, oauth_id, oauth_email, oauth_avatar, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          [regId, finalUsername, "", msDisplayName, "", "", "", "", "", "pending", "microsoft", msId, msEmail, "", now]
+        );
+
+        await execTurso(
+          "INSERT INTO users (id, password_hash, full_name, review_status, oauth_provider, oauth_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET oauth_provider=EXCLUDED.oauth_provider, oauth_id=EXCLUDED.oauth_id, updated_at=EXCLUDED.updated_at",
+          [finalUsername, "", msDisplayName, "pending", "microsoft", msId, now, now]
+        );
+
+        const redirectUrl = returnUrl + "/login?oauth_pending=1&username=" + encodeURIComponent(finalUsername) + "&state=" + encodeURIComponent(state);
+        return new Response(null, { status: 302, headers: { "Location": redirectUrl } });
+
+      } catch (e) {
+        const redirectUrl = returnUrl + "/login?oauth_error=" + encodeURIComponent(e.message || "Microsoft OAuth 处理失败");
+        return new Response(null, { status: 302, headers: { "Location": redirectUrl } });
+      }
+    }
+
     // ========== 验证 OAuth Token ==========
     if (path === "/verify-oauth-token" && req.method === "POST") {
       const body = await req.json();
