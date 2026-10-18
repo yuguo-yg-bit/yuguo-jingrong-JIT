@@ -1187,8 +1187,131 @@ html, body {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px;
+}
+
+#yourNumbersGrid {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  align-items: flex-start !important;
+  gap: 10px !important;
+  padding: 8px !important;
+}
+
+#yourNumbersGrid .ticket-num-cell.flip-card {
+  display: inline-block !important;
+  width: 72px !important;
+  height: 88px !important;
+  min-width: 72px !important;
+  min-height: 88px !important;
+  padding: 0 !important;
+  margin: 4px !important;
+  position: relative !important;
+  flex: 0 0 72px !important;
+  flex-shrink: 0 !important;
+  box-sizing: border-box !important;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  perspective: 800px;
+  border-radius: 10px;
+  overflow: visible;
+}
+
+#yourNumbersGrid .flip-card-inner {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 72px !important;
+  height: 88px !important;
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+
+#yourNumbersGrid .flip-card.flipped .flip-card-inner {
+  transform: rotateY(180deg);
+}
+
+#yourNumbersGrid .flip-card-front,
+#yourNumbersGrid .flip-card-back {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 72px !important;
+  height: 88px !important;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  border-radius: 10px;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+#yourNumbersGrid .flip-card-front {
+  background: linear-gradient(135deg, #b8860b, #daa520, #b8860b);
+  border: 2px solid #8b6914;
+  box-shadow: 0 3px 12px rgba(184,134,11,0.4);
+}
+
+#yourNumbersGrid .flip-card-front::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border: 1px dashed rgba(255,255,255,0.35);
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+#yourNumbersGrid .flip-front-icon {
+  font-size: 32px;
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,0.3));
+  line-height: 1;
+}
+
+#yourNumbersGrid .flip-card-back {
+  background: #fff;
+  border: 2px solid #e0e0e0;
+  transform: rotateY(180deg);
   padding: 4px;
+  box-sizing: border-box;
+  gap: 3px;
+}
+
+#yourNumbersGrid .flip-card.flipped {
+  cursor: default;
+  pointer-events: none;
+}
+
+#yourNumbersGrid .flip-card:hover:not(.flipped) .flip-card-inner {
+  transform: scale(1.08);
+}
+
+#yourNumbersGrid .flip-card:active:not(.flipped) .flip-card-inner {
+  transform: scale(0.95);
+}
+
+#yourNumbersGrid .flip-card-back .ticket-num-your {
+  width: 32px !important;
+  height: 32px !important;
+  font-size: 14px !important;
+  font-weight: 800 !important;
+  border-radius: 6px !important;
+}
+
+#yourNumbersGrid .flip-card-back .ticket-num-discount {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: #cc0000;
+  text-align: center;
 }
 
 /* 中奖号码 */
@@ -1225,131 +1348,11 @@ html, body {
   padding: 2px;
   min-width: 40px;
 }
-.ticket-num-cell.flip-card {
-  display: block !important;
-  flex-direction: unset !important;
-  gap: 0 !important;
-  padding: 0 !important;
-  min-width: unset !important;
-}
-
-/* ===== 翻翻乐 3D 翻牌动画 ===== */
-.flip-card {
-  perspective: 800px;
-  cursor: pointer;
-  width: 72px;
-  height: 88px;
-  position: relative;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-  margin: 3px;
-  flex-shrink: 0;
-  border-radius: 10px;
-}
-
-.flip-card-inner {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 72px;
-  height: 88px;
-  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-  transform-style: preserve-3d;
-  pointer-events: none;
-}
-
-.flip-card.flipped .flip-card-inner {
-  transform: rotateY(180deg);
-}
-
-.flip-card-front,
-.flip-card-back {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 72px;
-  height: 88px;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 2px;
-  overflow: hidden;
-}
-
-.flip-card-front {
-  background: linear-gradient(135deg, #b8860b, #daa520, #b8860b);
-  border: 2px solid #8b6914;
-  box-shadow: 0 3px 12px rgba(184,134,11,0.4);
-}
-
-.flip-card-front::after {
-  content: "";
-  position: absolute;
-  inset: 5px;
-  border: 1px dashed rgba(255,255,255,0.35);
-  border-radius: 6px;
-  pointer-events: none;
-}
-
-.flip-front-icon {
-  font-size: 32px;
-  filter: drop-shadow(0 2px 3px rgba(0,0,0,0.3));
-  line-height: 1;
-}
-
-.flip-card-back {
-  background: #fff;
-  border: 2px solid #e0e0e0;
-  transform: rotateY(180deg);
-  gap: 3px;
-  padding: 4px;
-  box-sizing: border-box;
-}
-
-.flip-card.flipped {
-  cursor: default;
-  pointer-events: none;
-}
-
-.flip-card:hover:not(.flipped) .flip-card-inner {
-  transform: scale(1.1);
-}
-
-.flip-card:active:not(.flipped) .flip-card-inner {
-  transform: scale(0.95);
-}
-
-.flip-card:hover:not(.flipped) .flip-front-icon {
-  animation: flipWobble 0.4s ease;
-}
 
 @keyframes flipWobble {
   0%, 100% { transform: rotate(0); }
   25% { transform: rotate(-8deg); }
   75% { transform: rotate(8deg); }
-}
-
-/* 翻牌后背面号码和折扣样式 */
-.flip-card-back .ticket-num-your {
-  width: 32px;
-  height: 32px;
-  font-size: 14px;
-  font-weight: 800;
-  border-radius: 6px;
-}
-
-.flip-card-back .ticket-num-discount {
-  font-size: 11px;
-  font-weight: 700;
-  color: #cc0000;
-  text-align: center;
-  margin-top: 1px;
 }
 
 /* 揭晓折数按钮 */
