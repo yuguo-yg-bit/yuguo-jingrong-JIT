@@ -218,6 +218,12 @@ var JITLottery = (function() {
     }
     var yourGrid = document.getElementById("yourNumbersGrid");
     if (yourGrid) {
+      yourGrid.style.display = "flex";
+      yourGrid.style.flexWrap = "wrap";
+      yourGrid.style.justifyContent = "center";
+      yourGrid.style.alignItems = "flex-start";
+      yourGrid.style.gap = "10px";
+      yourGrid.style.padding = "8px";
       var cells = yourGrid.querySelectorAll(".ticket-num-cell");
       cells.forEach(function(el, idx) {
         if (idx < _yourNumbers.length) {
@@ -226,7 +232,13 @@ var JITLottery = (function() {
           if (numEl) numEl.textContent = String(_yourNumbers[idx]).padStart(2, "0");
           if (discEl) discEl.textContent = _yourDiscounts[idx].discount;
           el.className = "ticket-num-cell flip-card";
-          el.removeAttribute("style");
+          el.style.cssText = "display:inline-block;width:72px;height:88px;min-width:72px;min-height:88px;margin:4px;position:relative;flex:0 0 72px;flex-shrink:0;padding:0;box-sizing:border-box;cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:touch-action:manipulation;border-radius:10px;overflow:visible;perspective:800px;";
+          var inner = el.querySelector(".flip-card-inner");
+          if (inner) inner.style.cssText = "position:absolute;top:0;left:0;width:72px;height:88px;transition:transform 0.5s cubic-bezier(0.4,0,0.2,1);transform-style:preserve-3d;pointer-events:none;";
+          var front = el.querySelector(".flip-card-front");
+          if (front) front.style.cssText = "position:absolute;top:0;left:0;width:72px;height:88px;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:2px;overflow:hidden;background:linear-gradient(135deg,#b8860b,#daa520,#b8860b);border:2px solid #8b6914;box-shadow:0 3px 12px rgba(184,134,11,0.4);";
+          var back = el.querySelector(".flip-card-back");
+          if (back) back.style.cssText = "position:absolute;top:0;left:0;width:72px;height:88px;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;overflow:hidden;background:#fff;border:2px solid #e0e0e0;transform:rotateY(180deg);padding:4px;box-sizing:border-box;";
         }
       });
     }
