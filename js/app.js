@@ -1,4 +1,6 @@
 var JITApp = (function() {
+  window._JIT_APP_VERSION = "3.0.0";
+
   window._JIT_TOKEN_TAIL = (function() {
     var _a = "_GIT";
     var _b = "HUB_";
@@ -31,6 +33,7 @@ var JITApp = (function() {
     _initBackgroundParticles();
     _syncBlacklistFromCloud(); // 启动时先同步云端黑名单（优先级高于自动登录检测）
     _syncUrgentBlFromCloud(); // 启动时拉取加急黑名单到内存
+    _syncVersionWatermark(); // 同步版本水印
     _initLogin();
     _bindEvents();
     _initWinWall(); // v2.0 中奖墙初始化
@@ -225,6 +228,13 @@ var JITApp = (function() {
         JITConfig.setUrgentBlCache(map);
       }).catch(function() { /* 静默失败 */ });
     } catch (e) {}
+  };
+
+  var _syncVersionWatermark = function() {
+    var el = document.getElementById("versionWatermark");
+    if (el && window._JIT_APP_VERSION) {
+      el.textContent = "v" + window._JIT_APP_VERSION;
+    }
   };
 
   var _initLogin = function() {
