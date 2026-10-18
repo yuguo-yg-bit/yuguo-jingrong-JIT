@@ -831,25 +831,6 @@ var JITApp = (function() {
       });
     }
 
-    // ===== v2.0 用户中心事件 =====
-    var btnUserCenterClose = document.getElementById("btnUserCenterClose");
-    if (btnUserCenterClose) btnUserCenterClose.addEventListener("click", _closeUserCenter);
-    var userCenterOverlay = document.getElementById("userCenterOverlay");
-    if (userCenterOverlay) {
-      userCenterOverlay.addEventListener("click", function(e) {
-        if (e.target === userCenterOverlay) _closeUserCenter();
-      });
-    }
-    var btnChangeAvatar = document.getElementById("btnChangeAvatar");
-    if (btnChangeAvatar) btnChangeAvatar.addEventListener("click", function() {
-      var fileInput = document.getElementById("avatarFileInput");
-      if (fileInput) fileInput.click();
-    });
-    var avatarFileInput = document.getElementById("avatarFileInput");
-    if (avatarFileInput) avatarFileInput.addEventListener("change", _handleAvatarUpload);
-    var btnChangePassword = document.getElementById("btnChangePassword");
-    if (btnChangePassword) btnChangePassword.addEventListener("click", _doChangePassword);
-
     // 顶部头像/用户中心入口
     var btnUserCenter = document.getElementById("btnUserCenter");
     if (btnUserCenter) btnUserCenter.addEventListener("click", function() {
@@ -2285,18 +2266,12 @@ var JITApp = (function() {
     inner.innerHTML = html;
   };
 
-  // 用户中心
+  // 用户中心（已迁移至社区页面）
   var _openUserCenter = function() {
-    if (!_currentUser) { _showToast("请先登录", "error"); return; }
-    _refreshUserCenterUI();
-    var overlay = document.getElementById("userCenterOverlay");
-    if (overlay) overlay.classList.add("active");
+    window.location.href = "community.html";
   };
 
-  var _closeUserCenter = function() {
-    var overlay = document.getElementById("userCenterOverlay");
-    if (overlay) overlay.classList.remove("active");
-  };
+  var _closeUserCenter = function() {};
 
   var _refreshUserCenterUI = function() {
     if (!_currentUser) return;
@@ -2590,38 +2565,6 @@ var JITApp = (function() {
     var tickets = JSON.parse(localStorage.getItem("jit_user_tickets") || "{}");
     var count = tickets[_currentUser] || 0;
     statTickets.textContent = String(count);
-  };
-
-  // 修改密码
-  var _doChangePassword = function() {
-    var newPwd = document.getElementById("inputNewPassword");
-    if (!newPwd || !newPwd.value.trim()) {
-      _showToast("请输入新密码", "error");
-      return;
-    }
-    var pwd = newPwd.value.trim();
-    JITApi.updateUserPassword(_currentUser, pwd).then(function() {
-      _showToast("密码修改成功", "success");
-      newPwd.value = "";
-    }).catch(function(err) {
-      _showToast("密码修改失败: " + (err.message || ""), "error");
-    });
-  };
-
-  // 头像上传
-  var _handleAvatarUpload = function(e) {
-    var file = e.target.files && e.target.files[0];
-    if (!file) return;
-    if (file.size > 500 * 1024) { _showToast("头像文件不能超过500KB", "error"); return; }
-    var reader = new FileReader();
-    reader.onload = function(ev) {
-      var dataUrl = ev.target.result;
-      localStorage.setItem("jit_avatar_" + _currentUser, dataUrl);
-      var avatarCircle = document.getElementById("avatarCircle");
-      if (avatarCircle) avatarCircle.innerHTML = '<img src="' + dataUrl + '" alt="avatar">';
-      _showToast("头像更新成功", "success");
-    };
-    reader.readAsDataURL(file);
   };
 
   // ===== v2.0 工作台主题装扮 + 头像框 =====
