@@ -852,7 +852,9 @@ var JITApp = (function() {
 
     // 顶部头像/用户中心入口
     var btnUserCenter = document.getElementById("btnUserCenter");
-    if (btnUserCenter) btnUserCenter.addEventListener("click", _openUserCenter);
+    if (btnUserCenter) btnUserCenter.addEventListener("click", function() {
+      window.location.href = "community.html";
+    });
 
     // v2.0 装扮选择器（主题+头像框事件绑定）
     _initOutfitEvents();

@@ -3665,7 +3665,17 @@ body.theme-galaxy .modal-container { border-color: rgba(156,39,176,0.25); }
   color: var(--text-primary, #fff);
   margin: 0;
 }
-.community-header-right { width: 60px; text-align: right; }
+.community-header-right { text-align: right; }
+.community-user-btn {
+  background: rgba(66, 165, 245, 0.15);
+  border: 1px solid rgba(66, 165, 245, 0.4);
+  color: var(--accent);
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.community-user-btn:hover { background: rgba(66, 165, 245, 0.25); }
 
 /* ===== 我的资料卡片 ===== */
 .community-my-card {
