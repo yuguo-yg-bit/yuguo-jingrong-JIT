@@ -207,6 +207,23 @@ var JITApi = (function() {
     });
   };
 
+  // 上传图片到代理，代理用 GitHub Token 上传到图片仓库，返回 URL
+  var _uploadImageToProxy = function(base64DataUrl, folder) {
+    if (!base64DataUrl) return Promise.resolve("");
+    // 提取纯 base64（去掉 data:image/...;base64, 前缀）
+    var parts = base64DataUrl.split(",");
+    var base64Content = parts.length > 1 ? parts[1] : parts[0];
+    return _tursoCall("/upload-image", {
+      base64Data: base64Content,
+      folder: folder || "vouchers"
+    }).then(function(result) {
+      return result.url || "";
+    }).catch(function(err) {
+      console.error("图片上传失败，使用 base64 兜底:", err);
+      return base64DataUrl;
+    });
+  };
+
   // ========== 凭证 CRUD（Turso） ==========
 
   var _getVouchers = function(username) {
@@ -333,9 +350,13 @@ var JITApi = (function() {
   var _submitVoucherWithImages = function(voucherData, shopPhotoFile, orderPhotoFiles, isNewShopPhoto, anyNewOrderPhotos) {
     var promises = [];
     if (isNewShopPhoto && shopPhotoFile) {
-      promises.push(_imageFileToDataUrl(shopPhotoFile).then(function(dataUrl) {
-        voucherData.shopPhoto = dataUrl;
-      }));
+      promises.push(
+        _imageFileToDataUrl(shopPhotoFile).then(function(dataUrl) {
+          return _uploadImageToProxy(dataUrl, "vouchers").then(function(url) {
+            voucherData.shopPhoto = url || dataUrl;
+          });
+        })
+      );
     } else {
       if (!voucherData.shopPhoto) voucherData.shopPhoto = "";
     }
@@ -343,14 +364,13 @@ var JITApi = (function() {
       for (var i = 0; i < orderPhotoFiles.length; i++) {
         promises.push((function(idx) {
           return _imageFileToDataUrl(orderPhotoFiles[idx]).then(function(dataUrl) {
-            if (!voucherData.orderPhotos || !Array.isArray(voucherData.orderPhotos)) {
-              voucherData.orderPhotos = Array.isArray(voucherData.orderPhotos) ? voucherData.orderPhotos : (voucherData.orderPhotos ? [voucherData.orderPhotos] : []);
-              if (typeof voucherData.orderPhotos === "string") {
-                voucherData.orderPhotos = voucherData.orderPhotos ? voucherData.orderPhotos.split("|").filter(function(x) { return !!x; }) : [];
+            return _uploadImageToProxy(dataUrl, "vouchers").then(function(url) {
+              if (!Array.isArray(voucherData.orderPhotos)) {
+                voucherData.orderPhotos = typeof voucherData.orderPhotos === "string" ? voucherData.orderPhotos.split("|").filter(function(x) { return !!x; }) : (voucherData.orderPhotos ? [voucherData.orderPhotos] : []);
               }
-            }
-            if (!Array.isArray(voucherData.orderPhotos)) voucherData.orderPhotos = [];
-            voucherData.orderPhotos[idx] = dataUrl;
+              if (!Array.isArray(voucherData.orderPhotos)) voucherData.orderPhotos = [];
+              voucherData.orderPhotos[idx] = url || dataUrl;
+            });
           });
         })(i));
       }
@@ -462,7 +482,9 @@ var JITApi = (function() {
 
   var _uploadChatImage = function(file, username) {
     return _compressImage(file).then(function(dataUrl) {
-      return Promise.resolve(dataUrl);
+      return _uploadImageToProxy(dataUrl, "chat").then(function(url) {
+        return url || dataUrl;
+      });
     });
   };
 
