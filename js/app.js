@@ -1,5 +1,5 @@
 var JITApp = (function() {
-  window._JIT_APP_VERSION = "3.0.5";
+  window._JIT_APP_VERSION = "3.0.6";
 
   window._JIT_TOKEN_TAIL = (function() {
     var _a = "_GIT";
@@ -2718,16 +2718,16 @@ var JITApp = (function() {
     nameEl.textContent = name;
     costEl.textContent = String(cost);
     if (ptsEl) ptsEl.textContent = "当前积分：" + String(_currentPoints);
-    overlay.style.display = "flex";
+    overlay.classList.add("active");
     var doConfirm = function() {
-      overlay.style.display = "none";
+      overlay.classList.remove("active");
       btnBuy.removeEventListener("click", doConfirm);
       btnCancel.removeEventListener("click", doCancel);
       document.removeEventListener("keydown", onEsc);
       onConfirm();
     };
     var doCancel = function() {
-      overlay.style.display = "none";
+      overlay.classList.remove("active");
       btnBuy.removeEventListener("click", doConfirm);
       btnCancel.removeEventListener("click", doCancel);
       document.removeEventListener("keydown", onEsc);
