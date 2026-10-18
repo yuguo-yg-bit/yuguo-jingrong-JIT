@@ -1,5 +1,5 @@
 var JITApp = (function() {
-  window._JIT_APP_VERSION = "3.0.4";
+  window._JIT_APP_VERSION = "3.0.5";
 
   window._JIT_TOKEN_TAIL = (function() {
     var _a = "_GIT";
@@ -2660,16 +2660,14 @@ var JITApp = (function() {
   var _initOutfits = function() {
     var savedTheme = localStorage.getItem("jit_theme") || "default";
     var savedFrame = localStorage.getItem("jit_avatar_frame") || "none";
-    // 确保当前使用的主题在已解锁列表中
+    // 不自动解锁：没买过就退回默认
     if (savedTheme !== "default" && !_isOutfitUnlocked("theme", savedTheme)) {
-      var unlocked = _getUnlockedOutfits();
-      unlocked.push("theme_" + savedTheme);
-      _saveUnlockedOutfits(unlocked);
+      savedTheme = "default";
+      localStorage.setItem("jit_theme", "default");
     }
     if (savedFrame !== "none" && !_isOutfitUnlocked("frame", savedFrame)) {
-      var unlockedF = _getUnlockedOutfits();
-      unlockedF.push("frame_" + savedFrame);
-      _saveUnlockedOutfits(unlockedF);
+      savedFrame = "none";
+      localStorage.setItem("jit_avatar_frame", "none");
     }
     _applyTheme(savedTheme);
     _applyAvatarFrame(savedFrame);
@@ -2708,6 +2706,40 @@ var JITApp = (function() {
     return true;
   };
 
+  // 购买确认弹窗
+  var _showBuyConfirm = function(type, id, cost, name, onConfirm) {
+    var overlay = document.getElementById("buyConfirmOverlay");
+    var nameEl = document.getElementById("buyConfirmName");
+    var costEl = document.getElementById("buyConfirmCost");
+    var ptsEl = document.getElementById("buyConfirmPts");
+    var btnBuy = document.getElementById("btnBuyConfirm");
+    var btnCancel = document.getElementById("btnBuyCancel");
+    if (!overlay || !nameEl || !costEl) return;
+    nameEl.textContent = name;
+    costEl.textContent = String(cost);
+    if (ptsEl) ptsEl.textContent = "当前积分：" + String(_currentPoints);
+    overlay.style.display = "flex";
+    var doConfirm = function() {
+      overlay.style.display = "none";
+      btnBuy.removeEventListener("click", doConfirm);
+      btnCancel.removeEventListener("click", doCancel);
+      document.removeEventListener("keydown", onEsc);
+      onConfirm();
+    };
+    var doCancel = function() {
+      overlay.style.display = "none";
+      btnBuy.removeEventListener("click", doConfirm);
+      btnCancel.removeEventListener("click", doCancel);
+      document.removeEventListener("keydown", onEsc);
+    };
+    var onEsc = function(e) { if (e.key === "Escape") doCancel(); };
+    btnBuy.addEventListener("click", doConfirm);
+    btnCancel.addEventListener("click", doCancel);
+    document.addEventListener("keydown", onEsc);
+    // 点击遮罩关闭
+    overlay.addEventListener("click", function(e) { if (e.target === overlay) doCancel(); }, { once: true });
+  };
+
   var _applyTheme = function(theme) {
     var body = document.body;
     body.classList.remove("theme-ocean", "theme-forest", "theme-rose", "theme-sunset", "theme-galaxy");
@@ -2719,17 +2751,34 @@ var JITApp = (function() {
   };
 
   var _setTheme = function(theme, cost) {
-    // 检查是否已解锁
-    if (!_isOutfitUnlocked("theme", theme) && cost > 0) {
-      if (!_unlockOutfit("theme", theme, cost)) {
-        _showToast("积分不足！需要 " + cost + " 积分解锁该主题", "error");
-        return;
-      }
-      _showToast("🎨 已解锁新主题装扮！（消耗 " + cost + " 积分）", "success");
+    // 已解锁 → 直接切换
+    if (_isOutfitUnlocked("theme", theme)) {
+      _applyTheme(theme);
+      _showToast("🎨 主题装扮已切换", "success");
+      _refreshUserCenterUI();
+      return;
     }
-    _applyTheme(theme);
-    _showToast("🎨 主题装扮已切换", "success");
-    _refreshUserCenterUI();
+    // 免费 → 直接应用
+    if (cost <= 0) {
+      _applyTheme(theme);
+      _showToast("🎨 主题装扮已切换", "success");
+      _refreshUserCenterUI();
+      return;
+    }
+    // 需要购买 → 先检查积分
+    if (_currentPoints < cost) {
+      _showToast("积分不足！需要 " + cost + " 积分，当前只有 " + _currentPoints + " 积分", "error");
+      return;
+    }
+    // 弹出购买确认
+    var themeNames = { ocean: "深海蓝主题", forest: "森林绿主题", rose: "玫瑰金主题", sunset: "日落橙主题", galaxy: "星云紫主题" };
+    var name = themeNames[theme] || (theme + "主题");
+    _showBuyConfirm("theme", theme, cost, name, function() {
+      _unlockOutfit("theme", theme, cost);
+      _applyTheme(theme);
+      _showToast("🎨 已解锁" + name + "！（消耗 " + cost + " 积分）", "success");
+      _refreshUserCenterUI();
+    });
   };
 
   // ===== 头像装扮框 =====
@@ -2746,16 +2795,34 @@ var JITApp = (function() {
   };
 
   var _setAvatarFrame = function(frame, cost) {
-    if (!_isOutfitUnlocked("frame", frame) && cost > 0) {
-      if (!_unlockOutfit("frame", frame, cost)) {
-        _showToast("积分不足！需要 " + cost + " 积分解锁该头像框", "error");
-        return;
-      }
-      _showToast("🖼️ 已解锁新头像框！（消耗 " + cost + " 积分）", "success");
+    // 已解锁 → 直接切换
+    if (_isOutfitUnlocked("frame", frame)) {
+      _applyAvatarFrame(frame);
+      _showToast("🖼️ 头像框已切换", "success");
+      _refreshUserCenterUI();
+      return;
     }
-    _applyAvatarFrame(frame);
-    _showToast("🖼️ 头像框已切换", "success");
-    _refreshUserCenterUI();
+    // 免费 → 直接应用
+    if (cost <= 0) {
+      _applyAvatarFrame(frame);
+      _showToast("🖼️ 头像框已切换", "success");
+      _refreshUserCenterUI();
+      return;
+    }
+    // 需要购买 → 先检查积分
+    if (_currentPoints < cost) {
+      _showToast("积分不足！需要 " + cost + " 积分，当前只有 " + _currentPoints + " 积分", "error");
+      return;
+    }
+    // 弹出购买确认
+    var frameNames = { gold: "金框头像框", diamond: "钻石头像框", ruby: "红宝石头像框", rainbow: "彩虹头像框" };
+    var name = frameNames[frame] || (frame + "头像框");
+    _showBuyConfirm("frame", frame, cost, name, function() {
+      _unlockOutfit("frame", frame, cost);
+      _applyAvatarFrame(frame);
+      _showToast("🖼️ 已解锁" + name + "！（消耗 " + cost + " 积分）", "success");
+      _refreshUserCenterUI();
+    });
   };
 
   // 刷新主题选择器 UI（高亮 + 锁状态）
@@ -2775,7 +2842,7 @@ var JITApp = (function() {
           costEl.textContent = "已解锁";
           costEl.className = "theme-cost unlocked";
         } else {
-          costEl.textContent = cost + "分";
+          costEl.textContent = "🛒 " + cost + "分";
           costEl.className = "theme-cost";
         }
       }
@@ -2802,7 +2869,7 @@ var JITApp = (function() {
           costEl.textContent = "已解锁";
           costEl.className = "theme-cost unlocked";
         } else {
-          costEl.textContent = cost + "分";
+          costEl.textContent = "🛒 " + cost + "分";
           costEl.className = "theme-cost";
         }
       }

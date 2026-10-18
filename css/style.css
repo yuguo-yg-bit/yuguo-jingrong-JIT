@@ -3457,8 +3457,17 @@ body.theme-rose .modal-container { border-color: rgba(233,30,99,0.25); }
 }
 .theme-option:hover { transform: scale(1.05); }
 .theme-option.theme-active { border-color: #fff; box-shadow: 0 0 14px rgba(255,255,255,0.35); }
-.theme-option.theme-locked { opacity: 0.45; filter: grayscale(0.6); cursor: not-allowed; }
-.theme-option.theme-locked:hover { transform: none; }
+.theme-option.theme-locked { opacity: 0.55; filter: grayscale(0.4); cursor: pointer; }
+.theme-option.theme-locked::after {
+  content: "🔒";
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-size: 10px;
+  opacity: 0.7;
+  pointer-events: none;
+}
+.theme-option.theme-locked:hover { transform: scale(1.05); opacity: 0.75; filter: grayscale(0.2); }
 .theme-icon { font-size: 22px; line-height: 1; }
 .theme-label { font-size: 10px; color: var(--text-secondary); white-space: nowrap; }
 .theme-cost { font-size: 9px; color: var(--gold); white-space: nowrap; }
@@ -3569,3 +3578,52 @@ body.theme-galaxy .modal-container { border-color: rgba(156,39,176,0.25); }
   -webkit-user-select: none;
   text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 }
+
+/* 装扮购买确认弹窗 */
+.buy-confirm-dialog {
+  background: linear-gradient(160deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  border: 2px solid rgba(255, 213, 79, 0.35);
+  border-radius: 20px;
+  padding: 32px 28px 24px;
+  width: 85vw;
+  max-width: 360px;
+  text-align: center;
+  box-shadow: 0 0 60px rgba(255, 180, 0, 0.2), 0 8px 32px rgba(0, 0, 0, 0.5);
+  animation: buyConfirmIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes buyConfirmIn {
+  from { opacity: 0; transform: scale(0.7) translateY(30px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.buy-confirm-icon { font-size: 48px; margin-bottom: 12px; }
+.buy-confirm-title { font-size: 20px; font-weight: 700; color: var(--gold, #ffd54f); margin: 0 0 16px; }
+.buy-confirm-desc { font-size: 15px; color: var(--text-secondary, #aaa); line-height: 1.6; margin: 0 0 12px; }
+.buy-confirm-desc strong { color: var(--text-primary, #fff); }
+.buy-confirm-cost { color: var(--gold, #ffd54f) !important; font-size: 22px; }
+.buy-confirm-pts { font-size: 12px; color: var(--text-muted, #777); margin: 0 0 24px; }
+.buy-confirm-actions { display: flex; gap: 12px; justify-content: center; }
+.buy-confirm-btn {
+  padding: 10px 24px;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.buy-confirm-cancel {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary, #aaa);
+}
+.buy-confirm-cancel:hover { background: rgba(255, 255, 255, 0.18); }
+.buy-confirm-buy {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.4);
+}
+.buy-confirm-buy:hover {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.55);
+}
+.buy-confirm-buy:active { transform: scale(0.96); }
