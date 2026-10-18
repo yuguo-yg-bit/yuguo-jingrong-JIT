@@ -255,139 +255,51 @@ var JITLottery = (function() {
     }
   };
 
-  // ===== Canvas 涂层 =====
-  var _initCanvas = function(canvasId) {
-    _canvas = document.getElementById(canvasId);
-    if (!_canvas) return;
-    _ctx = _canvas.getContext("2d");
-    var container = _canvas.parentElement;
-    var rect = container.getBoundingClientRect();
-    _canvas.width = rect.width;
-    _canvas.height = rect.height;
-    _drawScratchLayer();
-    _bindEvents();
-  };
+  // ===== 翻翻乐系统（替代刮刮乐Canvas） =====
+  var _flipFlipped = [];
+  var _flipTotal = 10;
+  var _flipRevealed = false;
 
-  var _drawStar = function(ctx, cx, cy, spikes, outerR, innerR) {
-    var rot = Math.PI / 2 * 3;
-    var step = Math.PI / spikes;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy - outerR);
-    for (var i = 0; i < spikes; i++) {
-      ctx.lineTo(cx + Math.cos(rot) * outerR, cy + Math.sin(rot) * outerR);
-      rot += step;
-      ctx.lineTo(cx + Math.cos(rot) * innerR, cy + Math.sin(rot) * innerR);
-      rot += step;
+  var _flipCard = function(idx) {
+    if (_flipRevealed) return;
+    if (_flipFlipped[idx]) return;
+    _flipFlipped[idx] = true;
+
+    var cell = document.querySelector('.flip-card[data-idx="' + idx + '"]');
+    if (cell) {
+      cell.classList.add("flipped");
+      _playReveal();
     }
-    ctx.lineTo(cx, cy - outerR);
-    ctx.closePath();
-    ctx.fill();
-  };
 
-  var _drawScratchLayer = function() {
-    if (!_ctx) return;
-    var w = _canvas.width;
-    var h = _canvas.height;
-    var gradient = _ctx.createLinearGradient(0, 0, w, h);
-    gradient.addColorStop(0, "#c0c0c0");
-    gradient.addColorStop(0.2, "#e8e8e8");
-    gradient.addColorStop(0.4, "#a8a8a8");
-    gradient.addColorStop(0.6, "#d0d0d0");
-    gradient.addColorStop(0.8, "#b0b0b0");
-    gradient.addColorStop(1, "#c8c8c8");
-    _ctx.fillStyle = gradient;
-    _ctx.fillRect(0, 0, w, h);
-    _ctx.fillStyle = "rgba(255,255,255,0.08)";
-    for (var i = 0; i < 100; i++) {
-      var x = Math.random() * w;
-      var y = Math.random() * h;
-      var r = Math.random() * 2 + 0.5;
-      _ctx.beginPath();
-      _ctx.arc(x, y, r, 0, Math.PI * 2);
-      _ctx.fill();
+    // 显示号码和折扣
+    _updateFlipCellContent(idx);
+
+    // 检查是否全部翻完
+    var allFlipped = _flipFlipped.every(function(v) { return v; });
+    if (allFlipped) {
+      var revealArea = document.getElementById("flipRevealArea");
+      if (revealArea) revealArea.style.display = "block";
+      var info = document.getElementById("lotteryInfo");
+      if (info) info.textContent = "全部翻完！点击「揭晓折数」查看你的折扣";
+      var hint = document.getElementById("flipRevealHint");
+      if (hint) hint.textContent = "全部翻完，点击揭晓你的折扣！";
     }
-    _ctx.fillStyle = "rgba(0,0,0,0.05)";
-    for (var i = 0; i < 50; i++) {
-      var x = Math.random() * w;
-      var y = Math.random() * h;
-      var r = Math.random() * 1.5 + 0.3;
-      _ctx.beginPath();
-      _ctx.arc(x, y, r, 0, Math.PI * 2);
-      _ctx.fill();
-    }
-    _ctx.strokeStyle = "rgba(204,0,0,0.6)";
-    _ctx.lineWidth = 2;
-    _ctx.strokeRect(8, 8, w - 16, h - 16);
-    _ctx.strokeStyle = "rgba(204,0,0,0.2)";
-    _ctx.lineWidth = 1;
-    _ctx.setLineDash([4, 4]);
-    _ctx.strokeRect(14, 14, w - 28, h - 28);
-    _ctx.setLineDash([]);
-    _ctx.fillStyle = "rgba(204,0,0,0.5)";
-    _ctx.font = "bold 18px sans-serif";
-    _ctx.textAlign = "center";
-    _ctx.textBaseline = "middle";
-    _ctx.fillText("顶呱刮", w / 2, h / 2 - 20);
-    _ctx.fillStyle = "rgba(139,0,0,0.45)";
-    _ctx.font = "bold 13px sans-serif";
-    _ctx.fillText("刮开有奖", w / 2, h / 2 + 10);
-    _ctx.fillStyle = "rgba(139,0,0,0.3)";
-    _ctx.font = "10px sans-serif";
-    _ctx.fillText("号码匹配型", w / 2, h / 2 + 35);
-    _ctx.fillStyle = "rgba(255,215,0,0.3)";
-    _drawStar(_ctx, 25, 22, 5, 6, 3);
-    _drawStar(_ctx, w - 25, 22, 5, 6, 3);
-    _drawStar(_ctx, 25, h - 22, 5, 6, 3);
-    _drawStar(_ctx, w - 25, h - 22, 5, 6, 3);
   };
 
-  var _getPos = function(e) {
-    var rect = _canvas.getBoundingClientRect();
-    var clientX, clientY;
-    if (e.touches && e.touches.length > 0) {
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
-    } else if (e.changedTouches && e.changedTouches.length > 0) {
-      clientX = e.changedTouches[0].clientX;
-      clientY = e.changedTouches[0].clientY;
-    } else {
-      clientX = e.clientX;
-      clientY = e.clientY;
-    }
-    return { x: clientX - rect.left, y: clientY - rect.top };
+  var _updateFlipCellContent = function(idx) {
+    var cell = document.querySelector('.flip-card[data-idx="' + idx + '"]');
+    if (!cell) return;
+    var numEl = cell.querySelector(".ticket-num-your");
+    var discEl = cell.querySelector(".ticket-num-discount");
+    if (numEl && idx < _yourNumbers.length) numEl.textContent = String(_yourNumbers[idx]).padStart(2, "0");
+    if (discEl && idx < _yourDiscounts.length) discEl.textContent = _yourDiscounts[idx].discount;
   };
 
-  var _scratch = function(e) {
-    if (!_isDrawing || !_ctx) return;
-    e.preventDefault();
-    var pos = _getPos(e);
-    _ctx.globalCompositeOperation = "destination-out";
-    _ctx.beginPath();
-    _ctx.arc(pos.x, pos.y, 22, 0, Math.PI * 2);
-    _ctx.fill();
-    _ctx.globalCompositeOperation = "source-over";
-    _checkReveal();
-  };
+  var _revealResult = function() {
+    if (_flipRevealed) return;
+    _flipRevealed = true;
 
-  var _checkReveal = function() {
-    if (!_ctx || !_canvas) return;
-    var imageData = _ctx.getImageData(0, 0, _canvas.width, _canvas.height);
-    var pixels = imageData.data;
-    var transparent = 0;
-    for (var i = 3; i < pixels.length; i += 4) {
-      if (pixels[i] === 0) transparent++;
-    }
-    var ratio = transparent / (pixels.length / 4);
-    if (ratio > _revealThreshold) _doReveal();
-  };
-
-  var _doReveal = function() {
-    if (!_ctx || !_canvas) return;
-    _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
-    _unbindEvents();
-    _isDrawing = false;
     _markMatches();
-    _playReveal();
 
     var resultEl = document.getElementById("lotteryResult");
     if (resultEl) {
@@ -412,40 +324,37 @@ var JITLottery = (function() {
 
     if (_luckyMode) _disableLuckyMode();
 
-    // 调用外部回调（刮刮乐结果）
+    // 调用外部回调
     if (_onRevealed && _currentPrize) {
       _onRevealed(_currentPrize);
     }
   };
 
-  var _bindEvents = function() {
-    if (!_canvas) return;
-    _canvas.addEventListener("mousedown", _onMouseDown);
-    _canvas.addEventListener("mousemove", _onMouseMove);
-    _canvas.addEventListener("mouseup", _onMouseUp);
-    _canvas.addEventListener("mouseleave", _onMouseUp);
-    _canvas.addEventListener("touchstart", _onTouchStart, { passive: false });
-    _canvas.addEventListener("touchmove", _onTouchMove, { passive: false });
-    _canvas.addEventListener("touchend", _onTouchEnd);
-  };
+  var _bindFlipEvents = function() {
+    var cards = document.querySelectorAll(".flip-card");
+    cards.forEach(function(card) {
+      card.addEventListener("click", function() {
+        var idx = parseInt(card.getAttribute("data-idx"));
+        if (!isNaN(idx)) _flipCard(idx);
+      });
+    });
 
-  var _unbindEvents = function() {
-    if (!_canvas) return;
-    _canvas.removeEventListener("mousedown", _onMouseDown);
-    _canvas.removeEventListener("mousemove", _onMouseMove);
-    _canvas.removeEventListener("mouseup", _onMouseUp);
-    _canvas.removeEventListener("mouseleave", _onMouseUp);
-    _canvas.removeEventListener("touchstart", _onTouchStart);
-    _canvas.removeEventListener("touchmove", _onTouchMove);
-    _canvas.removeEventListener("touchend", _onTouchEnd);
+    var revealBtn = document.getElementById("btnFlipReveal");
+    if (revealBtn) {
+      revealBtn.addEventListener("click", function() {
+        if (_flipRevealed) return;
+        var allFlipped = _flipFlipped.every(function(v) { return v; });
+        if (!allFlipped) {
+          var hint = document.getElementById("flipRevealHint");
+          if (hint) hint.textContent = "还有牌没翻开，请全部翻完！";
+          return;
+        }
+        var revealArea = document.getElementById("flipRevealArea");
+        if (revealArea) revealArea.style.display = "none";
+        _revealResult();
+      });
+    }
   };
-
-  var _onMouseDown = function(e) { _isDrawing = true; _scratch(e); };
-  var _onMouseMove = function(e) { _scratch(e); };
-  var _onMouseUp = function() { _isDrawing = false; };
-  var _onTouchStart = function(e) { _isDrawing = true; _scratch(e); };
-  var _onTouchMove = function(e) { _scratch(e); };
-  var _onTouchEnd = function() { _isDrawing = false; };
 
   // ===== 老虎机系统 =====
   var _slotSpinning = false;
@@ -555,9 +464,14 @@ var JITLottery = (function() {
     }
   };
 
-  // ===== 公开方法：开始刮刮乐 =====
-  var _start = function(canvasId, onRevealed) {
+  // ===== 公开方法：开始翻翻乐 =====
+  var _start = function(ignoredCanvasId, onRevealed) {
     _onRevealed = onRevealed;
+    _flipFlipped = [];
+    _flipTotal = 10;
+    _flipRevealed = false;
+    for (var i = 0; i < _flipTotal; i++) { _flipFlipped[i] = false; }
+
     _generateNumbers();
     var ticketNum = document.getElementById("ticketNumber");
     if (ticketNum) {
@@ -569,9 +483,16 @@ var JITLottery = (function() {
     _renderNumbers();
     var resultEl = document.getElementById("lotteryResult");
     if (resultEl) resultEl.classList.remove("show");
-    _initCanvas(canvasId);
+
+    // 重置所有翻牌状态
+    var cards = document.querySelectorAll(".flip-card");
+    cards.forEach(function(card) { card.classList.remove("flipped"); });
+    var revealArea = document.getElementById("flipRevealArea");
+    if (revealArea) revealArea.style.display = "none";
     var info = document.getElementById("lotteryInfo");
-    if (info) info.textContent = "刮开涂层，匹配号码赢折扣！";
+    if (info) info.textContent = "点击翻牌揭晓号码，匹配赢折扣！";
+
+    _bindFlipEvents();
   };
 
   // ===== 公开方法：执行双奖池抽奖 =====

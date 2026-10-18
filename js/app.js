@@ -842,21 +842,16 @@ var JITApp = (function() {
       _openSlotMachine(_currentVoucher, _currentScratchPrize);
     });
 
-    // ===== v2.0 刮刮乐结果弹窗事件 =====
-    var btnScratchResultNext = document.getElementById("btnScratchResultNext");
-    if (btnScratchResultNext) btnScratchResultNext.addEventListener("click", function() {
-      var resultOverlay = document.getElementById("scratchResultOverlay");
-      if (resultOverlay) resultOverlay.classList.remove("active");
-      // 【修复】标记用户已手动触发，5s 后的自动弹出不再重复执行
-      _userPickedSlot = true;
-      _openSlotMachine(_currentVoucher, _currentScratchPrize);
-    });
-    var btnScratchResultClose = document.getElementById("btnScratchResultClose");
-    if (btnScratchResultClose) btnScratchResultClose.addEventListener("click", _closeScratchResult);
+    // ===== 翻翻乐结果弹窗事件 =====
     var scratchResultOverlay = document.getElementById("scratchResultOverlay");
     if (scratchResultOverlay) {
       scratchResultOverlay.addEventListener("click", function(e) {
-        if (e.target === scratchResultOverlay) _closeScratchResult();
+        // 点击遮罩背景关闭（取消倒计时，直接存结果并进入老虎机）
+        if (e.target === scratchResultOverlay) {
+          if (scratchResultOverlay._flipTimer) { clearInterval(scratchResultOverlay._flipTimer); scratchResultOverlay._flipTimer = null; }
+          scratchResultOverlay.classList.remove("active");
+          _openSlotMachine(_currentVoucher, _currentScratchPrize);
+        }
       });
     }
 
@@ -1796,29 +1791,17 @@ var JITApp = (function() {
       var targetVoucher = voucher;
       setTimeout(function() {
         JITLottery.start("lotteryCanvas", function(prize) {
-          // 刮开后：隐藏刮刮乐，立即保存折扣，显示美颜结果弹窗
+          // 翻牌揭晓后：立即保存折扣，显示翻翻乐结果弹窗
           _currentScratchPrize = prize;
           _currentVoucher = targetVoucher;
           var lotOverlay = document.getElementById("lotteryOverlay");
           if (lotOverlay) lotOverlay.classList.remove("active");
-          // 立即保存刮刮乐折扣（防止丢失，异步更新券信息）
+          // 立即保存折数（防止丢失）
           _saveScratchDiscountQuick(prize, targetVoucher);
+          // 显示「你抽到了xx折！」弹窗，2秒后自动进入老虎机
           _showScratchResultPopup(prize);
-          // 抽奖结果确定后，本轮幸运模式自动失效
+          // 幸运模式自动失效
           JITLottery.disableLuckyMode();
-          // 自动打开老虎机（延迟让用户先看清刮刮乐结果）
-          // 【修复】原为 2.5s：结果弹窗还没看清就被自动抢走关掉，用户以为"老虎机不弹/乱弹"，
-          // 也会吞掉用户点「开始老虎机抽奖」按钮的时机。现在延长到 5s，
-          // 并且用户手动点过按钮（_userPickedSlot）时不再自动弹，避免重复触发。
-          _userPickedSlot = false;
-          setTimeout(function() {
-            if (_userPickedSlot) return;
-            var srOverlay = document.getElementById("scratchResultOverlay");
-            if (!srOverlay || !srOverlay.classList.contains("active")) return;
-            // 关闭刮刮乐结果弹窗
-            srOverlay.classList.remove("active");
-            _openSlotMachine(targetVoucher, prize);
-          }, 5000);
         });
       }, 300);
     }
@@ -1887,68 +1870,60 @@ var JITApp = (function() {
     return { levelData: data, leveledUp: leveledUp };
   };
 
-  // 刮刮乐结果美颜弹窗
+  // 翻翻乐结果弹窗
   var _showScratchResultPopup = function(prize) {
     var overlay = document.getElementById("scratchResultOverlay");
     if (!overlay) return;
 
-    var icon = document.getElementById("scratchResultIcon");
     var title = document.getElementById("scratchResultTitle");
     var discount = document.getElementById("scratchResultDiscount");
     var sub = document.getElementById("scratchResultSub");
-    var reward = document.getElementById("scratchResultReward");
+    var autoHint = document.getElementById("flipResultAutoHint");
+    var countdownEl = document.getElementById("flipResultCountdown");
 
-    var matched = JITLottery.getMatchedCount();
-
-    if (prize.value <= 0.7 && prize.value > 0) {
-      icon.textContent = "🎉";
-      title.textContent = "大奖降临！";
-      sub.textContent = "匹配 " + matched + " 个号码，获得超值折扣！";
-    } else if (prize.value === 0) {
-      icon.textContent = "🤑";
-      title.textContent = "免单！全场最佳！";
-      sub.textContent = "匹配 " + matched + " 个号码，运气爆棚！";
-    } else if (prize.value >= 1.2) {
-      icon.textContent = "💸";
-      title.textContent = "公司请客啦！";
-      sub.textContent = "匹配 " + matched + " 个号码，老板大气！";
-    } else {
-      icon.textContent = "🎊";
-      title.textContent = "恭喜中奖！";
-      sub.textContent = "匹配 " + matched + " 个号码，手气不错~";
-    }
-
+    title.textContent = "你抽到了";
     discount.textContent = prize.discount;
 
-    // 显示奖励（如果有现金返现）
-    reward.style.display = "none";
+    // 根据折数调整文案
+    if (prize.value < 1) {
+      sub.textContent = "老板亏了！大赚一笔！";
+    } else if (prize.value === 1) {
+      sub.textContent = "刚好保本，下次再来！";
+    } else if (prize.value <= 1.1) {
+      sub.textContent = "小赚一点，手气不错~";
+    } else if (prize.value <= 1.3) {
+      sub.textContent = "公司请客啦！恭喜恭喜！";
+    } else {
+      sub.textContent = "超级福利！运气爆棚！";
+    }
 
     overlay.classList.add("active");
 
-    // 音效
-    if (typeof window.AudioContext !== "undefined" || typeof window.webkitAudioContext !== "undefined") {
-      try {
-        var ACTX = window.AudioContext || window.webkitAudioContext;
-        var ctx2 = new ACTX();
-        var osc = ctx2.createOscillator();
-        var gain = ctx2.createGain();
-        osc.connect(gain); gain.connect(ctx2.destination);
-        osc.type = "sine";
-        gain.gain.value = 0.15;
-        osc.frequency.setValueAtTime(523, ctx2.currentTime);
-        osc.frequency.setValueAtTime(659, ctx2.currentTime + 0.1);
-        osc.frequency.setValueAtTime(784, ctx2.currentTime + 0.2);
-        osc.frequency.setValueAtTime(1047, ctx2.currentTime + 0.3);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx2.currentTime + 0.6);
-        osc.start(ctx2.currentTime);
-        osc.stop(ctx2.currentTime + 0.6);
-      } catch(e) {}
-    }
+    // 倒计时 2 秒，自动进入老虎机
+    var countdown = 2;
+    if (countdownEl) countdownEl.textContent = String(countdown);
+    if (autoHint) autoHint.style.display = "block";
+
+    var timer = setInterval(function() {
+      countdown--;
+      if (countdownEl) countdownEl.textContent = String(countdown);
+      if (countdown <= 0) {
+        clearInterval(timer);
+        overlay.classList.remove("active");
+        _openSlotMachine(_currentVoucher, _currentScratchPrize);
+      }
+    }, 1000);
+
+    // 保存倒计时 ID 以便关闭时可以取消
+    overlay._flipTimer = timer;
   };
 
   var _closeScratchResult = function() {
     var overlay = document.getElementById("scratchResultOverlay");
-    if (overlay) overlay.classList.remove("active");
+    if (overlay) {
+      if (overlay._flipTimer) { clearInterval(overlay._flipTimer); overlay._flipTimer = null; }
+      overlay.classList.remove("active");
+    }
     // 用户关闭结果但不进行老虎机，直接保存
     if (_currentVoucher && _currentScratchPrize) {
       _saveFullLotteryResult(_currentVoucher, _currentScratchPrize, null);

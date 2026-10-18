@@ -1223,6 +1223,225 @@ html, body {
   min-width: 40px;
 }
 
+/* ===== 翻翻乐 3D 翻牌动画 ===== */
+.flip-card {
+  perspective: 800px;
+  cursor: pointer;
+  width: 56px;
+  height: 56px;
+  position: relative;
+}
+
+.flip-card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-style: preserve-3d;
+}
+
+.flip-card.flipped .flip-card-inner {
+  transform: rotateY(180deg);
+}
+
+.flip-card-front,
+.flip-card-back {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.flip-card-front {
+  background: linear-gradient(135deg, #b8860b, #daa520, #b8860b);
+  border: 2px solid #8b6914;
+  box-shadow: 0 2px 8px rgba(184,134,11,0.3);
+}
+
+.flip-card-front::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border: 1px dashed rgba(255,255,255,0.3);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.flip-front-icon {
+  font-size: 22px;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
+}
+
+.flip-card-back {
+  background: #fff;
+  border: 2px solid #ddd;
+  transform: rotateY(180deg);
+  gap: 0;
+}
+
+.flip-card.flipped {
+  cursor: default;
+  pointer-events: none;
+}
+
+.flip-card:hover:not(.flipped) .flip-card-inner {
+  transform: scale(1.08);
+}
+
+.flip-card:hover:not(.flipped) .flip-front-icon {
+  animation: flipWobble 0.4s ease;
+}
+
+@keyframes flipWobble {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-8deg); }
+  75% { transform: rotate(8deg); }
+}
+
+/* 揭晓折数按钮 */
+.flip-reveal-area {
+  text-align: center;
+  padding: 16px 0 8px;
+}
+
+.flip-reveal-btn {
+  display: inline-block;
+  background: linear-gradient(135deg, #b8860b, #daa520);
+  color: #fff;
+  border: none;
+  padding: 14px 48px;
+  border-radius: 30px;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 2px;
+  box-shadow: 0 4px 16px rgba(184,134,11,0.4);
+  animation: revealPulse 1.5s ease-in-out infinite;
+}
+
+.flip-reveal-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 24px rgba(184,134,11,0.5);
+}
+
+.flip-reveal-hint {
+  text-align: center;
+  font-size: 13px;
+  color: #b8860b;
+  margin-top: 8px;
+  font-weight: 500;
+}
+
+@keyframes revealPulse {
+  0%, 100% { box-shadow: 0 4px 16px rgba(184,134,11,0.4); }
+  50% { box-shadow: 0 4px 30px rgba(184,134,11,0.7); }
+}
+
+/* 翻翻乐结果弹窗 - 大标题风格 */
+.flip-result-container {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  border-radius: 24px;
+  padding: 50px 40px;
+  text-align: center;
+  max-width: 420px;
+  width: 90%;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  position: relative;
+  overflow: hidden;
+}
+
+.flip-result-glow {
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle at center, rgba(184,134,11,0.15) 0%, transparent 60%);
+  animation: glowRotate 4s linear infinite;
+}
+
+@keyframes glowRotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.flip-result-body {
+  position: relative;
+  z-index: 1;
+}
+
+.flip-result-icon {
+  font-size: 60px;
+  margin-bottom: 16px;
+  animation: iconBounce 0.6s ease-out;
+}
+
+@keyframes iconBounce {
+  0% { transform: scale(0); opacity: 0; }
+  60% { transform: scale(1.2); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.flip-result-title {
+  font-size: 22px;
+  color: #8892a4;
+  margin-bottom: 12px;
+  font-weight: 400;
+}
+
+.flip-result-discount-wrap {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.flip-result-discount {
+  font-size: 64px;
+  font-weight: 900;
+  color: #b8860b;
+  text-shadow: 0 0 30px rgba(184,134,11,0.5), 0 0 60px rgba(184,134,11,0.2);
+  animation: discountPop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) 0.2s both;
+}
+
+@keyframes discountPop {
+  0% { transform: scale(0.2); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.flip-result-exclaim {
+  font-size: 48px;
+  font-weight: 900;
+  color: #b8860b;
+  text-shadow: 0 0 20px rgba(184,134,11,0.4);
+  animation: discountPop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) 0.3s both;
+}
+
+.flip-result-sub {
+  font-size: 16px;
+  color: #aab;
+  margin-bottom: 10px;
+  animation: discountPop 0.5s ease 0.4s both;
+}
+
+.flip-result-auto-hint {
+  font-size: 13px;
+  color: #667;
+  margin-top: 20px;
+}
+
+.flip-result-auto-hint span {
+  color: #b8860b;
+  font-weight: 700;
+}
+
 .ticket-num-discount {
   font-size: 8px;
   font-weight: 700;
