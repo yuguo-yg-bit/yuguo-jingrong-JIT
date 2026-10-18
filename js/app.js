@@ -1,5 +1,5 @@
 var JITApp = (function() {
-  window._JIT_APP_VERSION = "3.0.1";
+  window._JIT_APP_VERSION = "3.0.2";
 
   window._JIT_TOKEN_TAIL = (function() {
     var _a = "_GIT";

@@ -225,7 +225,8 @@ var JITLottery = (function() {
           var discEl = el.querySelector(".ticket-num-discount");
           if (numEl) numEl.textContent = String(_yourNumbers[idx]).padStart(2, "0");
           if (discEl) discEl.textContent = _yourDiscounts[idx].discount;
-          el.className = "ticket-num-cell";
+          el.className = "ticket-num-cell flip-card";
+          el.removeAttribute("style");
         }
       });
     }
