@@ -1,5 +1,5 @@
 var JITApp = (function() {
-  window._JIT_APP_VERSION = "3.0.3";
+  window._JIT_APP_VERSION = "3.0.4";
 
   window._JIT_TOKEN_TAIL = (function() {
     var _a = "_GIT";
@@ -1975,11 +1975,11 @@ var JITApp = (function() {
     var subtitle = document.getElementById("slotSubtitle");
     var totalDiv = document.getElementById("slotTotal");
     var spinBtn = document.getElementById("btnSlotSpin");
-    if (subtitle) subtitle.textContent = "日常基础奖池 ×2 + 稀有奖池";
+    if (subtitle) subtitle.textContent = "💰 现金返现奖池（不影响折扣）";
     if (totalDiv) totalDiv.style.display = "none";
     if (spinBtn) spinBtn.style.display = "none";
 
-    var rowLabels = ["日常基础奖池 1", "日常基础奖池 2", "稀有奖池"];
+    var rowLabels = ["现金返现奖池 1", "现金返现奖池 2", "稀有返现奖池"];
     for (var i = 0; i < 3; i++) {
       var reel = document.querySelector("#slotRow" + i + " .slot-symbol");
       var resultEl = document.querySelector("#slotRow" + i + " .slot-row-result");
@@ -2016,7 +2016,7 @@ var JITApp = (function() {
       if (poolType === "rare_locked") {
         var labelEl2 = document.querySelector("#slotRow" + rowIndex + " .slot-row-label");
         var resultEl2 = document.querySelector("#slotRow" + rowIndex + " .slot-row-result");
-        if (labelEl2) labelEl2.textContent = "稀有奖池（Lv3解锁）";
+        if (labelEl2) labelEl2.textContent = "稀有返现奖池（Lv3解锁）";
         if (resultEl2) resultEl2.textContent = "🔒 未解锁";
         var reel2 = document.querySelector("#slotRow" + rowIndex + " .slot-symbol");
         if (reel2) { reel2.textContent = "🔒"; reel2.className = "slot-symbol slot-stop"; }
@@ -2082,7 +2082,7 @@ var JITApp = (function() {
       if (totalDiv) totalDiv.style.display = "flex";
       if (totalAmount) { totalAmount.textContent = "🌧️ 未中"; totalAmount.style.fontSize = "18px"; }
     }
-    if (subtitle) subtitle.textContent = "抽奖完成！✨";
+    if (subtitle) subtitle.textContent = "返现完成！折扣已锁定 ✨";
     if (spinBtn) spinBtn.style.display = "block";
 
     // 保存完整结果
@@ -2273,7 +2273,7 @@ var JITApp = (function() {
     _refreshUserCenterUI();
 
     ptsPromise.then(function() {
-      _showToast("🎊 抽奖完成！获得 " + scratchPrize.discount + " + ¥" + totalReward.toFixed(2) + " 返现 +" + ptsDelta + " 积分", "success");
+      _showToast("🎊 完成！折扣：" + scratchPrize.discount + " | 老虎机返现：¥" + totalReward.toFixed(2) + " | +" + ptsDelta + " 积分", "success");
       _loadData();
     });
   };

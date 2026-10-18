@@ -469,7 +469,7 @@ var JITLottery = (function() {
       }
       var labelEl = rowEl.querySelector(".slot-row-label");
       if (labelEl) {
-        labelEl.textContent = i === 2 ? "稀有奖池" : "日常基础奖池 " + (i + 1);
+        labelEl.textContent = i === 2 ? "稀有返现奖池" : "现金返现奖池 " + (i + 1);
         labelEl.className = "slot-row-label";
       }
       var resultEl = rowEl.querySelector(".slot-row-result");
@@ -573,7 +573,7 @@ var JITLottery = (function() {
       var labelEl = document.getElementById("slotRow" + i);
       if (labelEl) {
         var l = labelEl.querySelector(".slot-row-label");
-        if (l) l.textContent = "日常基础奖池";
+        if (l) l.textContent = "现金返现奖池";
       }
     }
     if (!_rarePoolOpen || _userLevel < 3) {
@@ -581,7 +581,7 @@ var JITLottery = (function() {
       if (row2) {
         var l2 = row2.querySelector(".slot-row-label");
         if (l2) {
-          l2.textContent = _userLevel < 3 ? "稀有奖池（Lv3 解锁）" : "稀有奖池（已关闭）";
+          l2.textContent = _userLevel < 3 ? "稀有返现奖池（Lv3 解锁）" : "稀有返现奖池（已关闭）";
           l2.style.color = "rgba(255,255,255,0.4)";
         }
       }

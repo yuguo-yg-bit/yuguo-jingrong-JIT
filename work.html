@@ -13,7 +13,7 @@
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<div class="version-watermark" id="versionWatermark">v3.0.3</div>
+<div class="version-watermark" id="versionWatermark">v3.0.4</div>
 <div class="bg-grid"></div>
 <div class="bg-particles" id="bgParticles"></div>
 
@@ -124,7 +124,7 @@
                 <th>中奖</th>
                 <th>支付方式</th>
                 <th>原价</th>
-                <th>优惠后</th>
+                <th>折扣后实付</th>
                 <th>状态</th>
                 <th>操作</th>
               </tr>
@@ -884,36 +884,36 @@
 <div class="modal-overlay" id="slotMachineOverlay" style="z-index:2100;">
   <div class="slot-machine-container">
     <div class="slot-machine-header">
-      <h2 class="slot-machine-title">🎰 老虎机 · 双奖池抽奖</h2>
+      <h2 class="slot-machine-title">🎰 老虎机 · 现金返现（与折扣无关）</h2>
       <button class="modal-close" id="btnSlotClose">&times;</button>
     </div>
     <div class="slot-machine-body">
-      <div class="slot-machine-subtitle" id="slotSubtitle">日常基础奖池 ×2 + 稀有奖池</div>
+      <div class="slot-machine-subtitle" id="slotSubtitle">现金返现奖池 ×2 + 稀有返现奖池</div>
       <div class="slot-rows">
-        <!-- 行 0: 基础奖池 -->
+        <!-- 行 0: 现金返现 -->
         <div class="slot-row" id="slotRow0">
           <div class="slot-row-info">
-            <span class="slot-row-label">日常基础奖池 1</span>
+            <span class="slot-row-label">现金返现奖池 1</span>
             <span class="slot-row-result"></span>
           </div>
           <div class="slot-reel">
             <span class="slot-symbol">🎰</span>
           </div>
         </div>
-        <!-- 行 1: 基础奖池 -->
+        <!-- 行 1: 现金返现 -->
         <div class="slot-row" id="slotRow1">
           <div class="slot-row-info">
-            <span class="slot-row-label">日常基础奖池 2</span>
+            <span class="slot-row-label">现金返现奖池 2</span>
             <span class="slot-row-result"></span>
           </div>
           <div class="slot-reel">
             <span class="slot-symbol">🎰</span>
           </div>
         </div>
-        <!-- 行 2: 稀有奖池 -->
+        <!-- 行 2: 稀有返现 -->
         <div class="slot-row slot-row-rare" id="slotRow2">
           <div class="slot-row-info">
-            <span class="slot-row-label">稀有奖池</span>
+            <span class="slot-row-label">稀有返现奖池</span>
             <span class="slot-row-result"></span>
           </div>
           <div class="slot-reel slot-reel-rare">
@@ -922,10 +922,10 @@
         </div>
       </div>
       <div class="slot-total" id="slotTotal" style="display:none;">
-        <span class="slot-total-label">🏆 最佳奖励</span>
+        <span class="slot-total-label">🏆 老虎机现金返现</span>
         <span class="slot-total-amount" id="slotTotalAmount">¥0</span>
       </div>
-      <button class="slot-spin-btn" id="btnSlotSpin" style="display:none;">🎯 再来一次</button>
+      <button class="slot-spin-btn" id="btnSlotSpin" style="display:none;">🎯 再抽一次返现</button>
     </div>
   </div>
 </div>
@@ -942,7 +942,7 @@
         <span class="flip-result-exclaim">！</span>
       </div>
       <div class="flip-result-sub" id="scratchResultSub">手气不错！</div>
-      <div class="flip-result-auto-hint" id="flipResultAutoHint" style="display:none;">将在 <span id="flipResultCountdown">2</span> 秒后自动进入老虎机...</div>
+      <div class="flip-result-auto-hint" id="flipResultAutoHint" style="display:none;">将在 <span id="flipResultCountdown">2</span> 秒后自动进入老虎机抽现金返现...</div>
     </div>
   </div>
 </div>
@@ -988,7 +988,7 @@
         </div>
         <div class="stat-item">
           <span class="stat-num" id="statRewards">¥0</span>
-          <span class="stat-label">累计返现</span>
+          <span class="stat-label">老虎机累计返现</span>
         </div>
       </div>
       <div class="user-center-section">
