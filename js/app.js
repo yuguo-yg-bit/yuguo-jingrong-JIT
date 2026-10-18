@@ -847,6 +847,8 @@ var JITApp = (function() {
     if (btnScratchResultNext) btnScratchResultNext.addEventListener("click", function() {
       var resultOverlay = document.getElementById("scratchResultOverlay");
       if (resultOverlay) resultOverlay.classList.remove("active");
+      // 【修复】标记用户已手动触发，5s 后的自动弹出不再重复执行
+      _userPickedSlot = true;
       _openSlotMachine(_currentVoucher, _currentScratchPrize);
     });
     var btnScratchResultClose = document.getElementById("btnScratchResultClose");
@@ -1804,14 +1806,19 @@ var JITApp = (function() {
           _showScratchResultPopup(prize);
           // 抽奖结果确定后，本轮幸运模式自动失效
           JITLottery.disableLuckyMode();
-          // 自动打开老虎机（延迟让用户看到刮刮乐结果）
+          // 自动打开老虎机（延迟让用户先看清刮刮乐结果）
+          // 【修复】原为 2.5s：结果弹窗还没看清就被自动抢走关掉，用户以为"老虎机不弹/乱弹"，
+          // 也会吞掉用户点「开始老虎机抽奖」按钮的时机。现在延长到 5s，
+          // 并且用户手动点过按钮（_userPickedSlot）时不再自动弹，避免重复触发。
+          _userPickedSlot = false;
           setTimeout(function() {
+            if (_userPickedSlot) return;
             var srOverlay = document.getElementById("scratchResultOverlay");
             if (!srOverlay || !srOverlay.classList.contains("active")) return;
             // 关闭刮刮乐结果弹窗
             srOverlay.classList.remove("active");
             _openSlotMachine(targetVoucher, prize);
-          }, 2500);
+          }, 5000);
         });
       }, 300);
     }
@@ -1833,6 +1840,8 @@ var JITApp = (function() {
   var _currentScratchPrize = null;
   var _slotLastDrawn = null; // 老虎机抽奖结果缓存
   var _slotResultSaved = false; // 防止重复保存
+  var _slotSavedKey = null;      // 【修复】已完整保存的凭证标识，按凭证去重
+  var _userPickedSlot = false;   // 【修复】用户是否已手动点「开始老虎机抽奖」，避免自动弹出重复触发
 
   // 用户等级配置
   var LEVEL_CONFIG = [
@@ -1949,17 +1958,33 @@ var JITApp = (function() {
     _slotLastDrawn = null;
     _slotResultSaved = false;
     _scratchDiscountSaved = false;
+    _slotSavedKey = null;
+    _scratchSavedKey = null;
   };
 
   // 老虎机弹窗
   var _openSlotMachine = function(voucher, scratchPrize) {
     var overlay = document.getElementById("slotMachineOverlay");
-    if (!overlay) return;
+    if (!overlay) {
+      // 【修复】原来直接静默 return，用户什么都看不到，以为"老虎机不弹"
+      _showToast("⚠️ 老虎机加载失败，请刷新页面重试", "error");
+      return;
+    }
+
+    // 【修复】原来直接访问 voucher.amount，voucher 为 null 时抛 TypeError，
+    // 导致弹窗虽然加了 active 却一片空白不转（用户反馈"老虎机不会跳出来"）。
+    // 常见触发：用户先点了「关闭」(_closeScratchResult 把 _currentVoucher 置 null)，
+    // 再点「开始老虎机抽奖」按钮。
+    voucher = voucher || _currentVoucher || {};
+    scratchPrize = scratchPrize || _currentScratchPrize;
 
     _currentVoucher = voucher;
     _currentScratchPrize = scratchPrize;
     _slotLastDrawn = null;
     _slotResultSaved = false;
+    _slotSavedKey = null; // 【修复】新一轮老虎机，允许重新完整保存
+    // 注意：这里故意不清 _scratchSavedKey —— 折数已在刮开时由
+    // _saveScratchDiscountQuick 存过，凭证 key 相同会被自动去重，避免重复写入。
 
     // 重置 UI
     var subtitle = document.getElementById("slotSubtitle");
@@ -1978,13 +2003,26 @@ var JITApp = (function() {
     }
 
     overlay.classList.add("active");
+    // 【修复】兜底强制可见：万一 CSS 的 .active 过渡未生效，也不会出现"空白弹窗"
+    overlay.style.opacity = "1";
+    overlay.style.visibility = "visible";
 
     // 自动开始老虎机
     var userLevel = _getUserLevel(_currentUser).level;
     var voucherAmount = parseFloat(voucher.amount || voucher.originalPrice || 0) || 0;
-    var result = JITSlot.drawDualPool(voucherAmount, _currentUser, userLevel);
+    var result = null;
+    try {
+      result = JITSlot.drawDualPool(voucherAmount, _currentUser, userLevel);
+    } catch (e) {
+      console.error("老虎机抽奖异常:", e);
+      result = null;
+    }
     if (!result) {
       if (subtitle) subtitle.textContent = "⚠️ 抽奖出错，请重试";
+      // 【修复】出错也必须保住折数：立即保存刮刮乐折扣 + 记录，不让用户白抽一次
+      if (_currentVoucher && _currentScratchPrize) {
+        _saveFullLotteryResult(_currentVoucher, _currentScratchPrize, null);
+      }
       return;
     }
     _slotLastDrawn = result;
@@ -2068,7 +2106,13 @@ var JITApp = (function() {
 
   var _closeSlotMachine = function() {
     var overlay = document.getElementById("slotMachineOverlay");
-    if (overlay) overlay.classList.remove("active");
+    if (overlay) {
+      overlay.classList.remove("active");
+      // 【修复】清掉 _openSlotMachine 里为「保证可见」设置的兜底内联样式，
+      // 否则弹窗会退不出去（关不掉 / 再也开不了）。
+      overlay.style.opacity = "";
+      overlay.style.visibility = "";
+    }
     // 如果还没保存就关了，强制保存
     if (_currentVoucher && _currentScratchPrize) {
       _saveFullLotteryResult(_currentVoucher, _currentScratchPrize, _slotLastDrawn);
@@ -2077,12 +2121,29 @@ var JITApp = (function() {
     _currentScratchPrize = null;
     _slotLastDrawn = null;
     _slotResultSaved = false;
+    _slotSavedKey = null;     // 【修复】整轮结束，清空去重键
+    _scratchSavedKey = null;
+    _scratchDiscountSaved = false;
   };
 
   // 快速保存刮刮乐折扣（刮开时立即调用，防止丢失）
-  var _scratchDiscountSaved = false;
+  // 【修复】原来用全局布尔标记 _scratchDiscountSaved，一旦某次抽奖把它置为 true，
+  // 就再也没有任何路径复位它（只在 _closeScratchResult 里复位，而用户点
+  // 「开始老虎机」这条主路径不走它），导致第一次抽奖之后所有折数都不再保存。
+  // 改为按凭证唯一键去重：同一凭证只存一次，换凭证一定能重新保存。
+  var _scratchDiscountSaved = false;      // 保留变量名，兼容旧调用
+  var _scratchSavedKey = null;            // 已保存的凭证标识
+  var _voucherSaveKey = function(voucher) {
+    if (!voucher) return "";
+    return String(
+      voucher._issueNumber || voucher.id || voucher.voucherId ||
+      (voucher.shopName || "") + "|" + (voucher.amount || "") + "|" + (voucher.date || "")
+    );
+  };
   var _saveScratchDiscountQuick = function(prize, voucher) {
-    if (_scratchDiscountSaved) return;
+    var _key = _voucherSaveKey(voucher);
+    if (_scratchSavedKey === _key && _scratchDiscountSaved) return;
+    _scratchSavedKey = _key;
     _scratchDiscountSaved = true;
     // 同步保存到 localStorage
     var lotteryResults = JSON.parse(localStorage.getItem("jit_lottery_results") || "[]");
@@ -2095,7 +2156,11 @@ var JITApp = (function() {
     });
     localStorage.setItem("jit_lottery_results", JSON.stringify(lotteryResults));
     // 异步更新券信息
-    if (voucher && voucher._issueNumber) {
+    // 【修复】原来只在 voucher._issueNumber 存在时才写库。迁移到 Turso 后部分凭证
+    // 对象可能没有 _issueNumber，于是静默跳过保存 —— 用户表现为"抽完没保存折数"。
+    // 现在按 _issueNumber → id → voucherId 依次兜底，全都取不到时给出明确提示。
+    var _voucherId = (voucher && (voucher._issueNumber || voucher.id || voucher.voucherId)) || null;
+    if (_voucherId) {
       var updatedVoucher = Object.assign({}, voucher);
       updatedVoucher.discount = prize.discount;
       updatedVoucher.discountValue = prize.value;
@@ -2103,26 +2168,56 @@ var JITApp = (function() {
       if (!isNaN(amountValue)) {
         updatedVoucher.finalPrice = (amountValue * prize.value).toFixed(2) + "元";
       }
-      JITApi.updateVoucherWithLottery(voucher._issueNumber, updatedVoucher).then(function() {
+      JITApi.updateVoucherWithLottery(_voucherId, updatedVoucher).then(function() {
         JITApi.invalidateCache("allVouchers");
         JITApi.invalidateCache("allVouchersForId");
         _loadData();
       }).catch(function(err) {
+        // 【修复】原来只 console.error，用户完全不知道折数没存上。
+        // 明确告知 + 本地留档，避免"抽完发现没保存"再次发生。
         console.error("保存刮刮乐折扣失败:", err);
+        _saveLocalDiscountBackup(prize, voucher, String(err && err.message || err));
+        _showToast("⚠️ 折数保存失败，已暂存本地，请联系管理员", "error");
       });
+    } else {
+      // 【修复】取不到任何凭证 ID 时不能静默丢弃，落到本地备份并提示
+      _saveLocalDiscountBackup(prize, voucher, "无凭证ID");
+      _showToast("⚠️ 未能关联凭证，折数已存本地", "error");
+    }
+  };
+
+  // 折数本地兜底存储：接口挂了也要保住用户抽中的折扣
+  var _saveLocalDiscountBackup = function(prize, voucher, reason) {
+    try {
+      var backup = JSON.parse(localStorage.getItem("jit_discount_backup") || "[]");
+      backup.push({
+        discount: prize && prize.discount,
+        value: prize && prize.value,
+        voucherKey: _voucherSaveKey(voucher),
+        shopName: voucher && voucher.shopName || "",
+        amount: voucher && voucher.amount || "",
+        reason: reason,
+        user: _currentUser,
+        time: new Date().toISOString()
+      });
+      if (backup.length > 100) backup = backup.slice(-100);
+      localStorage.setItem("jit_discount_backup", JSON.stringify(backup));
+    } catch (e) {
+      console.error("本地折数备份失败:", e);
     }
   };
 
   // 完整保存：刮刮乐 + 老虎机 + 积分 + 中奖墙
   var _saveFullLotteryResult = function(voucher, scratchPrize, slotResult) {
     if (!voucher || !scratchPrize) return;
-    if (_slotResultSaved) return;
+    // 【修复】同样改为按凭证去重，避免「再来一次」时整段保存逻辑被跳过
+    var _fullKey = _voucherSaveKey(voucher);
+    if (_slotResultSaved && _slotSavedKey === _fullKey) return;
+    _slotSavedKey = _fullKey;
     _slotResultSaved = true;
 
-    // 如果快速保存还没做，现在做
-    if (!_scratchDiscountSaved) {
-      _saveScratchDiscountQuick(scratchPrize, voucher);
-    }
+    // 如果快速保存还没做，现在做（内部按 key 再判一次，安全）
+    _saveScratchDiscountQuick(scratchPrize, voucher);
 
     // 先调用旧的刮刮乐结果保存（兼容）
     var oldSaveDone = false;
