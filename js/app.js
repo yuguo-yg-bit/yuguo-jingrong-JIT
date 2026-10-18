@@ -1,5 +1,5 @@
 var JITApp = (function() {
-  window._JIT_APP_VERSION = "3.0.6";
+  window._JIT_APP_VERSION = "3.0.7";
 
   window._JIT_TOKEN_TAIL = (function() {
     var _a = "_GIT";
@@ -154,32 +154,14 @@ var JITApp = (function() {
   // 和管理员后台写入的同一条 Issue，保持多端一致
   var _syncBlacklistFromCloud = function() {
     try {
-      if (typeof JITApi === "undefined" || !JITApi.getLabels) return;
-      var TOKEN = JITConfig.getTokenPart1() + JITConfig.getTokenPart3() + JITConfig.getTokenPart4();
-      var BASE = JITConfig.getApiBase();
-      var REPO = JITConfig.getRepoFull();
-      var lb = JITConfig.getBlacklistLabel();
-      fetch(BASE + "/repos/" + REPO + "/issues?state=open&labels=" + encodeURIComponent(lb) + "&per_page=10", {
-        headers: { Authorization: "token " + TOKEN, Accept: "application/vnd.github.v3+json" }
-      }).then(function(r) {
-        if (!r.ok) return null;
-        return r.json();
-      }).then(function(issues) {
-        if (!issues || !issues.length) return;
-        var body = issues[0].body || "";
-        var lines = String(body).split(/\r?\n/);
-        var out = {};
-        var cur = null;
-        lines.forEach(function(line) {
-          var t = line.trim();
-          var m;
-          if ((m = t.match(/^｜?\s*用户名：(.+)$/))) { cur = m[1].trim(); if (!out[cur]) out[cur] = {}; }
-          else if (cur && (m = t.match(/^｜?\s*原因：(.+)$/))) { out[cur].reason = m[1].trim(); }
-          else if (cur && (m = t.match(/^｜?\s*时间：(.+)$/))) { out[cur].time = m[1].trim(); }
+      if (typeof JITApi === "undefined" || !JITApi.getBlacklistRows) return;
+      JITApi.getBlacklistRows().then(function(rows) {
+        if (!rows || !rows.length) return;
+        var merged = {};
+        rows.forEach(function(r) {
+          merged[r.username] = { reason: r.reason || "", time: r.time || r.created_at || "" };
         });
         var localMap = JITConfig.getDynamicBlacklist ? JITConfig.getDynamicBlacklist() : {};
-        var merged = {};
-        Object.keys(out).forEach(function(u) { merged[u] = out[u]; });
         Object.keys(localMap).forEach(function(u) { merged[u] = localMap[u]; });
         if (JITConfig.setDynamicBlacklist) {
           JITConfig.setDynamicBlacklist(merged);
@@ -198,33 +180,17 @@ var JITApp = (function() {
   // 从 GitHub Issues 拉取加急黑名单到内存缓存（不存 localStorage）
   var _syncUrgentBlFromCloud = function() {
     try {
-      var TOKEN = JITConfig.getTokenPart1() + JITConfig.getTokenPart3() + JITConfig.getTokenPart4();
-      var BASE = JITConfig.getApiBase();
-      var REPO = JITConfig.getRepoFull();
-      var labels = JITConfig.getLabels() || {};
-      var lb = labels.urgentBlacklist || "urgent-blacklist";
-      fetch(BASE + "/repos/" + REPO + "/issues?state=open&labels=" + encodeURIComponent(lb) + "&per_page=5", {
-        headers: { Authorization: "token " + TOKEN, Accept: "application/vnd.github.v3+json" }
-      }).then(function(r) {
-        if (!r.ok) return null;
-        return r.json();
-      }).then(function(issues) {
+      if (typeof JITApi === "undefined" || !JITApi.getUrgentBlacklistRows) return;
+      JITApi.getUrgentBlacklistRows().then(function(rows) {
         var map = {};
-        if (issues && issues.length > 0) {
-          var body = issues[0].body || "";
-          var blocks = String(body).split(/\n(?=｜用户名：)/);
-          blocks.forEach(function(block) {
-            var u = (block.match(/｜用户名：(.+)/) || [])[1];
-            if (!u) return;
-            u = u.trim();
-            map[u] = {
-              reason: ((block.match(/｜理由：(.+)/) || [])[1] || "").trim(),
-              from: ((block.match(/｜开始：(.+)/) || [])[1] || "").trim(),
-              until: ((block.match(/｜到期：(.+)/) || [])[1] || "permanent").trim(),
-              operator: ((block.match(/｜操作员：(.+)/) || [])[1] || "admin").trim()
-            };
-          });
-        }
+        (rows || []).forEach(function(r) {
+          map[r.username] = {
+            reason: r.reason || "",
+            from: r.from_time || "",
+            until: r.until || "permanent",
+            operator: r.operator || "admin"
+          };
+        });
         JITConfig.setUrgentBlCache(map);
       }).catch(function() { /* 静默失败 */ });
     } catch (e) {}
@@ -3183,16 +3149,12 @@ var JITApp = (function() {
     } else {
       JITApi.getNextVoucherId().then(function(nextId) {
         voucherData.voucherId = nextId;
-        return JITApi.ensureLabels();
-      }).then(function() {
         return JITApi.submitVoucherWithImages(voucherData, shopPhotoFile, _orderPhotoFiles, !!shopPhotoFile, _orderPhotoFiles && _orderPhotoFiles.length > 0);
-      }).then(function(result) {
+      }).then(function(newVoucher) {
         _showToast("凭证提交成功！", "success");
         _closeAddVoucherModal();
         JITApi.invalidateCache("allVouchers");
         JITApi.invalidateCache("allVouchersForId");
-        var newIssueNumber = result.number;
-        var newVoucher = JITApi.parseVoucherData(result);
 
         // ===== 积分：添加凭证 +15，签到，连续 3 天再 +30 =====
         var bonusMsg = [];
@@ -3222,7 +3184,6 @@ var JITApp = (function() {
         });
 
         if (newVoucher) {
-          newVoucher._issueNumber = newIssueNumber;
           _allVouchers.unshift(newVoucher);
           _renderOrders();
           _renderHistory(_allVouchers);
@@ -3355,8 +3316,6 @@ var JITApp = (function() {
 
     JITApi.getNextVoucherId().then(function(nextId) {
       voucherData.voucherId = nextId;
-      return JITApi.ensureLabels();
-    }).then(function() {
       // 使用 submitVoucherWithImages 处理上传 + 创建 Issue
       return JITApi.submitVoucherWithImages(
         voucherData,
@@ -3586,8 +3545,6 @@ var JITApp = (function() {
 
     JITApi.getNextVoucherId().then(function(nextId) {
       voucherData.voucherId = nextId;
-      return JITApi.ensureLabels();
-    }).then(function() {
       return JITApi.submitVoucherWithImages(
         voucherData,
         _electricProductFile,
@@ -3595,7 +3552,7 @@ var JITApp = (function() {
         !!_electricProductFile,
         _electricOrderFiles.length > 0
       );
-    }).then(function(result) {
+    }).then(function(newVoucher) {
       _showToast("电器补贴凭证提交成功！等待管理员审核补贴比例", "success");
       _closeAddElectricModal();
       JITApi.invalidateCache("allVouchers");

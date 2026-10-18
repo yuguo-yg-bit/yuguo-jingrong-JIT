@@ -1,9 +1,4 @@
 var JITAdmin = (function() {
-  var TOKEN = (JITConfig.getTokenPart1() + JITConfig.getTokenPart3() + JITConfig.getTokenPart4());
-  var REPO = JITConfig.getRepoName();
-  var OWNER = JITConfig.getRepoOwner();
-  var BASE_URL = JITConfig.getApiBase();
-
   // 管理员密码：SHA-256(盐 + 明文密码)
   // 盐: yuguo-jr-salt-2024
   var ADMIN_SALT = "yuguo-jr-salt-2024";
@@ -90,49 +85,6 @@ var JITAdmin = (function() {
       el.classList.add("show");
       setTimeout(function() { el.classList.remove("show"); }, 3000);
     }
-  };
-
-  var _apiGet = function(url) {
-    // 用时间戳参数做 cache-busting。
-    // 注意：不能加 Cache-Control / Pragma 请求头，它们不在 GitHub 的 CORS 白名单里，
-    // 会导致浏览器预检失败从而拦掉所有请求。
-    var sep = url.indexOf("?") > -1 ? "&" : "?";
-    var cacheBustUrl = url + sep + "_t=" + Date.now();
-    return fetch(cacheBustUrl, {
-      headers: {
-        Authorization: "token " + TOKEN,
-        Accept: "application/vnd.github.v3+json"
-      }
-    }).then(function(r) {
-      if (!r.ok) throw new Error("请求失败: " + r.status);
-      return r.json();
-    });
-  };
-
-  var _apiPatch = function(url, body) {
-    return fetch(url, {
-      method: "PATCH",
-      headers: { Authorization: "token " + TOKEN, Accept: "application/vnd.github.v3+json", "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    }).then(function(r) {
-      if (!r.ok) {
-        return r.json().then(function(d) { throw new Error(d.message || "请求失败: " + r.status); });
-      }
-      return r.json();
-    });
-  };
-
-  var _apiPost = function(url, body) {
-    return fetch(url, {
-      method: "POST",
-      headers: { Authorization: "token " + TOKEN, Accept: "application/vnd.github.v3+json", "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    }).then(function(r) {
-      if (!r.ok) {
-        return r.json().then(function(d) { throw new Error(d.message || "请求失败: " + r.status); });
-      }
-      return r.json();
-    });
   };
 
   var _escapeHtml = function(str) {
@@ -973,16 +925,10 @@ var JITAdmin = (function() {
     btn.textContent = "提交中...";
     btn.disabled = true;
 
-    var body = JITApi.formatIssueBody(voucherData);
-    var title = username + "-" + (voucherData.voucherId || "V" + Date.now().toString().slice(-8));
     // 生成 voucherId
     if (!voucherData.voucherId) {
       voucherData.voucherId = "V" + Date.now().toString().slice(-8);
-      title = username + "-" + voucherData.voucherId;
-      body = JITApi.formatIssueBody(voucherData);
     }
-    var labels = [JITConfig.getLabels().voucher, JITConfig.getLabels().pending];
-    if (type === "电器凭证") labels.push(JITConfig.getLabels().electric || "electric");
 
     // 使用图片上传
     var hasShopPhoto = !!shopPhotoFile;
@@ -1197,8 +1143,6 @@ var JITAdmin = (function() {
     var btn = document.getElementById("btnAdminEditVoucherConfirm");
     btn.textContent = "保存中...";
     btn.disabled = true;
-
-    var body = JITApi.formatIssueBody(voucherData);
 
     // 如果有新图片上传
     var hasNewShopPhoto = !!shopPhotoFile;
@@ -1830,8 +1774,8 @@ var JITAdmin = (function() {
 
   var loadSystemInfo = function() {
     document.getElementById("systemInfo").innerHTML = 
-      '<p>仓库: ' + _escapeHtml(OWNER + "/" + REPO) + '</p>' +
-      '<p>API: ' + _escapeHtml(BASE_URL) + '</p>' +
+      '<p>数据库: Turso (Val.town 代理)</p>' +
+      '<p>版本: v3.0.8</p>' +
       '<p>凭证总数: ' + allIssues.length + '</p>' +
       '<p>缓存大小: ' + _escapeHtml(String(localStorage.length)) + ' 项</p>' +
       '<p>当前时间: ' + new Date().toLocaleString("zh-CN") + '</p>';

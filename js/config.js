@@ -1,18 +1,4 @@
 var JITConfig = (function() {
-  var _pt1 = "ghp_6C";
-  var _pt2 = "5Fv6UxjRX";
-  var _pt4 = "po1eLaQK";
-
-  var _repoOwner = "yuguo-yg-bit";
-  var _repoName = "yuguo-jingrong-JIT";
-  var _imageRepoName = "yuguo-jingrong-JIT-images";
-
-  var _getTokenPart1 = function() {
-    return _pt1 + _pt2;
-  };
-
-  var _apiBase = "https://api.github.com";
-
   var _labels = {
     voucher: "voucher",
     approved: "approved",
@@ -27,7 +13,8 @@ var JITConfig = (function() {
     blacklist: "blacklist",
     notification: "notification",
     urgent: "urgent",
-    urgentBlacklist: "urgent-blacklist"
+    urgentBlacklist: "urgent-blacklist",
+    communityStatus: "community-status"
   };
 
   var _users = {
@@ -129,13 +116,6 @@ var JITConfig = (function() {
   }
 
   return {
-    getTokenPart1: _getTokenPart1,
-    getTokenPart3: function() { return "6eIA6D3k79u4L32V4"; },
-    getTokenPart4: function() { return _pt4; },
-    getApiBase: function() { return _apiBase; },
-    getRepoOwner: function() { return _repoOwner; },
-    getRepoName: function() { return _repoName; },
-    getImageRepoName: function() { return _imageRepoName; },
     getLabels: function() { return _labels; },
     getUsers: function() { return _users; },
     getBlacklist: function() { return _blacklist.slice(); },
@@ -187,8 +167,6 @@ var JITConfig = (function() {
     isWhitelisted: function(username) {
       return _whitelist.indexOf(username) !== -1;
     },
-    getRepoFull: function() { return _repoOwner + "/" + _repoName; },
-    getImageRepoFull: function() { return _repoOwner + "/" + _imageRepoName; },
     getUnionPayQrUrl: _getUnionPayQrUrl,
     getUrgentBlacklist: function() { return _getUrgentBlacklist(); },
     setUrgentBlCache: _setUrgentBlCache,

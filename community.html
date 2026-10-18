@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta http-equiv="X-Frame-Options" content="DENY">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>鱼果社区 - 个人中心</title>
+<link rel="stylesheet" href="css/style.css?v=3.0.7">
+</head>
+<body>
+<div class="version-watermark" id="versionWatermark">v3.0.7</div>
+<div class="bg-grid"></div>
+<div class="bg-particles" id="bgParticles"></div>
+
+<div class="community-container">
+  <header class="community-header">
+    <a href="work.html" class="community-back-btn">← 返回</a>
+    <h1 class="community-title">鱼果社区</h1>
+    <div class="community-header-right"></div>
+  </header>
+
+  <div class="community-my-card" id="communityMyCard">
+    <div style="text-align:center;padding:30px;color:var(--text-muted);">加载中...</div>
+  </div>
+
+  <div class="community-composer" id="communityComposer">
+    <div class="composer-avatar" id="composerAvatar">用</div>
+    <div class="composer-input-area">
+      <textarea class="composer-textarea" id="statusTextarea" placeholder="分享你的状态..." maxlength="500"></textarea>
+      <div class="composer-actions">
+        <span class="composer-char-count" id="composerCharCount">0/500</span>
+        <button class="composer-submit-btn" id="btnPostStatus">发布</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="community-feed" id="communityFeed">
+    <div class="feed-loading">加载动态中...</div>
+  </div>
+</div>
+
+<!-- 资料编辑弹窗 -->
+<div class="modal-overlay" id="editProfileOverlay" style="z-index:2100;">
+  <div class="community-edit-modal">
+    <h3>编辑资料</h3>
+    <div class="edit-avatar-preview" id="editAvatarPreview">用</div>
+    <div class="edit-btn-row">
+      <button class="edit-btn primary" id="btnChangeAvatar">📷 更换头像</button>
+      <button class="edit-btn" id="btnEditClose">关闭</button>
+    </div>
+    <input type="file" accept="image/*" id="editAvatarFileInput" style="display:none;">
+  </div>
+</div>
+
+<!-- 购买确认弹窗 -->
+<div class="modal-overlay" id="buyConfirmOverlay" style="z-index:2200;">
+  <div class="buy-confirm-dialog">
+    <div class="buy-confirm-icon">🛒</div>
+    <h3 class="buy-confirm-title">确认购买装扮</h3>
+    <p class="buy-confirm-desc">确认花费 <strong class="buy-confirm-cost" id="buyConfirmCost">0</strong> 积分<br>购买 <strong id="buyConfirmName">--</strong> ？</p>
+    <p class="buy-confirm-pts" id="buyConfirmPts">当前积分：0</p>
+    <div class="buy-confirm-actions">
+      <button class="buy-confirm-btn buy-confirm-cancel" id="btnBuyCancel">取消</button>
+      <button class="buy-confirm-btn buy-confirm-buy" id="btnBuyConfirm">确认购买</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast 容器 -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="js/config.js?v=3.0.7"></script>
+<script src="js/api.js?v=3.0.7"></script>
+<script src="js/points.js?v=3.0.7"></script>
+<script src="js/community.js?v=3.0.7"></script>
+</body>
+</html>
