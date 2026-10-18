@@ -4045,3 +4045,252 @@ body.theme-galaxy .modal-container { border-color: rgba(156,39,176,0.25); }
   .feed-card { padding: 12px; }
   .feed-card-avatar { width: 38px; height: 38px; font-size: 16px; }
 }
+
+/* ================================================================
+   v3.1.0 玉国社区改版 - X 风格个人主页
+   ================================================================ */
+
+/* ① 资料预览（最顶上是自己） */
+.profile-cover-wrap {
+  margin-top: 16px;
+  background: var(--bg-secondary, rgba(20, 20, 35, 0.9));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.profile-cover {
+  position: relative;
+  height: 150px;
+  background: linear-gradient(120deg, #16213e, #1a1a3e);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cover-placeholder { color: var(--text-dim, #556677); font-size: 13px; }
+.cover-edit-btn {
+  position: absolute;
+  right: 12px; top: 12px;
+  width: 34px; height: 34px; border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45); border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff; font-size: 15px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .2s;
+}
+.cover-edit-btn:hover { background: rgba(0, 0, 0, 0.7); }
+.profile-id-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 0 16px;
+  margin-top: -34px;
+  position: relative;
+  z-index: 2;
+}
+.profile-avatar {
+  width: 76px; height: 76px;
+  border-radius: 50%;
+  border: 4px solid var(--bg-secondary, #0d1322);
+  background: linear-gradient(135deg, #42a5f5, #1e88e5);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 30px; font-weight: 700; color: #fff;
+  overflow: hidden; flex-shrink: 0;
+  position: relative;
+}
+.profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.profile-avatar.frame-gold { border-color: #ffd700; box-shadow: 0 0 20px rgba(255, 215, 0, 0.5); }
+.profile-avatar.frame-diamond { border-color: #b9f2ff; box-shadow: 0 0 20px rgba(185, 242, 255, 0.5); }
+.profile-avatar.frame-ruby { border-color: #ff4081; box-shadow: 0 0 20px rgba(255, 64, 129, 0.5); }
+.profile-meta { flex: 1; min-width: 0; padding-bottom: 4px; }
+.profile-display-name {
+  font-size: 20px; font-weight: 700; color: #fff;
+  display: flex; align-items: center; gap: 6px;
+  flex-wrap: wrap;
+}
+.verified-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: linear-gradient(135deg, #ffd700, #ff9800);
+  color: #1a1a1a; font-size: 12px; font-weight: 800;
+  flex-shrink: 0;
+}
+.profile-level-line { margin-top: 4px; }
+.level-chip {
+  display: inline-block;
+  padding: 2px 10px; border-radius: 10px;
+  font-size: 11px; font-weight: 600;
+  color: #ffd700;
+  background: rgba(255, 213, 79, 0.12);
+  border: 1px solid rgba(255, 213, 79, 0.3);
+}
+.profile-achievements {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;
+}
+.achievement-chip {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 3px 8px; border-radius: 10px;
+  font-size: 11px; color: #ffd54f;
+  background: rgba(255, 213, 79, 0.1);
+  border: 1px solid rgba(255, 213, 79, 0.25);
+}
+.achievement-chip.muted { color: var(--text-dim, #556677); background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.08); }
+.profile-bio {
+  padding: 10px 16px 0;
+  font-size: 14px; color: var(--text-primary, #e0e6f0);
+  line-height: 1.6;
+}
+.profile-info-line {
+  padding: 6px 16px 0;
+  font-size: 12px; color: var(--text-dim, #556677);
+  display: flex; flex-wrap: wrap; gap: 8px;
+}
+.profile-actions {
+  padding: 12px 16px 16px;
+  display: flex;
+}
+.profile-edit-btn {
+  padding: 7px 20px;
+  border-radius: 999px;
+  border: 1px solid var(--ice-blue-border, rgba(66, 165, 245, 0.3));
+  background: rgba(66, 165, 245, 0.12);
+  color: var(--ice-blue-light, #64b5f6);
+  font-size: 13px; font-weight: 600;
+  cursor: pointer;
+  transition: background .2s;
+}
+.profile-edit-btn:hover { background: rgba(66, 165, 245, 0.25); }
+
+/* ② 内嵌个人中心（排在资料预览下面） */
+.community-user-center {
+  margin-top: 16px;
+  background: linear-gradient(160deg, #0f0f23, #1a1a3e);
+  border: 2px solid rgba(66, 165, 245, 0.25);
+  border-radius: 20px;
+  padding: 20px;
+}
+
+/* ③ 发布类型切换 */
+.composer-type-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.composer-type-tab {
+  padding: 5px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary, #8899aa);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all .2s;
+}
+.composer-type-tab.active {
+  background: rgba(66, 165, 245, 0.18);
+  border-color: var(--ice-blue-border, rgba(66, 165, 245, 0.3));
+  color: var(--ice-blue-light, #64b5f6);
+  font-weight: 600;
+}
+
+/* 凭证选择器 */
+.voucher-picker {
+  margin-top: 10px;
+  max-height: 160px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.voucher-picker-empty { padding: 12px; text-align: center; color: var(--text-dim, #556677); font-size: 12px; }
+.voucher-option {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition: all .15s;
+}
+.voucher-option:hover { background: rgba(66, 165, 245, 0.1); }
+.voucher-option.active { border-color: var(--ice-blue-border, rgba(66, 165, 245, 0.3)); background: rgba(66, 165, 245, 0.18); }
+.voucher-opt-shop { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--text-primary, #e0e6f0); }
+.voucher-opt-amount { font-size: 13px; font-weight: 700; color: var(--gold, #ffd700); }
+.voucher-opt-discount { font-size: 11px; padding: 2px 8px; border-radius: 8px; background: rgba(76, 175, 80, 0.15); color: #81c784; border: 1px solid rgba(76, 175, 80, 0.3); }
+
+/* ④ 凭证动态卡片 */
+.feed-card-head {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+.feed-card-name { font-size: 15px; font-weight: 600; color: var(--accent, #42a5f5); }
+.feed-card-level {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 8px;
+  font-size: 10px; font-weight: 600;
+  color: #ffd700;
+  background: rgba(255, 213, 79, 0.12);
+  border: 1px solid rgba(255, 213, 79, 0.3);
+}
+.feed-card-level.me { color: #64b5f6; background: rgba(66, 165, 245, 0.15); border-color: rgba(66, 165, 245, 0.35); }
+.feed-card-time { font-size: 11px; color: var(--text-dim, #556677); margin-left: auto; }
+.voucher-card {
+  background: rgba(66, 165, 245, 0.06);
+  border: 1px solid rgba(66, 165, 245, 0.15);
+  border-radius: 12px;
+  padding: 12px;
+  margin-top: 2px;
+}
+.voucher-card-head { font-size: 11px; color: var(--text-dim, #556677); margin-bottom: 6px; }
+.voucher-card-shop { font-size: 16px; font-weight: 700; color: var(--text-primary, #fff); }
+.voucher-card-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.voucher-card-amount { font-size: 15px; font-weight: 700; color: var(--gold, #ffd700); }
+.voucher-card-discount { font-size: 11px; padding: 2px 8px; border-radius: 8px; background: rgba(76, 175, 80, 0.15); color: #81c784; border: 1px solid rgba(76, 175, 80, 0.3); }
+.voucher-card-date { font-size: 11px; color: var(--text-dim, #556677); }
+.voucher-card-text { font-size: 13px; color: var(--text-primary, #e0e6f0); margin-top: 8px; line-height: 1.5; white-space: pre-wrap; }
+
+/* 分组分隔 */
+.feed-section-divider {
+  display: flex; align-items: center; gap: 10px;
+  margin: 18px 0 12px;
+  color: var(--text-dim, #556677);
+  font-size: 12px;
+}
+.feed-section-divider::before, .feed-section-divider::after {
+  content: ""; flex: 1; height: 1px; background: rgba(255, 255, 255, 0.08);
+}
+
+/* ⑤ 中奖墙折叠 */
+.win-wall.collapsed .win-wall-scroll { display: none; }
+.win-wall-toggle { cursor: pointer; font-size: 11px; color: var(--text-dim, #556677); user-select: none; }
+
+/* 编辑资料字段 */
+.edit-field { margin-top: 14px; text-align: left; }
+.edit-field-label { display: block; font-size: 12px; color: var(--text-secondary, #8899aa); margin-bottom: 6px; }
+.edit-field-input {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary, #fff);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  resize: none;
+  box-sizing: border-box;
+}
+.edit-field-input:focus { border-color: var(--accent, #42a5f5); }
+.edit-field-input::placeholder { color: var(--text-dim, #556677); }
+.edit-field textarea.edit-field-input { min-height: 64px; line-height: 1.5; }
+
+@media (max-width: 480px) {
+  .profile-cover { height: 120px; }
+  .profile-avatar { width: 64px; height: 64px; font-size: 26px; border-width: 3px; }
+  .profile-display-name { font-size: 17px; }
+  .community-user-center { padding: 14px; }
+}

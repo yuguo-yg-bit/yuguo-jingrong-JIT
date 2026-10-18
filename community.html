@@ -9,11 +9,11 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>玉国社区 - 个人中心</title>
-<link rel="stylesheet" href="css/style.css?v=3.0.8">
+<title>玉国社区 - 个人主页</title>
+<link rel="stylesheet" href="css/style.css?v=3.1.0">
 </head>
 <body>
-<div class="version-watermark" id="versionWatermark">v3.0.8</div>
+<div class="version-watermark" id="versionWatermark">v3.1.0</div>
 <div class="bg-grid"></div>
 <div class="bg-particles" id="bgParticles"></div>
 
@@ -21,19 +21,146 @@
   <header class="community-header">
     <a href="work.html" class="community-back-btn">← 返回</a>
     <h1 class="community-title">玉国社区</h1>
-    <div class="community-header-right">
-      <button class="community-user-btn" id="btnOpenUserCenter">👤 个人中心</button>
-    </div>
+    <div class="community-header-right"></div>
   </header>
 
-  <div class="community-my-card" id="communityMyCard">
-    <div style="text-align:center;padding:30px;color:var(--text-muted);">加载中...</div>
+  <!-- ===== ① 最顶上是自己：X 风格资料预览 ===== -->
+  <div class="profile-cover-wrap">
+    <div class="profile-cover" id="profileCover">
+      <div class="cover-placeholder" id="coverPlaceholder">📷 上传封面</div>
+      <button class="cover-edit-btn" id="btnUploadCover" title="更换封面">📷</button>
+      <input type="file" accept="image/*" id="coverFileInput" style="display:none;">
+    </div>
+    <div class="profile-id-row">
+      <div class="profile-avatar" id="profileAvatar"><span id="profileAvatarInitial">用</span></div>
+      <div class="profile-meta">
+        <div class="profile-display-name">
+          <span id="profileDisplayName">—</span>
+          <span class="verified-badge" id="verifiedBadge" title="个人成就认证">✓</span>
+        </div>
+        <div class="profile-level-line" id="profileLevelLine"></div>
+        <div class="profile-achievements" id="profileAchievements"></div>
+      </div>
+    </div>
+    <div class="profile-bio" id="profileBio"></div>
+    <div class="profile-info-line" id="profileInfoLine"></div>
+    <div class="profile-actions">
+      <button class="profile-edit-btn" id="btnEditProfileHeader">✎ 编辑资料</button>
+    </div>
   </div>
 
+  <!-- ===== ② 个人中心：直接排在资料预览下面 ===== -->
+  <div class="community-user-center" id="communityUserCenter">
+    <div class="user-center-profile">
+      <div class="avatar-section">
+        <div class="avatar-circle" id="avatarCircle">
+          <span id="avatarInitial">用</span>
+        </div>
+        <button class="avatar-change-btn" id="btnChangeAvatarUC">📷 更换头像</button>
+        <input type="file" accept="image/*" id="avatarFileInputUC" style="display:none;">
+      </div>
+      <div class="profile-info">
+        <div class="profile-name" id="profileName">用户名</div>
+        <div class="profile-real-name" id="profileRealName">真实姓名: —</div>
+        <div class="profile-level-badge" id="profileLevelBadge">Lv0 消费新人</div>
+        <div class="profile-level-bar">
+          <div class="profile-level-fill" id="profileLevelFill"></div>
+        </div>
+        <div class="profile-exp" id="profileExp">经验值: 0 / 100</div>
+      </div>
+    </div>
+    <div class="user-center-stats">
+      <div class="stat-item">
+        <span class="stat-num" id="statVouchers">0</span>
+        <span class="stat-label">凭证数</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num" id="statStreak">0</span>
+        <span class="stat-label">连续打卡天</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num" id="statTickets">0</span>
+        <span class="stat-label">抽奖券</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num" id="statRewards">¥0</span>
+        <span class="stat-label">老虎机累计返现</span>
+      </div>
+    </div>
+    <div class="user-center-section">
+      <h3 class="section-sub-title">📋 每日任务</h3>
+      <div class="task-list" id="taskList">
+        <div class="task-item"><span class="task-icon">✅</span><span class="task-name">添加凭证</span><span class="task-progress" id="taskVoucher">0/1</span><span class="task-reward">+15积分 +50经验</span></div>
+        <div class="task-item"><span class="task-icon">🔮</span><span class="task-name">完成抽奖</span><span class="task-progress" id="taskLottery">0/3</span><span class="task-reward">+30积分 +100经验</span></div>
+        <div class="task-item"><span class="task-icon">📅</span><span class="task-name">连续打卡</span><span class="task-progress" id="taskStreak">—</span><span class="task-reward">每日+10积分</span></div>
+        <div class="task-item"><span class="task-icon">🏆</span><span class="task-name">消费达人（月消费≥¥5000）</span><span class="task-progress" id="taskSpend">0/5000</span><span class="task-reward">+100积分 +200经验</span></div>
+      </div>
+    </div>
+    <div class="user-center-section">
+      <h3 class="section-sub-title">🛡️ 风控预算</h3>
+      <div class="risk-status" id="riskStatus">
+        <div class="risk-row"><span>本月预算</span><span id="riskBudget">¥5000</span></div>
+        <div class="risk-row"><span>已返现</span><span id="riskSpent">¥0</span></div>
+        <div class="risk-row"><span>剩余额度</span><span id="riskRemain" style="color:#4caf50;">¥5000</span></div>
+        <div class="risk-bar"><div class="risk-bar-fill" id="riskBarFill"></div></div>
+      </div>
+    </div>
+    <div class="user-center-section">
+      <h3 class="section-sub-title">🔐 账号设置</h3>
+      <div class="setting-item">
+        <label>修改密码</label>
+        <div class="setting-input-row">
+          <input type="password" class="form-input" id="inputNewPassword" placeholder="新密码（留空不修改）">
+          <button class="btn-submit btn-sm" id="btnChangePassword">修改</button>
+        </div>
+      </div>
+    </div>
+    <div class="user-center-section">
+      <h3 class="section-sub-title">🧾 小票墙</h3>
+      <div class="ticket-wall" id="ticketWall">
+        <div class="ticket-wall-empty">暂无抽过的凭证</div>
+      </div>
+    </div>
+    <div class="user-center-section">
+      <h3 class="section-sub-title">🏅 徽章</h3>
+      <div class="badges-grid" id="badgesGrid">
+        <span class="badge-item badge-locked">🔒 Lv3解锁</span>
+        <span class="badge-item badge-locked">🔒 Lv5解锁</span>
+      </div>
+    </div>
+    <div class="user-center-section">
+      <h3 class="section-sub-title">🎨 装扮工作台</h3>
+      <div class="outfit-points-info" id="outfitPointsInfo">我的积分: <span id="outfitPointCount">0</span></div>
+      <h4 class="outfit-sub-title">🌈 主题装扮</h4>
+      <div class="theme-picker" id="themePicker">
+        <div class="theme-option theme-default" data-theme="default" data-cost="0" title="暗金默认（免费）"><span class="theme-icon">🌙</span><span class="theme-label">默认</span><span class="theme-cost free">免费</span></div>
+        <div class="theme-option theme-ocean-sw" data-theme="ocean" data-cost="0" title="深海蓝（免费）"><span class="theme-icon">🌊</span><span class="theme-label">深海</span><span class="theme-cost free">免费</span></div>
+        <div class="theme-option theme-forest-sw" data-theme="forest" data-cost="100" title="森林绿（100积分解锁）"><span class="theme-icon">🌿</span><span class="theme-label">森林</span><span class="theme-cost">100分</span></div>
+        <div class="theme-option theme-rose-sw" data-theme="rose" data-cost="200" title="玫瑰金（200积分解锁）"><span class="theme-icon">🌹</span><span class="theme-label">玫瑰</span><span class="theme-cost">200分</span></div>
+        <div class="theme-option theme-sunset" data-theme="sunset" data-cost="300" title="日落橙（300积分解锁）"><span class="theme-icon">🌅</span><span class="theme-label">日落</span><span class="theme-cost">300分</span></div>
+        <div class="theme-option theme-galaxy" data-theme="galaxy" data-cost="500" title="星云紫（500积分解锁）"><span class="theme-icon">🌌</span><span class="theme-label">星云</span><span class="theme-cost">500分</span></div>
+      </div>
+      <h4 class="outfit-sub-title">🖼️ 头像装扮框</h4>
+      <div class="theme-picker" id="avatarFramePicker">
+        <div class="theme-option avatar-frame-option" data-frame="none" data-cost="0" title="默认无框（免费）"><span class="frame-preview frame-none">👤</span><span class="theme-label">无框</span><span class="theme-cost free">免费</span></div>
+        <div class="theme-option avatar-frame-option" data-frame="gold" data-cost="150" title="金框（150积分解锁）"><span class="frame-preview frame-gold">👤</span><span class="theme-label">金框</span><span class="theme-cost">150分</span></div>
+        <div class="theme-option avatar-frame-option" data-frame="diamond" data-cost="300" title="钻石框（300积分解锁）"><span class="frame-preview frame-diamond">👤</span><span class="theme-label">钻石</span><span class="theme-cost">300分</span></div>
+        <div class="theme-option avatar-frame-option" data-frame="ruby" data-cost="500" title="红宝石框（500积分解锁）"><span class="frame-preview frame-ruby">👤</span><span class="theme-label">红宝石</span><span class="theme-cost">500分</span></div>
+        <div class="theme-option avatar-frame-option" data-frame="rainbow" data-cost="800" title="彩虹框（800积分解锁）"><span class="frame-preview frame-rainbow">👤</span><span class="theme-label">彩虹</span><span class="theme-cost">800分</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== ③ 发布框：说自己的话 ===== -->
   <div class="community-composer" id="communityComposer">
     <div class="composer-avatar" id="composerAvatar">用</div>
     <div class="composer-input-area">
+      <div class="composer-type-tabs">
+        <button class="composer-type-tab active" data-type="chat" id="tabChat">💬 发聊天</button>
+        <button class="composer-type-tab" data-type="voucher" id="tabVoucher">🧾 分享凭证</button>
+      </div>
       <textarea class="composer-textarea" id="statusTextarea" placeholder="分享你的状态..." maxlength="500"></textarea>
+      <div class="voucher-picker" id="voucherPicker" style="display:none;"></div>
       <div class="composer-actions">
         <span class="composer-char-count" id="composerCharCount">0/500</span>
         <button class="composer-submit-btn" id="btnPostStatus">发布</button>
@@ -41,21 +168,44 @@
     </div>
   </div>
 
+  <!-- ===== ④ 实时中奖动态墙：自己和别人之间的连接 ===== -->
+  <div class="win-wall" id="winWall">
+    <div class="win-wall-header" id="winWallHeader">
+      <span class="win-wall-title">🎉 实时中奖动态</span>
+      <span class="win-wall-toggle" id="winWallToggle">收起 ▴</span>
+    </div>
+    <div class="win-wall-scroll" id="winWallScroll"><div class="win-wall-inner" id="winWallInner"></div></div>
+  </div>
+
+  <!-- ===== ⑤ 社区动态流：往下拉是其他人 ===== -->
   <div class="community-feed" id="communityFeed">
     <div class="feed-loading">加载动态中...</div>
   </div>
 </div>
 
-<!-- 资料编辑弹窗 -->
+<!-- 资料编辑弹窗（头像/封面/简介/位置） -->
 <div class="modal-overlay" id="editProfileOverlay" style="z-index:2100;">
   <div class="community-edit-modal">
     <h3>编辑资料</h3>
     <div class="edit-avatar-preview" id="editAvatarPreview">用</div>
     <div class="edit-btn-row">
       <button class="edit-btn primary" id="btnChangeAvatar">📷 更换头像</button>
-      <button class="edit-btn" id="btnEditClose">关闭</button>
+      <button class="edit-btn" id="btnChangeCover">🖼️ 更换封面</button>
     </div>
     <input type="file" accept="image/*" id="editAvatarFileInput" style="display:none;">
+    <input type="file" accept="image/*" id="editCoverFileInput" style="display:none;">
+    <div class="edit-field">
+      <label class="edit-field-label">简介（可选，最多120字）</label>
+      <textarea class="edit-field-input" id="inputBio" maxlength="120" placeholder="介绍一下自己..."></textarea>
+    </div>
+    <div class="edit-field">
+      <label class="edit-field-label">位置（可选）</label>
+      <input class="edit-field-input" type="text" id="inputLocation" maxlength="30" placeholder="所在城市">
+    </div>
+    <div class="edit-btn-row">
+      <button class="edit-btn primary" id="btnSaveProfile">💾 保存资料</button>
+      <button class="edit-btn" id="btnEditClose">关闭</button>
+    </div>
   </div>
 </div>
 
@@ -73,129 +223,13 @@
   </div>
 </div>
 
-<!-- ===== 用户中心弹窗 ===== -->
-<div class="modal-overlay" id="userCenterOverlay" style="z-index:2000;">
-  <div class="user-center-container">
-    <div class="user-center-header">
-      <h2 class="user-center-title">👤 个人中心</h2>
-      <button class="modal-close" id="btnUserCenterClose">&times;</button>
-    </div>
-    <div class="user-center-body">
-      <div class="user-center-profile">
-        <div class="avatar-section">
-          <div class="avatar-circle" id="avatarCircle">
-            <span id="avatarInitial">用</span>
-          </div>
-          <button class="avatar-change-btn" id="btnChangeAvatarUC">📷 更换头像</button>
-          <input type="file" accept="image/*" id="avatarFileInputUC" style="display:none;">
-        </div>
-        <div class="profile-info">
-          <div class="profile-name" id="profileName">用户名</div>
-          <div class="profile-real-name" id="profileRealName">真实姓名: —</div>
-          <div class="profile-level-badge" id="profileLevelBadge">Lv0 消费新人</div>
-          <div class="profile-level-bar">
-            <div class="profile-level-fill" id="profileLevelFill"></div>
-          </div>
-          <div class="profile-exp" id="profileExp">经验值: 0 / 100</div>
-        </div>
-      </div>
-      <div class="user-center-stats">
-        <div class="stat-item">
-          <span class="stat-num" id="statVouchers">0</span>
-          <span class="stat-label">凭证数</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-num" id="statStreak">0</span>
-          <span class="stat-label">连续打卡天</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-num" id="statTickets">0</span>
-          <span class="stat-label">抽奖券</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-num" id="statRewards">¥0</span>
-          <span class="stat-label">老虎机累计返现</span>
-        </div>
-      </div>
-      <div class="user-center-section">
-        <h3 class="section-sub-title">📋 每日任务</h3>
-        <div class="task-list" id="taskList">
-          <div class="task-item"><span class="task-icon">✅</span><span class="task-name">添加凭证</span><span class="task-progress" id="taskVoucher">0/1</span><span class="task-reward">+15积分 +50经验</span></div>
-          <div class="task-item"><span class="task-icon">🔮</span><span class="task-name">完成抽奖</span><span class="task-progress" id="taskLottery">0/3</span><span class="task-reward">+30积分 +100经验</span></div>
-          <div class="task-item"><span class="task-icon">📅</span><span class="task-name">连续打卡</span><span class="task-progress" id="taskStreak">—</span><span class="task-reward">每日+10积分</span></div>
-          <div class="task-item"><span class="task-icon">🏆</span><span class="task-name">消费达人（月消费≥¥5000）</span><span class="task-progress" id="taskSpend">0/5000</span><span class="task-reward">+100积分 +200经验</span></div>
-        </div>
-      </div>
-      <div class="user-center-section">
-        <h3 class="section-sub-title">🛡️ 风控状态</h3>
-        <div class="risk-status" id="riskStatus">
-          <div class="risk-row"><span>本月预算</span><span id="riskBudget">¥5000</span></div>
-          <div class="risk-row"><span>已返现</span><span id="riskSpent">¥0</span></div>
-          <div class="risk-row"><span>剩余额度</span><span id="riskRemain" style="color:#4caf50;">¥5000</span></div>
-          <div class="risk-bar"><div class="risk-bar-fill" id="riskBarFill"></div></div>
-        </div>
-      </div>
-      <div class="user-center-section">
-        <h3 class="section-sub-title">🔐 账号设置</h3>
-        <div class="setting-item">
-          <label>修改密码</label>
-          <div class="setting-input-row">
-            <input type="password" class="form-input" id="inputNewPassword" placeholder="新密码（留空不修改）">
-            <button class="btn-submit btn-sm" id="btnChangePassword">修改</button>
-          </div>
-        </div>
-      </div>
-      <div class="user-center-section">
-        <h3 class="section-sub-title">🧾 小票墙</h3>
-        <div class="ticket-wall" id="ticketWall">
-          <div class="ticket-wall-empty">暂无抽过的凭证</div>
-        </div>
-      </div>
-      <div class="user-center-section">
-        <h3 class="section-sub-title">🏅 徽章</h3>
-        <div class="badges-grid" id="badgesGrid">
-          <span class="badge-item badge-locked">🔒 Lv3解锁</span>
-          <span class="badge-item badge-locked">🔒 Lv5解锁</span>
-        </div>
-      </div>
-      <div class="user-center-section">
-        <h3 class="section-sub-title">🎨 装扮工作台</h3>
-        <div class="outfit-points-info" id="outfitPointsInfo">我的积分: <span id="outfitPointCount">0</span></div>
-        <h4 class="outfit-sub-title">🌈 主题装扮</h4>
-        <div class="theme-picker" id="themePicker">
-          <div class="theme-option theme-default" data-theme="default" data-cost="0" title="暗金默认（免费）"><span class="theme-icon">🌙</span><span class="theme-label">默认</span><span class="theme-cost free">免费</span></div>
-          <div class="theme-option theme-ocean-sw" data-theme="ocean" data-cost="0" title="深海蓝（免费）"><span class="theme-icon">🌊</span><span class="theme-label">深海</span><span class="theme-cost free">免费</span></div>
-          <div class="theme-option theme-forest-sw" data-theme="forest" data-cost="100" title="森林绿（100积分解锁）"><span class="theme-icon">🌿</span><span class="theme-label">森林</span><span class="theme-cost">100分</span></div>
-          <div class="theme-option theme-rose-sw" data-theme="rose" data-cost="200" title="玫瑰金（200积分解锁）"><span class="theme-icon">🌹</span><span class="theme-label">玫瑰</span><span class="theme-cost">200分</span></div>
-          <div class="theme-option theme-sunset" data-theme="sunset" data-cost="300" title="日落橙（300积分解锁）"><span class="theme-icon">🌅</span><span class="theme-label">日落</span><span class="theme-cost">300分</span></div>
-          <div class="theme-option theme-galaxy" data-theme="galaxy" data-cost="500" title="星云紫（500积分解锁）"><span class="theme-icon">🌌</span><span class="theme-label">星云</span><span class="theme-cost">500分</span></div>
-        </div>
-        <h4 class="outfit-sub-title">🖼️ 头像装扮框</h4>
-        <div class="theme-picker" id="avatarFramePicker">
-          <div class="theme-option avatar-frame-option" data-frame="none" data-cost="0" title="默认无框（免费）"><span class="frame-preview frame-none">👤</span><span class="theme-label">无框</span><span class="theme-cost free">免费</span></div>
-          <div class="theme-option avatar-frame-option" data-frame="gold" data-cost="150" title="金框（150积分解锁）"><span class="frame-preview frame-gold">👤</span><span class="theme-label">金框</span><span class="theme-cost">150分</span></div>
-          <div class="theme-option avatar-frame-option" data-frame="diamond" data-cost="300" title="钻石框（300积分解锁）"><span class="frame-preview frame-diamond">👤</span><span class="theme-label">钻石</span><span class="theme-cost">300分</span></div>
-          <div class="theme-option avatar-frame-option" data-frame="ruby" data-cost="500" title="红宝石框（500积分解锁）"><span class="frame-preview frame-ruby">👤</span><span class="theme-label">红宝石</span><span class="theme-cost">500分</span></div>
-          <div class="theme-option avatar-frame-option" data-frame="rainbow" data-cost="800" title="彩虹框（800积分解锁）"><span class="frame-preview frame-rainbow">👤</span><span class="theme-label">彩虹</span><span class="theme-cost">800分</span></div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ===== 中奖动态墙 ===== -->
-<div class="win-wall" id="winWall">
-  <div class="win-wall-header"><span class="win-wall-title">🎉 实时中奖动态</span></div>
-  <div class="win-wall-scroll" id="winWallScroll"><div class="win-wall-inner" id="winWallInner"></div></div>
-</div>
-
 <!-- Toast 容器 -->
 <div class="toast-container" id="toastContainer"></div>
 
-<script src="js/config.js?v=3.0.8"></script>
-<script src="js/api.js?v=3.0.8"></script>
-<script src="js/points.js?v=3.0.8"></script>
-<script src="js/lottery.js?v=3.0.8"></script>
-<script src="js/wheel.js?v=3.0.8"></script>
-<script src="js/community.js?v=3.0.8"></script>
+<script src="js/config.js?v=3.1.0"></script>
+<script src="js/api.js?v=3.1.0"></script>
+<script src="js/points.js?v=3.1.0"></script>
+<script src="js/lottery.js?v=3.1.0"></script>
+<script src="js/wheel.js?v=3.1.0"></script>
+<script src="js/community.js?v=3.1.0"></script>
 </body></html>

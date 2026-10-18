@@ -3,6 +3,8 @@ var JITCommunity = (function() {
   var _statuses = [];
   var _isPosting = false;
   var _TURSO = null;
+  var _postType = "chat"; // chat | voucher
+  var _selectedVoucher = null;
 
   var AVATAR_COLORS = [
     "linear-gradient(135deg, #42a5f5, #1e88e5)",
@@ -88,7 +90,7 @@ var JITCommunity = (function() {
     return LEVEL_CONFIG[Math.min(level, LEVEL_CONFIG.length - 1)] || LEVEL_CONFIG[0];
   };
 
-  // ===== 徽章 =====
+  // ===== 徽章（成就认证） =====
   var _getBadges = function() {
     var levelData = _getUserLevel(_currentUser);
     var badges = [];
@@ -107,98 +109,92 @@ var JITCommunity = (function() {
     return badges;
   };
 
-  // ===== 渲染我的资料卡 =====
-  var _renderMyCard = function() {
-    var card = document.getElementById("communityMyCard");
-    if (!card) return;
+  // ===== ① 资料预览（X 风格个人主页头） =====
+  var _renderProfileHeader = function() {
+    var avatarEl = document.getElementById("profileAvatar");
+    if (!avatarEl) return;
 
     var levelData = _getUserLevel(_currentUser);
     var levelInfo = _getLevelInfo(levelData.level);
-    var nextInfo = _getLevelInfo(levelData.level + 1);
-    var expPct = 0;
-    if (nextInfo && nextInfo.expNeed > levelInfo.expNeed) {
-      expPct = Math.min(100, ((levelData.exp - levelInfo.expNeed) / (nextInfo.expNeed - levelInfo.expNeed)) * 100);
-    } else if (!nextInfo) {
-      expPct = 100;
-    }
 
-    var initial = _getInitial(_currentUser);
-    var avatarSaved = localStorage.getItem("jit_avatar_" + _currentUser);
-    var avatarHtml = avatarSaved
-      ? '<img src="' + avatarSaved + '" alt="avatar">'
-      : initial;
-
-    var savedFrame = localStorage.getItem("jit_avatar_frame") || "none";
-    var frameClass = (savedFrame && savedFrame !== "none") ? " frame-" + savedFrame : "";
-    var avatarColor = avatarSaved ? "" : 'style="background:' + _getAvatarColor(_currentUser) + ';"';
-
-    var tickets = 0;
-    try {
-      var ticketsData = JSON.parse(localStorage.getItem("jit_user_tickets") || "{}");
-      tickets = ticketsData[_currentUser] || 0;
-    } catch (e) {}
-
-    var vouchers = [];
-    try { vouchers = JSON.parse(localStorage.getItem("jit_current_data") || "[]"); } catch (e) {}
-    var myVouchers = vouchers.filter(function(v) { return v.user === _currentUser; });
-
-    var totalReward = 0;
-    var slots = [];
-    try { slots = JSON.parse(localStorage.getItem("jit_slot_records") || "[]"); } catch (e) {}
-    slots.forEach(function(s) {
-      if (s.username === _currentUser && s.reward) totalReward += parseFloat(s.reward) || 0;
-    });
-
-    var badges = _getBadges();
-    var badgesHtml = "";
-    if (badges.length > 0) {
-      badges.forEach(function(b) {
-        badgesHtml += '<span class="community-badge-item earned">' + b.icon + " " + _escapeHtml(b.name) + "</span>";
-      });
-    }
-    if (!badgesHtml) {
-      badgesHtml = '<span class="community-badge-item">暂无徽章，继续努力！</span>';
-    }
-
-    card.innerHTML =
-      '<div class="community-avatar-wrapper">' +
-        '<div class="community-avatar' + frameClass + '" ' + avatarColor + '>' + avatarHtml + '</div>' +
-        '<button class="community-edit-avatar" id="btnEditProfile" title="编辑资料">✎</button>' +
-      '</div>' +
-      '<div class="community-name">' + _escapeHtml(_currentUser) + '</div>' +
-      '<div class="community-real-name" id="communityRealName">真实姓名: 加载中...</div>' +
-      '<div class="community-level-badge">Lv' + levelData.level + " " + levelInfo.name + '</div>' +
-      '<div class="community-exp-bar"><div class="community-exp-fill" style="width:' + expPct + '%;"></div></div>' +
-      '<div class="community-exp-text">经验值: ' + levelData.exp + " / " + (nextInfo ? nextInfo.expNeed : "MAX") + '</div>' +
-      '<div class="community-stats-row">' +
-        '<div class="community-stat-item"><span class="community-stat-num">' + myVouchers.length + '</span><span class="community-stat-label">凭证数</span></div>' +
-        '<div class="community-stat-item"><span class="community-stat-num">' + (levelData.streak || 0) + '</span><span class="community-stat-label">连续打卡天</span></div>' +
-        '<div class="community-stat-item"><span class="community-stat-num">' + tickets + '</span><span class="community-stat-label">抽奖券</span></div>' +
-        '<div class="community-stat-item"><span class="community-stat-num">&yen;' + totalReward.toFixed(0) + '</span><span class="community-stat-label">累计返现</span></div>' +
-      '</div>' +
-      '<div class="community-badges">' + badgesHtml + '</div>';
-
-    JITApi.getUserProfile(_currentUser).then(function(profile) {
-      var el = document.getElementById("communityRealName");
-      if (el && profile && profile.fullName) {
-        el.textContent = "真实姓名: " + profile.fullName;
-      } else if (el) {
-        el.textContent = "真实姓名: —";
+    // 封面
+    var coverSaved = localStorage.getItem("jit_cover_" + _currentUser);
+    var coverEl = document.getElementById("profileCover");
+    var coverPlaceholder = document.getElementById("coverPlaceholder");
+    if (coverEl) {
+      if (coverSaved) {
+        coverEl.style.backgroundImage = "url('" + coverSaved + "')";
+        coverEl.style.backgroundSize = "cover";
+        coverEl.style.backgroundPosition = "center";
+        if (coverPlaceholder) coverPlaceholder.style.display = "none";
+      } else {
+        coverEl.style.backgroundImage = "";
+        if (coverPlaceholder) coverPlaceholder.style.display = "";
       }
-    }).catch(function() {
-      var el = document.getElementById("communityRealName");
-      if (el) el.textContent = "真实姓名: —";
-    });
+    }
 
-    var editBtn = document.getElementById("btnEditProfile");
-    if (editBtn) editBtn.addEventListener("click", _openEditProfile);
+    // 头像（压在封面上）
+    var avatarSaved = localStorage.getItem("jit_avatar_" + _currentUser);
+    var frame = localStorage.getItem("jit_avatar_frame") || "none";
+    avatarEl.className = "profile-avatar";
+    if (frame && frame !== "none") avatarEl.classList.add("frame-" + frame);
+    if (avatarSaved) {
+      avatarEl.innerHTML = '<img src="' + avatarSaved + '" alt="avatar">';
+    } else {
+      avatarEl.innerHTML = '<span id="profileAvatarInitial">' + _escapeHtml(_getInitial(_currentUser)) + "</span>";
+      avatarEl.style.background = _getAvatarColor(_currentUser);
+    }
 
+    // 昵称 + 认证徽章
+    var dn = document.getElementById("profileDisplayName");
+    if (dn) dn.textContent = _currentUser;
+    var vb = document.getElementById("verifiedBadge");
+    if (vb) vb.style.display = "inline-flex";
+
+    // 等级行
+    var ll = document.getElementById("profileLevelLine");
+    if (ll) ll.innerHTML = '<span class="level-chip">Lv' + levelData.level + " " + _escapeHtml(levelInfo.name) + "</span>";
+
+    // 成就徽章
+    var ach = document.getElementById("profileAchievements");
+    if (ach) {
+      var badges = _getBadges().slice(0, 4);
+      var html = "";
+      badges.forEach(function(b) {
+        html += '<span class="achievement-chip" title="' + _escapeHtml(b.name) + '">' + b.icon + " " + _escapeHtml(b.name) + "</span>";
+      });
+      if (!html) html = '<span class="achievement-chip muted">暂无成就，继续加油</span>';
+      ach.innerHTML = html;
+    }
+
+    // 简介
+    var bioEl = document.getElementById("profileBio");
+    var bio = localStorage.getItem("jit_bio_" + _currentUser) || "";
+    if (bioEl) bioEl.textContent = bio || "这个人很懒，还没写简介";
+
+    // 位置 + 加入时间
+    var infoLine = document.getElementById("profileInfoLine");
+    if (infoLine) {
+      var loc = localStorage.getItem("jit_location_" + _currentUser) || "";
+      var joined = localStorage.getItem("jit_joined_" + _currentUser);
+      if (!joined) {
+        var now = new Date();
+        joined = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
+        localStorage.setItem("jit_joined_" + _currentUser, joined);
+      }
+      var parts = [];
+      if (loc) parts.push("📍 " + _escapeHtml(loc));
+      parts.push("📅 加入于 " + joined);
+      infoLine.innerHTML = parts.join(" · ");
+    }
+
+    // 发布框头像
     var composerAvatar = document.getElementById("composerAvatar");
     if (composerAvatar) {
       if (avatarSaved) {
         composerAvatar.innerHTML = '<img src="' + avatarSaved + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
       } else {
-        composerAvatar.textContent = initial;
+        composerAvatar.textContent = _getInitial(_currentUser);
         composerAvatar.style.background = _getAvatarColor(_currentUser);
       }
     }
@@ -218,6 +214,10 @@ var JITCommunity = (function() {
         preview.style.background = _getAvatarColor(_currentUser);
       }
     }
+    var bioInput = document.getElementById("inputBio");
+    if (bioInput) bioInput.value = localStorage.getItem("jit_bio_" + _currentUser) || "";
+    var locInput = document.getElementById("inputLocation");
+    if (locInput) locInput.value = localStorage.getItem("jit_location_" + _currentUser) || "";
     overlay.classList.add("active");
   };
 
@@ -234,11 +234,37 @@ var JITCommunity = (function() {
     reader.onload = function(ev) {
       var dataUrl = ev.target.result;
       localStorage.setItem("jit_avatar_" + _currentUser, dataUrl);
-      _renderMyCard();
+      _renderProfileHeader();
+      _refreshUserCenterUI();
       _closeEditProfile();
       _showToast("头像更新成功", "success");
     };
     reader.readAsDataURL(file);
+  };
+
+  var _handleCoverUpload = function(e) {
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (file.size > 1024 * 1024) { _showToast("封面文件不能超过1MB", "error"); return; }
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+      var dataUrl = ev.target.result;
+      localStorage.setItem("jit_cover_" + _currentUser, dataUrl);
+      _renderProfileHeader();
+      _closeEditProfile();
+      _showToast("封面更新成功", "success");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  var _saveProfile = function() {
+    var bioInput = document.getElementById("inputBio");
+    var locInput = document.getElementById("inputLocation");
+    if (bioInput) localStorage.setItem("jit_bio_" + _currentUser, bioInput.value.trim());
+    if (locInput) localStorage.setItem("jit_location_" + _currentUser, locInput.value.trim());
+    _renderProfileHeader();
+    _closeEditProfile();
+    _showToast("资料已保存", "success");
   };
 
   // ===== 社区状态 CRUD（Turso） =====
@@ -259,11 +285,22 @@ var JITCommunity = (function() {
       _renderFeed();
     }).catch(function(err) {
       var feed = document.getElementById("communityFeed");
-      if (feed) feed.innerHTML = '<div class="feed-loading" style="color:var(--red);">加载失败: ' + _escapeHtml((err && err.message) || "网络错误") + '</div>';
+      if (feed) feed.innerHTML = '<div class="feed-loading" style="color:var(--danger);">加载失败: ' + _escapeHtml((err && err.message) || "网络错误") + '</div>';
     });
   };
 
-  // ===== 渲染动态流 =====
+  // 解析动态内容（兼容旧纯文本）
+  var _parseStatus = function(content) {
+    try {
+      var obj = JSON.parse(content);
+      if (obj && typeof obj === "object" && (obj.t === "chat" || obj.t === "voucher")) {
+        return obj;
+      }
+    } catch (e) {}
+    return { t: "chat", text: content || "" };
+  };
+
+  // ===== 渲染动态流（自己置顶，往下是其他人） =====
   var _renderFeed = function() {
     var feed = document.getElementById("communityFeed");
     if (!feed) return;
@@ -277,46 +314,122 @@ var JITCommunity = (function() {
       return;
     }
 
+    var myStatuses = _statuses.filter(function(s) { return s.username === _currentUser; });
+    var othersStatuses = _statuses.filter(function(s) { return s.username !== _currentUser; });
+
     var html = "";
-    _statuses.forEach(function(s) {
+    html += _buildFeedCards(myStatuses);
+    if (othersStatuses.length > 0) {
+      html += '<div class="feed-section-divider"><span>其他人的动态</span></div>';
+      html += _buildFeedCards(othersStatuses);
+    }
+    feed.innerHTML = html;
+  };
+
+  var _buildFeedCards = function(list) {
+    var html = "";
+    list.forEach(function(s) {
       var initial = _getInitial(s.username);
       var avatarColor = _getAvatarColor(s.username);
-      var timeStr = "";
-      try {
-        var d = new Date(s.time);
-        var now = new Date();
-        var diff = now - d;
-        if (diff < 60000) {
-          timeStr = "刚刚";
-        } else if (diff < 3600000) {
-          timeStr = Math.floor(diff / 60000) + "分钟前";
-        } else if (diff < 86400000) {
-          timeStr = Math.floor(diff / 3600000) + "小时前";
-        } else if (diff < 604800000) {
-          timeStr = Math.floor(diff / 86400000) + "天前";
-        } else {
-          timeStr = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
-        }
-      } catch (e) {
-        timeStr = s.time || "";
-      }
+      var timeStr = _formatTime(s.time);
 
       var avatarSaved = localStorage.getItem("jit_avatar_" + s.username);
       var avatarHtml = avatarSaved
         ? '<img src="' + avatarSaved + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">'
         : initial;
 
+      // 其他用户若本地有等级数据，展示小徽章
+      var levelChip = "";
+      if (s.username !== _currentUser) {
+        var otherLv = _getUserLevel(s.username);
+        if (otherLv && otherLv.level > 0) {
+          levelChip = '<span class="feed-card-level">Lv' + otherLv.level + "</span>";
+        }
+      } else {
+        levelChip = '<span class="feed-card-level me">我</span>';
+      }
+
+      var body = _buildStatusBody(s);
+
       html +=
         '<div class="feed-card">' +
           '<div class="feed-card-avatar" style="background:' + avatarColor + ';">' + avatarHtml + '</div>' +
           '<div class="feed-card-body">' +
-            '<div class="feed-card-name">' + _escapeHtml(s.username) + '</div>' +
-            '<div class="feed-card-time">' + timeStr + '</div>' +
-            '<div class="feed-card-content">' + _escapeHtml(s.content) + '</div>' +
+            '<div class="feed-card-head">' +
+              '<span class="feed-card-name">' + _escapeHtml(s.username) + "</span>" + levelChip +
+              '<span class="feed-card-time">' + timeStr + "</span>" +
+            '</div>' +
+            body +
           '</div>' +
         '</div>';
     });
-    feed.innerHTML = html;
+    return html;
+  };
+
+  var _buildStatusBody = function(s) {
+    var obj = _parseStatus(s.content);
+    if (obj.t === "voucher") {
+      var amount = parseFloat(obj.amount || 0);
+      return '<div class="feed-card-content voucher-card">' +
+        '<div class="voucher-card-head">🧾 分享凭证</div>' +
+        '<div class="voucher-card-shop">' + _escapeHtml(obj.shop || "未知店铺") + "</div>" +
+        '<div class="voucher-card-meta">' +
+          (amount > 0 ? '<span class="voucher-card-amount">¥' + amount.toFixed(2) + "</span>" : "") +
+          (obj.discount ? '<span class="voucher-card-discount">' + _escapeHtml(obj.discount) + "</span>" : "") +
+          (obj.date ? '<span class="voucher-card-date">' + _escapeHtml(String(obj.date).substring(0, 10)) + "</span>" : "") +
+        '</div>' +
+        (obj.text ? '<div class="voucher-card-text">' + _escapeHtml(obj.text) + "</div>" : "") +
+      '</div>';
+    }
+    return '<div class="feed-card-content">' + _escapeHtml(obj.text || "") + "</div>";
+  };
+
+  var _formatTime = function(timeStr) {
+    try {
+      var d = new Date(timeStr);
+      var now = new Date();
+      var diff = now - d;
+      if (diff < 60000) return "刚刚";
+      if (diff < 3600000) return Math.floor(diff / 60000) + "分钟前";
+      if (diff < 86400000) return Math.floor(diff / 3600000) + "小时前";
+      if (diff < 604800000) return Math.floor(diff / 86400000) + "天前";
+      return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    } catch (e) {
+      return timeStr || "";
+    }
+  };
+
+  // ===== 凭证选择器 =====
+  var _renderVoucherPicker = function() {
+    var picker = document.getElementById("voucherPicker");
+    if (!picker) return;
+    var vouchers = [];
+    try { vouchers = JSON.parse(localStorage.getItem("jit_current_data") || "[]"); } catch (e) {}
+    var mine = vouchers.filter(function(v) {
+      return v.user === _currentUser && v.shopName && v.shopName !== "【聊天专用】" && v.paymentMethod !== "chat";
+    });
+    if (mine.length === 0) {
+      picker.innerHTML = '<div class="voucher-picker-empty">暂无凭证可分享，先去工作台上传凭证吧</div>';
+      return;
+    }
+    var html = "";
+    mine.slice(0, 20).forEach(function(v, idx) {
+      var amount = parseFloat(v.amount || 0);
+      html += '<div class="voucher-option" data-idx="' + idx + '">' +
+        '<span class="voucher-opt-shop">' + _escapeHtml(v.shopName) + "</span>" +
+        (amount > 0 ? '<span class="voucher-opt-amount">¥' + amount.toFixed(2) + "</span>" : "") +
+        (v.discount ? '<span class="voucher-opt-discount">' + _escapeHtml(v.discount) + "</span>" : "") +
+      '</div>';
+    });
+    picker.innerHTML = html;
+    picker.querySelectorAll(".voucher-option").forEach(function(opt) {
+      opt.addEventListener("click", function() {
+        var idx = parseInt(opt.getAttribute("data-idx"), 10);
+        _selectedVoucher = mine[idx] || null;
+        picker.querySelectorAll(".voucher-option").forEach(function(o) { o.classList.remove("active"); });
+        if (_selectedVoucher) opt.classList.add("active");
+      });
+    });
   };
 
   // ===== 发布状态 =====
@@ -324,9 +437,25 @@ var JITCommunity = (function() {
     if (_isPosting) return;
     var textarea = document.getElementById("statusTextarea");
     if (!textarea) return;
-    var content = textarea.value.trim();
-    if (!content) { _showToast("请输入内容", "error"); return; }
-    if (content.length > 500) { _showToast("内容不能超过500字", "error"); return; }
+
+    var content = "";
+    if (_postType === "voucher") {
+      if (!_selectedVoucher) { _showToast("请选择要分享的凭证", "error"); return; }
+      var v = _selectedVoucher;
+      content = JSON.stringify({
+        t: "voucher",
+        shop: v.shopName || "",
+        amount: v.amount || 0,
+        discount: v.discount || "",
+        date: v.date || "",
+        text: textarea.value.trim()
+      });
+    } else {
+      content = textarea.value.trim();
+      if (!content) { _showToast("请输入内容", "error"); return; }
+      if (content.length > 500) { _showToast("内容不能超过500字", "error"); return; }
+      content = JSON.stringify({ t: "chat", text: content });
+    }
 
     _isPosting = true;
     var btn = document.getElementById("btnPostStatus");
@@ -340,6 +469,8 @@ var JITCommunity = (function() {
     ).then(function() {
       textarea.value = "";
       document.getElementById("composerCharCount").textContent = "0/500";
+      _selectedVoucher = null;
+      _renderVoucherPicker();
       _showToast("发布成功！", "success");
       return _loadStatuses();
     }).catch(function(err) {
@@ -370,16 +501,39 @@ var JITCommunity = (function() {
       });
     }
 
-    var btnChangeAvatar = document.getElementById("btnChangeAvatar");
-    if (btnChangeAvatar) btnChangeAvatar.addEventListener("click", function() {
+    // 发布类型切换
+    var tabChat = document.getElementById("tabChat");
+    var tabVoucher = document.getElementById("tabVoucher");
+    if (tabChat) tabChat.addEventListener("click", function() { _setPostType("chat"); });
+    if (tabVoucher) tabVoucher.addEventListener("click", function() { _setPostType("voucher"); });
+
+    // 资料编辑
+    var btnEdit = document.getElementById("btnEditProfileHeader");
+    if (btnEdit) btnEdit.addEventListener("click", _openEditProfile);
+    var btnChgAvatar = document.getElementById("btnChangeAvatar");
+    if (btnChgAvatar) btnChgAvatar.addEventListener("click", function() {
       document.getElementById("editAvatarFileInput").click();
     });
-
     var fileInput = document.getElementById("editAvatarFileInput");
     if (fileInput) fileInput.addEventListener("change", _handleAvatarUpload);
-
+    var btnChgCover = document.getElementById("btnChangeCover");
+    if (btnChgCover) btnChgCover.addEventListener("click", function() {
+      document.getElementById("editCoverFileInput").click();
+    });
+    var coverInput = document.getElementById("editCoverFileInput");
+    if (coverInput) coverInput.addEventListener("change", _handleCoverUpload);
+    var btnSave = document.getElementById("btnSaveProfile");
+    if (btnSave) btnSave.addEventListener("click", _saveProfile);
     var btnClose = document.getElementById("btnEditClose");
     if (btnClose) btnClose.addEventListener("click", _closeEditProfile);
+
+    // 封面上传（资料头直接换）
+    var btnUploadCover = document.getElementById("btnUploadCover");
+    if (btnUploadCover) btnUploadCover.addEventListener("click", function() {
+      document.getElementById("coverFileInput").click();
+    });
+    var coverFileInput = document.getElementById("coverFileInput");
+    if (coverFileInput) coverFileInput.addEventListener("change", _handleCoverUpload);
 
     var editOverlay = document.getElementById("editProfileOverlay");
     if (editOverlay) {
@@ -393,19 +547,9 @@ var JITCommunity = (function() {
       });
     }
 
-    // 个人中心
-    var btnOpenUC = document.getElementById("btnOpenUserCenter");
-    if (btnOpenUC) btnOpenUC.addEventListener("click", _openUserCenter);
-    var btnUCClose = document.getElementById("btnUserCenterClose");
-    if (btnUCClose) btnUCClose.addEventListener("click", _closeUserCenter);
-    var ucOverlay = document.getElementById("userCenterOverlay");
-    if (ucOverlay) {
-      ucOverlay.addEventListener("click", function(e) { if (e.target === ucOverlay) _closeUserCenter(); });
-    }
-
-    // 头像上传（用户中心）
-    var btnChgAvatar = document.getElementById("btnChangeAvatarUC");
-    if (btnChgAvatar) btnChgAvatar.addEventListener("click", function() {
+    // 个人中心头像上传
+    var btnChgAvatarUC = document.getElementById("btnChangeAvatarUC");
+    if (btnChgAvatarUC) btnChgAvatarUC.addEventListener("click", function() {
       var fInput = document.getElementById("avatarFileInputUC");
       if (fInput) fInput.click();
     });
@@ -416,8 +560,41 @@ var JITCommunity = (function() {
     var btnChgPwd = document.getElementById("btnChangePassword");
     if (btnChgPwd) btnChgPwd.addEventListener("click", _doChangePassword);
 
+    // 中奖墙折叠
+    var winWallToggle = document.getElementById("winWallToggle");
+    if (winWallToggle) winWallToggle.addEventListener("click", _toggleWinWall);
+
     // 装扮选择器事件
     _initOutfitEvents();
+  };
+
+  var _setPostType = function(type) {
+    _postType = type;
+    var tabChat = document.getElementById("tabChat");
+    var tabVoucher = document.getElementById("tabVoucher");
+    var picker = document.getElementById("voucherPicker");
+    var textarea = document.getElementById("statusTextarea");
+    if (tabChat) tabChat.classList.toggle("active", type === "chat");
+    if (tabVoucher) tabVoucher.classList.toggle("active", type === "voucher");
+    if (picker) {
+      if (type === "voucher") {
+        picker.style.display = "";
+        _renderVoucherPicker();
+        if (textarea) textarea.placeholder = "配一句话（可选）...";
+      } else {
+        picker.style.display = "none";
+        _selectedVoucher = null;
+        if (textarea) textarea.placeholder = "分享你的状态...";
+      }
+    }
+  };
+
+  var _toggleWinWall = function() {
+    var wall = document.getElementById("winWall");
+    var toggle = document.getElementById("winWallToggle");
+    if (!wall) return;
+    var collapsed = wall.classList.toggle("collapsed");
+    if (toggle) toggle.textContent = collapsed ? "展开 ▾" : "收起 ▴";
   };
 
   // ===== 积分辅助 =====
@@ -582,7 +759,7 @@ var JITCommunity = (function() {
     return result;
   };
 
-  // ===== 刷新个人中心 UI =====
+  // ===== 刷新个人中心（页面内嵌区块） =====
   var _refreshUserCenterUI = function() {
     if (!_currentUser) return;
     _refreshLocalPoints();
@@ -608,7 +785,16 @@ var JITCommunity = (function() {
     var avatarSaved = localStorage.getItem("jit_avatar_" + _currentUser);
     var ac = document.getElementById("avatarCircle");
     var ai = document.getElementById("avatarInitial");
-    if (avatarSaved) { if (ac) ac.innerHTML = '<img src="' + avatarSaved + '" alt="avatar">'; } else { if (ai) ai.textContent = (_currentUser || "用").charAt(0).toUpperCase(); }
+    var savedFrame = localStorage.getItem("jit_avatar_frame") || "none";
+    if (ac) {
+      ac.classList.remove("frame-gold", "frame-diamond", "frame-ruby", "frame-rainbow");
+      if (savedFrame && savedFrame !== "none") ac.classList.add("frame-" + savedFrame);
+      if (avatarSaved) {
+        ac.innerHTML = '<img src="' + avatarSaved + '" alt="avatar">';
+      } else if (ai) {
+        ai.textContent = (_currentUser || "用").charAt(0).toUpperCase();
+      }
+    }
 
     var vouchers = _getLocalVouchers();
     var sv = document.getElementById("statVouchers");
@@ -640,23 +826,9 @@ var JITCommunity = (function() {
     _renderTicketCount();
     _refreshThemePickerUI();
     _refreshFramePickerUI();
-    var savedFrame = localStorage.getItem("jit_avatar_frame") || "none";
-    _applyAvatarFrame(savedFrame);
   };
 
-  // ===== 打开/关闭个人中心 =====
-  var _openUserCenter = function() {
-    if (!_currentUser) { _showToast("请先登录", "error"); return; }
-    _refreshUserCenterUI();
-    var ov = document.getElementById("userCenterOverlay");
-    if (ov) ov.classList.add("active");
-  };
-  var _closeUserCenter = function() {
-    var ov = document.getElementById("userCenterOverlay");
-    if (ov) ov.classList.remove("active");
-  };
-
-  // ===== 用户中心头像上传 =====
+  // ===== 个人中心头像上传 =====
   var _handleUCProfileAvatarUpload = function(e) {
     var file = e.target.files && e.target.files[0];
     if (!file) return;
@@ -667,7 +839,7 @@ var JITCommunity = (function() {
       localStorage.setItem("jit_avatar_" + _currentUser, dataUrl);
       var ac = document.getElementById("avatarCircle");
       if (ac) ac.innerHTML = '<img src="' + dataUrl + '" alt="avatar">';
-      _renderMyCard();
+      _renderProfileHeader();
       _showToast("头像更新成功", "success");
     };
     reader.readAsDataURL(file);
@@ -731,6 +903,8 @@ var JITCommunity = (function() {
   var _applyAvatarFrame = function(frame) {
     var ac = document.getElementById("avatarCircle");
     if (ac) { ac.classList.remove("frame-gold", "frame-diamond", "frame-ruby", "frame-rainbow"); if (frame && frame !== "none") ac.classList.add("frame-" + frame); }
+    var pa = document.getElementById("profileAvatar");
+    if (pa) { pa.classList.remove("frame-gold", "frame-diamond", "frame-ruby", "frame-rainbow"); if (frame && frame !== "none") pa.classList.add("frame-" + frame); }
     localStorage.setItem("jit_avatar_frame", frame || "none");
     _refreshFramePickerUI();
   };
@@ -790,11 +964,11 @@ var JITCommunity = (function() {
     var inner = document.getElementById("winWallInner");
     if (!inner) return;
     var ww = JSON.parse(localStorage.getItem("jit_winwall") || "[]");
-    if (ww.length === 0) { inner.innerHTML = '<span class="win-wall-item" style="color:var(--text-muted);">暂无中奖记录，去工作台抽奖吧~</span>'; return; }
+    if (ww.length === 0) { inner.innerHTML = '<span class="win-wall-item" style="color:var(--text-dim);">暂无中奖记录，去工作台抽奖吧~</span>'; return; }
     var h = "";
     ww.forEach(function(item) {
       h += '<span class="win-wall-item">🎉 <b>' + _escapeHtml(item.user) + '</b> 中了 <b style="color:var(--gold);">' + _escapeHtml(String(item.prize)) + '</b>';
-      if (item.amount && parseFloat(item.amount) > 0) h += ' 返现 <b style="color:var(--green);">¥' + item.amount + '</b>';
+      if (item.amount && parseFloat(item.amount) > 0) h += ' 返现 <b style="color:var(--success);">¥' + item.amount + '</b>';
       h += '</span>';
     });
     inner.innerHTML = h;
@@ -815,13 +989,14 @@ var JITCommunity = (function() {
     }
 
     _initParticles();
-    _renderMyCard();
+    _renderProfileHeader();
+    _refreshUserCenterUI();
     _bindEvents();
     _loadStatuses();
     _refreshLocalPoints();
     _initOutfits();
     _renderWinWall();
-    document.getElementById("versionWatermark").textContent = "v3.0.8";
+    document.getElementById("versionWatermark").textContent = "v3.1.0";
   };
 
   return { init: init };
