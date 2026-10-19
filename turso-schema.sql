@@ -207,6 +207,12 @@ CREATE TABLE IF NOT EXISTS user_levels (
   theme TEXT DEFAULT 'default',
   nickname TEXT DEFAULT '',
   real_name TEXT DEFAULT '',
+  bio TEXT DEFAULT '',
+  location TEXT DEFAULT '',
+  joined_at TEXT DEFAULT '',
+  cover TEXT DEFAULT '',
+  last_wheel_free TEXT DEFAULT '',
+  discount_backup TEXT DEFAULT '[]',
   updated_at TEXT DEFAULT ''
 );
 
@@ -287,6 +293,12 @@ ALTER TABLE users ADD COLUMN oauth_provider TEXT DEFAULT '';
 
 ALTER TABLE user_levels ADD COLUMN theme TEXT DEFAULT 'default';
 ALTER TABLE user_levels ADD COLUMN avatar_frame TEXT DEFAULT 'none';
+ALTER TABLE user_levels ADD COLUMN bio TEXT DEFAULT '';
+ALTER TABLE user_levels ADD COLUMN location TEXT DEFAULT '';
+ALTER TABLE user_levels ADD COLUMN joined_at TEXT DEFAULT '';
+ALTER TABLE user_levels ADD COLUMN cover TEXT DEFAULT '';
+ALTER TABLE user_levels ADD COLUMN last_wheel_free TEXT DEFAULT '';
+ALTER TABLE user_levels ADD COLUMN discount_backup TEXT DEFAULT '[]';
 ALTER TABLE users ADD COLUMN oauth_id TEXT DEFAULT '';
 ALTER TABLE registrations ADD COLUMN oauth_provider TEXT DEFAULT '';
 ALTER TABLE registrations ADD COLUMN oauth_id TEXT DEFAULT '';

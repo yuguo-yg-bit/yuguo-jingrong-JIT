@@ -220,6 +220,12 @@ var JITWheel = (function() {
     var key = "jit_wheel_free_" + username;
     var today = new Date().toISOString().split("T")[0];
     var stored = localStorage.getItem(key);
+    // 优先从 Turso 检查
+    if (typeof JITApi !== "undefined" && stored !== today) {
+      JITApi.getUserLevel(username).then(function(ld) {
+        if (ld && ld.lastWheelFree === today) { localStorage.setItem(key, today); }
+      }).catch(function() {});
+    }
     return stored !== today;
   };
 
@@ -228,6 +234,10 @@ var JITWheel = (function() {
     var key = "jit_wheel_free_" + username;
     var today = new Date().toISOString().split("T")[0];
     localStorage.setItem(key, today);
+    // 同步到 Turso
+    if (typeof JITApi !== "undefined") {
+      JITApi.updateUserLevel(username, { lastWheelFree: today }).catch(function() {});
+    }
   };
 
   // ======= 初始化转盘 =======

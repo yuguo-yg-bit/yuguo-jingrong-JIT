@@ -184,11 +184,24 @@ var JITCommunity = (function() {
         var now = new Date();
         joined = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
         localStorage.setItem("jit_joined_" + _currentUser, joined);
+        // 同步 joined_at 到 Turso
+        if (typeof JITApi !== "undefined") { JITApi.updateUserLevel(_currentUser, { joinedAt: joined }).catch(function() {}); }
       }
       var parts = [];
       if (loc) parts.push("📍 " + _escapeHtml(loc));
       parts.push("📅 加入于 " + joined);
       infoLine.innerHTML = parts.join(" · ");
+    }
+
+    // 从 Turso 加载社区资料（bio/location/joined/cover）
+    if (_currentUser && typeof JITApi !== "undefined") {
+      JITApi.getUserLevel(_currentUser).then(function(ld) {
+        if (!ld) return;
+        if (ld.bio) { localStorage.setItem("jit_bio_" + _currentUser, ld.bio); if (bioEl) bioEl.textContent = ld.bio; }
+        if (ld.location) { localStorage.setItem("jit_location_" + _currentUser, ld.location); }
+        if (ld.joinedAt) { localStorage.setItem("jit_joined_" + _currentUser, ld.joinedAt); }
+        if (ld.cover) { localStorage.setItem("jit_cover_" + _currentUser, ld.cover); var ce = document.getElementById("profileCover"); var cp = document.getElementById("coverPlaceholder"); if (ce) { ce.style.backgroundImage = "url('" + ld.cover + "')"; ce.style.backgroundSize = "cover"; ce.style.backgroundPosition = "center"; if (cp) cp.style.display = "none"; } }
+      }).catch(function() {});
     }
 
     // 发布框头像
@@ -218,9 +231,15 @@ var JITCommunity = (function() {
       }
     }
     var bioInput = document.getElementById("inputBio");
-    if (bioInput) bioInput.value = localStorage.getItem("jit_bio_" + _currentUser) || "";
+    if (bioInput) {
+      bioInput.value = localStorage.getItem("jit_bio_" + _currentUser) || "";
+      if (typeof JITApi !== "undefined") { JITApi.getUserLevel(_currentUser).then(function(ld) { if (ld && ld.bio) bioInput.value = ld.bio; }).catch(function() {}); }
+    }
     var locInput = document.getElementById("inputLocation");
-    if (locInput) locInput.value = localStorage.getItem("jit_location_" + _currentUser) || "";
+    if (locInput) {
+      locInput.value = localStorage.getItem("jit_location_" + _currentUser) || "";
+      if (typeof JITApi !== "undefined") { JITApi.getUserLevel(_currentUser).then(function(ld) { if (ld && ld.location) locInput.value = ld.location; }).catch(function() {}); }
+    }
     overlay.classList.add("active");
   };
 
@@ -263,6 +282,15 @@ var JITCommunity = (function() {
       _renderProfileHeader();
       _closeEditProfile();
       _showToast("封面更新成功", "success");
+      // 上传到 GitHub 并同步到 Turso
+      if (typeof JITApi !== "undefined" && JITApi.uploadImageToProxy) {
+        JITApi.uploadImageToProxy(dataUrl, "covers").then(function(url) {
+          if (url) {
+            localStorage.setItem("jit_cover_" + _currentUser, url);
+            return JITApi.updateUserLevel(_currentUser, { cover: url });
+          }
+        }).catch(function() {});
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -272,6 +300,13 @@ var JITCommunity = (function() {
     var locInput = document.getElementById("inputLocation");
     if (bioInput) localStorage.setItem("jit_bio_" + _currentUser, bioInput.value.trim());
     if (locInput) localStorage.setItem("jit_location_" + _currentUser, locInput.value.trim());
+    // 同步到 Turso
+    if (_currentUser && typeof JITApi !== "undefined") {
+      JITApi.updateUserLevel(_currentUser, {
+        bio: bioInput ? bioInput.value.trim() : "",
+        location: locInput ? locInput.value.trim() : ""
+      }).catch(function() {});
+    }
     _renderProfileHeader();
     _closeEditProfile();
     _showToast("资料已保存", "success");

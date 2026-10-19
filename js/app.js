@@ -2151,6 +2151,14 @@ var JITApp = (function() {
   var _saveLocalDiscountBackup = function(prize, voucher, reason) {
     try {
       var backup = JSON.parse(localStorage.getItem("jit_discount_backup") || "[]");
+      // 先从 Turso 加载折扣备份（换设备不丢）
+      if (_currentUser && typeof JITApi !== "undefined") {
+        JITApi.getUserLevel(_currentUser).then(function(ld) {
+          if (ld && ld.discountBackup && Array.isArray(ld.discountBackup) && ld.discountBackup.length > 0) {
+            localStorage.setItem("jit_discount_backup", JSON.stringify(ld.discountBackup));
+          }
+        }).catch(function() {});
+      }
       backup.push({
         discount: prize && prize.discount,
         value: prize && prize.value,
@@ -2163,6 +2171,10 @@ var JITApp = (function() {
       });
       if (backup.length > 100) backup = backup.slice(-100);
       localStorage.setItem("jit_discount_backup", JSON.stringify(backup));
+      // 同步折扣备份到 Turso
+      if (_currentUser && typeof JITApi !== "undefined") {
+        JITApi.updateUserLevel(_currentUser, { discountBackup: backup }).catch(function() {});
+      }
     } catch (e) {
       console.error("本地折数备份失败:", e);
     }

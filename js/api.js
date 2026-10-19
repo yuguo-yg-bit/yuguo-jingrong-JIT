@@ -552,6 +552,12 @@ var JITApi = (function() {
         avatar: r.avatar || "",
         theme: r.theme || "default",
         avatarFrame: r.avatar_frame || "none",
+        bio: r.bio || "",
+        location: r.location || "",
+        joinedAt: r.joined_at || "",
+        cover: r.cover || "",
+        lastWheelFree: r.last_wheel_free || "",
+        discountBackup: (function() { try { return JSON.parse(r.discount_backup || "[]"); } catch(e) { return []; } })(),
         nickname: r.nickname || "",
         realName: r.real_name || ""
       };
@@ -852,27 +858,24 @@ var JITApi = (function() {
     console.warn("OAuth 迁移跳过（可能已执行过）:", err.message);
   });
 
-  // ===== 积分迁移（确保 users 表有 frozen 列，user_levels 有 theme/avatar_frame） =====
+  // ===== 积分+装扮+社区迁移（确保 users/user_levels 有新列） =====
   var _runPointsMigration = function() {
     var chain = Promise.resolve();
-    chain = chain.then(function() {
-      return _tursoCall("/sql", { sql: "ALTER TABLE users ADD COLUMN frozen INTEGER DEFAULT 0", params: [] }).catch(function(err) {
+    var migrateCol = function(table, col, def) {
+      return _tursoCall("/sql", { sql: "ALTER TABLE " + table + " ADD COLUMN " + col + " " + def, params: [] }).catch(function(err) {
         if (err.message && err.message.indexOf("duplicate column") > -1) return;
-        console.warn("frozen 列迁移跳过:", err.message);
+        console.warn(col + " 列迁移跳过:", err.message);
       });
-    });
-    chain = chain.then(function() {
-      return _tursoCall("/sql", { sql: "ALTER TABLE user_levels ADD COLUMN theme TEXT DEFAULT 'default'", params: [] }).catch(function(err) {
-        if (err.message && err.message.indexOf("duplicate column") > -1) return;
-        console.warn("theme 列迁移跳过:", err.message);
-      });
-    });
-    chain = chain.then(function() {
-      return _tursoCall("/sql", { sql: "ALTER TABLE user_levels ADD COLUMN avatar_frame TEXT DEFAULT 'none'", params: [] }).catch(function(err) {
-        if (err.message && err.message.indexOf("duplicate column") > -1) return;
-        console.warn("avatar_frame 列迁移跳过:", err.message);
-      });
-    });
+    };
+    chain = chain.then(function() { return migrateCol("users", "frozen", "INTEGER DEFAULT 0"); });
+    chain = chain.then(function() { return migrateCol("user_levels", "theme", "TEXT DEFAULT 'default'"); });
+    chain = chain.then(function() { return migrateCol("user_levels", "avatar_frame", "TEXT DEFAULT 'none'"); });
+    chain = chain.then(function() { return migrateCol("user_levels", "bio", "TEXT DEFAULT ''"); });
+    chain = chain.then(function() { return migrateCol("user_levels", "location", "TEXT DEFAULT ''"); });
+    chain = chain.then(function() { return migrateCol("user_levels", "joined_at", "TEXT DEFAULT ''"); });
+    chain = chain.then(function() { return migrateCol("user_levels", "cover", "TEXT DEFAULT ''"); });
+    chain = chain.then(function() { return migrateCol("user_levels", "last_wheel_free", "TEXT DEFAULT ''"); });
+    chain = chain.then(function() { return migrateCol("user_levels", "discount_backup", "TEXT DEFAULT '[]'"); });
     return chain;
   };
 
@@ -1075,6 +1078,12 @@ var JITApi = (function() {
           avatar: r.avatar || "",
           theme: r.theme || "default",
           avatarFrame: r.avatar_frame || "none",
+          bio: r.bio || "",
+          location: r.location || "",
+          joinedAt: r.joined_at || "",
+          cover: r.cover || "",
+          lastWheelFree: r.last_wheel_free || "",
+          discountBackup: (function() { try { return JSON.parse(r.discount_backup || "[]"); } catch(e) { return []; } })(),
           nickname: r.nickname || "",
           realName: r.real_name || ""
         };
@@ -1086,8 +1095,8 @@ var JITApi = (function() {
   var _updateUserLevel = function(userId, data) {
     var now = new Date().toISOString();
     return _tursoSql(
-      "INSERT OR REPLACE INTO user_levels (user_id, level, exp, streak_days, total_vouchers, basic_tickets, rare_tickets, last_login, last_upload, badges, avatar, theme, avatar_frame, nickname, real_name, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-      [userId, data.level||0, data.exp||0, data.streak||0, data.totalVouchers||0, data.basicTickets||0, data.rareTickets||0, data.lastLogin||"", data.lastUpload||"", JSON.stringify(data.badges||[]), data.avatar||"", data.theme||"default", data.avatarFrame||"none", data.nickname||"", data.realName||"", now]
+      "INSERT OR REPLACE INTO user_levels (user_id, level, exp, streak_days, total_vouchers, basic_tickets, rare_tickets, last_login, last_upload, badges, avatar, theme, avatar_frame, bio, location, joined_at, cover, last_wheel_free, discount_backup, nickname, real_name, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      [userId, data.level||0, data.exp||0, data.streak||0, data.totalVouchers||0, data.basicTickets||0, data.rareTickets||0, data.lastLogin||"", data.lastUpload||"", JSON.stringify(data.badges||[]), data.avatar||"", data.theme||"default", data.avatarFrame||"none", data.bio||"", data.location||"", data.joinedAt||"", data.cover||"", data.lastWheelFree||"", JSON.stringify(data.discountBackup||[]), data.nickname||"", data.realName||"", now]
     );
   };
 
@@ -1327,7 +1336,7 @@ var JITApi = (function() {
       var levels = JSON.parse(localStorage.getItem("jit_user_levels") || "{}");
       if (levels && levels[userId]) {
         var ld = levels[userId];
-        promises.push(_updateUserLevel(userId, { level: ld.level||0, exp: ld.exp||0, streak: ld.streak||0, totalVouchers: ld.totalVouchers||0, basicTickets: ld.basicTickets||0, rareTickets: ld.rareTickets||0, lastLogin: ld.lastLogin||localStorage.getItem("jit_last_login_"+userId)||"", badges: ld.badges||[], avatar: ld.avatar||"", nickname: ld.nickname||"", realName: ld.realName||"" }));
+        promises.push(_updateUserLevel(userId, { level: ld.level||0, exp: ld.exp||0, streak: ld.streak||0, totalVouchers: ld.totalVouchers||0, basicTickets: ld.basicTickets||0, rareTickets: ld.rareTickets||0, lastLogin: ld.lastLogin||localStorage.getItem("jit_last_login_"+userId)||"", badges: ld.badges||[], avatar: ld.avatar||"", nickname: ld.nickname||"", realName: ld.realName||"", bio: localStorage.getItem("jit_bio_"+userId)||"", location: localStorage.getItem("jit_location_"+userId)||"", joinedAt: localStorage.getItem("jit_joined_"+userId)||"", cover: localStorage.getItem("jit_cover_"+userId)||"", lastWheelFree: localStorage.getItem("jit_wheel_free_"+userId)||"", discountBackup: (function() { try { return JSON.parse(localStorage.getItem("jit_discount_backup")||"[]"); } catch(e) { return []; } })() }));
       }
     } catch(e) {}
     // 抽奖券
