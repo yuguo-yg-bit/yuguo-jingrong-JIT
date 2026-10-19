@@ -453,9 +453,10 @@ var JITApi = (function() {
 
   var _sendChatMessage = function(userId, sender, text, imageUrl) {
     var now = new Date().toISOString();
+    var msgId = "m_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     return _tursoSql(
-      "INSERT INTO chat_messages (user_id, sender, content, image_url, read_status, created_at) VALUES (?,?,?,?,0,?)",
-      [userId, sender, text || "", imageUrl || "", now]
+      "INSERT INTO chat_messages (id, user_id, sender, content, image_url, is_read, created_at) VALUES (?,?,?,?,?,0,?)",
+      [msgId, userId, sender, text || "", imageUrl || "", now]
     );
   };
 
@@ -477,7 +478,7 @@ var JITApi = (function() {
   };
 
   var _markChatRead = function(userId) {
-    return _tursoSql("UPDATE chat_messages SET read_status=1 WHERE user_id=?", [userId]);
+    return _tursoSql("UPDATE chat_messages SET is_read=1 WHERE user_id=?", [userId]);
   };
 
   var _uploadChatImage = function(file, username) {
