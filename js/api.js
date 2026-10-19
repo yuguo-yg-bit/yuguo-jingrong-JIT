@@ -276,7 +276,7 @@ var JITApi = (function() {
   var _submitVoucher = function(voucherData) {
     var now = new Date().toISOString();
     var id = voucherData.voucherId || voucherData._issueNumber || "";
-    var sql = "INSERT OR REPLACE INTO vouchers (id, user_id, shop_name, latitude, longitude, amount, discount, order_photos, payment_method, signature, remark, reject_reason, platform, order_no, product_photo, shopping_photos, electric_category, electric_brand, electric_apply_amount, electric_subsidy_rate, electric_subsidy_amount, review_result, final_price, shop_photo, status, order_type, lotteried_users, payment_status, completed_at, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+    var sql = "INSERT OR REPLACE INTO vouchers (id, user_id, shop_name, latitude, longitude, amount, discount, order_photos, payment_method, signature, remark, reject_reason, platform, order_no, product_photo, shopping_photos, electric_category, electric_brand, electric_apply_amount, electric_subsidy_rate, electric_subsidy_amount, review_result, final_price, shop_photo, status, order_type, payment_status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
     var params = [
       id,
       voucherData.username || "",
@@ -304,9 +304,7 @@ var JITApi = (function() {
       voucherData.shopPhoto || "",
       voucherData.status || "待审核",
       voucherData.voucherType || "普通凭证",
-      voucherData.lotteriedUsers || "",
       voucherData.paymentStatus || "pending",
-      voucherData.completedAt || null,
       now, now
     ];
     return _tursoSql(sql, params).then(function() {
@@ -423,8 +421,8 @@ var JITApi = (function() {
   var _markVoucherCompleted = function(issueNumber, paymentNote) {
     var now = new Date().toISOString();
     return _tursoSql(
-      "UPDATE vouchers SET payment_status='completed', payment_method=COALESCE(NULLIF(?,''),payment_method), status='已完成交易', completed_at=?, updated_at=? WHERE id=?",
-      [paymentNote || "", now, now, String(issueNumber)]
+      "UPDATE vouchers SET payment_status='completed', payment_method=COALESCE(NULLIF(?,''),payment_method), status='已完成交易', updated_at=? WHERE id=?",
+      [paymentNote || "", now, String(issueNumber)]
     ).then(function() { _invalidateCache("allVouchers"); });
   };
 
@@ -513,7 +511,7 @@ var JITApi = (function() {
     var now = new Date().toISOString();
     var setClauses = [];
     var params = [];
-    var allowedFields = ["shop_name", "shop_photo", "order_photos", "latitude", "longitude", "amount", "discount", "payment_method", "remark", "signature", "reject_reason", "platform", "order_no", "product_photo", "shopping_photos", "electric_category", "electric_brand", "electric_apply_amount", "electric_subsidy_rate", "electric_subsidy_amount", "review_result", "final_price", "status", "order_type", "lotteried_users", "payment_status"];
+    var allowedFields = ["shop_name", "shop_photo", "order_photos", "latitude", "longitude", "amount", "discount", "payment_method", "remark", "signature", "reject_reason", "platform", "order_no", "product_photo", "shopping_photos", "electric_category", "electric_brand", "electric_apply_amount", "electric_subsidy_rate", "electric_subsidy_amount", "review_result", "final_price", "status", "order_type", "payment_status"];
     Object.keys(fields).forEach(function(key) {
       if (allowedFields.indexOf(key) > -1) {
         setClauses.push(key + "=?");
