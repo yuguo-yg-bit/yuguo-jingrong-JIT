@@ -45,7 +45,36 @@ var JITApi = (function() {
     });
   };
 
-  // ========== getTursoHelpers（供外部模块直接使用 Turso） ==========
+  // ========== localStorage → Turso 双向同步辅助 ==========
+  // 读取：优先从 Turso 读，同时更新 localStorage；Turso 挂了就用 localStorage
+  var _syncLoad = function(storageKey, tursoFetcher) {
+    return tursoFetcher().then(function(tursoData) {
+      if (tursoData !== undefined && tursoData !== null) {
+        try { localStorage.setItem(storageKey, typeof tursoData === "string" ? tursoData : JSON.stringify(tursoData)); } catch(e) {}
+        return tursoData;
+      }
+      return _syncLoadLocal(storageKey);
+    }).catch(function() {
+      return _syncLoadLocal(storageKey);
+    });
+  };
+
+  var _syncLoadLocal = function(storageKey) {
+    try { return JSON.parse(localStorage.getItem(storageKey) || "null"); } catch(e) { return null; }
+  };
+
+  // 保存：同时写 Turso + localStorage，Turso 失败也写 localStorage
+  var _syncSave = function(storageKey, data, tursoSaver) {
+    try { localStorage.setItem(storageKey, typeof data === "string" ? data : JSON.stringify(data)); } catch(e) {}
+    if (tursoSaver) {
+      return tursoSaver().catch(function(err) {
+        console.warn("Turso 同步失败，localStorage 已保存:", storageKey, err.message);
+        return data;
+      });
+    }
+    return Promise.resolve(data);
+  };
+
   var _getTursoHelpers = function() {
     var fn = function(sql, params) {
       return _tursoSql(sql, params);
@@ -957,6 +986,318 @@ var JITApi = (function() {
     };
   };
 
+  // ========== 用户等级/经验/打卡（Turso user_levels 表） ==========
+  var _getUserLevels = function() {
+    return _tursoSql("SELECT * FROM user_levels", []).then(function(result) {
+      var objs = _tursoRowsToObjects(result.columns, result.rows);
+      var map = {};
+      objs.forEach(function(r) {
+        map[r.user_id || r.id || ""] = {
+          level: parseInt(r.level || 0, 10),
+          exp: parseInt(r.exp || 0, 10),
+          streak: parseInt(r.streak_days || 0, 10),
+          totalVouchers: parseInt(r.total_vouchers || 0, 10),
+          basicTickets: parseInt(r.basic_tickets || 0, 10),
+          rareTickets: parseInt(r.rare_tickets || 0, 10),
+          lastLogin: r.last_login || "",
+          lastUpload: r.last_upload || "",
+          badges: (function() { try { return JSON.parse(r.badges || "[]"); } catch(e) { return []; } })(),
+          avatar: r.avatar || "",
+          nickname: r.nickname || "",
+          realName: r.real_name || ""
+        };
+      });
+      return map;
+    });
+  };
+
+  var _updateUserLevel = function(userId, data) {
+    var now = new Date().toISOString();
+    return _tursoSql(
+      "INSERT OR REPLACE INTO user_levels (user_id, level, exp, streak_days, total_vouchers, basic_tickets, rare_tickets, last_login, last_upload, badges, avatar, nickname, real_name, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      [userId, data.level||0, data.exp||0, data.streak||0, data.totalVouchers||0, data.basicTickets||0, data.rareTickets||0, data.lastLogin||"", data.lastUpload||"", JSON.stringify(data.badges||[]), data.avatar||"", data.nickname||"", data.realName||"", now]
+    );
+  };
+
+  var _incrementUserLevelField = function(userId, field, delta) {
+    var now = new Date().toISOString();
+    var column = ({exp:"exp",streak:"streak_days",totalVouchers:"total_vouchers",basicTickets:"basic_tickets",rareTickets:"rare_tickets"})[field] || field;
+    return _tursoSql(
+      "INSERT INTO user_levels (user_id, " + column + ", updated_at) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET " + column + " = COALESCE(user_levels." + column + ",0) + ?, updated_at=?",
+      [userId, delta||0, now, delta||0, now]
+    );
+  };
+
+  // ========== 抽奖券（Turso lottery_tickets 表） ==========
+  var _getUserTickets = function(userId) {
+    return _tursoSql("SELECT COUNT(*) AS cnt FROM lottery_tickets WHERE user_id=? AND status='unused' AND expires_at > ?", [userId, new Date().toISOString()]).then(function(result) {
+      var objs = _tursoRowsToObjects(result.columns, result.rows);
+      return parseInt((objs[0] && objs[0].cnt) || 0, 10);
+    });
+  };
+
+  var _getUserExpiredTickets = function(userId) {
+    return _tursoSql("SELECT COUNT(*) AS cnt FROM lottery_tickets WHERE user_id=? AND (status='expired' OR expires_at <= ?)", [userId, new Date().toISOString()]).then(function(result) {
+      var objs = _tursoRowsToObjects(result.columns, result.rows);
+      return parseInt((objs[0] && objs[0].cnt) || 0, 10);
+    });
+  };
+
+  var _addTickets = function(userId, count, ticketType, source) {
+    var now = new Date().toISOString();
+    var expire = new Date(Date.now() + 30*24*60*60*1000).toISOString();
+    var type = ticketType || "basic";
+    var src = source || "system";
+    var inserts = [];
+    for (var i = 0; i < (count||1); i++) {
+      var tid = "t_" + Date.now().toString(36) + Math.random().toString(36).slice(2,8) + "_" + i;
+      inserts.push(_tursoSql(
+        "INSERT INTO lottery_tickets (id, user_id, ticket_type, source, status, expires_at, created_at) VALUES (?,?,?,?,'unused',?,?)",
+        [tid, userId, type, src, expire, now]
+      ));
+    }
+    return Promise.all(inserts).then(function() { return count; });
+  };
+
+  var _useTicket = function(userId) {
+    return _tursoSql(
+      "UPDATE lottery_tickets SET status='used', used_at=? WHERE id=(SELECT id FROM lottery_tickets WHERE user_id=? AND status='unused' AND expires_at > ? LIMIT 1)",
+      [new Date().toISOString(), userId, new Date().toISOString()]
+    );
+  };
+
+  var _expireOldTickets = function() {
+    var now = new Date().toISOString();
+    return _tursoSql("UPDATE lottery_tickets SET status='expired' WHERE status IN ('unused','used') AND expires_at <= ?", [now]);
+  };
+
+  // ========== 抽奖记录（Turso lottery_records 表） ==========
+  var _getLotteryRecords = function(userId) {
+    var sql = userId ? "SELECT * FROM lottery_records WHERE user_id=? ORDER BY created_at DESC LIMIT 200" : "SELECT * FROM lottery_records ORDER BY created_at DESC LIMIT 500";
+    var params = userId ? [userId] : [];
+    return _tursoSql(sql, params).then(function(result) {
+      return _tursoRowsToObjects(result.columns, result.rows);
+    });
+  };
+
+  var _addLotteryRecord = function(record) {
+    var now = new Date().toISOString();
+    var rid = record.id || ("lr_" + Date.now().toString(36) + Math.random().toString(36).slice(2,8));
+    return _tursoSql(
+      "INSERT INTO lottery_records (id, user_id, voucher_id, pool_type, prize_id, prize_name, prize_cash, prize_rate, voucher_amount, final_reward, is_win, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+      [rid, record.userId||"", record.voucherId||"", record.poolType||"basic", record.prizeId||"", record.prizeName||"", record.prizeCash||0, record.prizeRate||0, record.voucherAmount||0, record.finalReward||0, record.isWin?1:0, now]
+    );
+  };
+
+  var _syncLotteryRecordsFromLocal = function(userId, recordsArray) {
+    if (!recordsArray || recordsArray.length === 0) return Promise.resolve();
+    var promises = recordsArray.map(function(r) {
+      return _addLotteryRecord({
+        id: r.id || ("lr_" + Date.now().toString(36) + Math.random().toString(36).slice(2,8)),
+        userId: r.userId || r.user || userId || "",
+        voucherId: r.voucherId || r.voucherKey || "",
+        poolType: r.poolType || "basic",
+        prizeId: r.prize || r.prizeId || "",
+        prizeName: r.discount || r.prizeName || r.scratchDiscount || "",
+        prizeCash: parseFloat(r.reward || r.prizeCash || r.totalReward || 0),
+        prizeRate: parseFloat(r.value || r.prizeRate || 0),
+        voucherAmount: parseFloat(r.voucherAmount || 0),
+        finalReward: parseFloat(r.reward || r.finalReward || 0),
+        isWin: !!(r.isWin || r.reward || r.totalReward),
+        created_at: r.date || new Date().toISOString()
+      });
+    });
+    return Promise.all(promises);
+  };
+
+  // ========== 中奖墙（Turso win_wall 表） ==========
+  var _getWinWall = function() {
+    return _tursoSql("SELECT * FROM win_wall ORDER BY created_at DESC LIMIT 200", []).then(function(result) {
+      return _tursoRowsToObjects(result.columns, result.rows);
+    });
+  };
+
+  var _addWinWallEntry = function(entry) {
+    var now = new Date().toISOString();
+    var wid = entry.id || ("ww_" + Date.now().toString(36) + Math.random().toString(36).slice(2,8));
+    return _tursoSql(
+      "INSERT INTO win_wall (id, user_id, prize_name, prize_cash, pool_type, voucher_amount, created_at) VALUES (?,?,?,?,?,?,?)",
+      [wid, entry.userId||entry.user||"", entry.prizeName||entry.prize||"", parseFloat(entry.prizeCash||entry.amount||0), entry.poolType||"basic", parseFloat(entry.voucherAmount||0), now]
+    );
+  };
+
+  var _syncWinWallFromLocal = function(wallArray) {
+    if (!wallArray || wallArray.length === 0) return Promise.resolve();
+    var promises = wallArray.map(function(w) {
+      return _addWinWallEntry({
+        userId: w.user || w.userId || "",
+        prizeName: w.prize || w.prizeName || w.discount || "",
+        prizeCash: parseFloat(w.amount || w.prizeCash || w.reward || 0),
+        poolType: w.poolType || "basic",
+        voucherAmount: parseFloat(w.voucherAmount || 0),
+        created_at: w.time || w.created_at || new Date().toISOString()
+      });
+    });
+    return Promise.all(promises);
+  };
+
+  // ========== 任务奖励（Turso task_rewards 表） ==========
+  var _getTaskRewards = function(userId) {
+    return _tursoSql("SELECT * FROM task_rewards WHERE user_id=? ORDER BY created_at DESC", [userId]).then(function(result) {
+      return _tursoRowsToObjects(result.columns, result.rows);
+    });
+  };
+
+  var _addTaskReward = function(userId, taskId, rewardType, rewardAmount) {
+    var now = new Date().toISOString();
+    var rid = "tr_" + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+    return _tursoSql(
+      "INSERT INTO task_rewards (id, user_id, task_id, reward_type, reward_amount, claimed_at, created_at) VALUES (?,?,?,?,?,?,?)",
+      [rid, userId, taskId, rewardType||"", rewardAmount||0, now, now]
+    );
+  };
+
+  var _syncTaskRewardsFromLocal = function(userId, taskMap) {
+    if (!taskMap || Object.keys(taskMap).length === 0) return Promise.resolve();
+    var promises = [];
+    Object.keys(taskMap).forEach(function(taskId) {
+      var val = taskMap[taskId];
+      var count = (typeof val === "number") ? val : 1;
+      for (var i = 0; i < count; i++) {
+        promises.push(_addTaskReward(userId, taskId, typeof val === "object" ? (val.type||"") : "", typeof val === "object" ? (val.amount||0) : 1));
+      }
+    });
+    return Promise.all(promises);
+  };
+
+  // ========== 装扮（Turso user_outfits 表） ==========
+  var _getUserOutfits = function(userId) {
+    return _tursoSql("SELECT outfit_id FROM user_outfits WHERE user_id=? ORDER BY unlocked_at ASC", [userId]).then(function(result) {
+      var objs = _tursoRowsToObjects(result.columns, result.rows);
+      return objs.map(function(r) { return r.outfit_id; });
+    });
+  };
+
+  var _unlockOutfit = function(userId, outfitId) {
+    var now = new Date().toISOString();
+    var oid = "uo_" + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+    return _tursoSql(
+      "INSERT OR IGNORE INTO user_outfits (id, user_id, outfit_id, unlocked_at) VALUES (?,?,?,?)",
+      [oid, userId, outfitId, now]
+    );
+  };
+
+  var _syncOutfitsFromLocal = function(userId, outfitsArray) {
+    if (!outfitsArray || outfitsArray.length === 0) return Promise.resolve();
+    var promises = outfitsArray.map(function(oid) {
+      return _unlockOutfit(userId, String(oid));
+    });
+    return Promise.all(promises);
+  };
+
+  // ========== 风控（Turso risk_control 表） ==========
+  var _getRiskBudget = function() {
+    return _tursoSql("SELECT * FROM risk_control WHERE id='global' LIMIT 1", []).then(function(result) {
+      var objs = _tursoRowsToObjects(result.columns, result.rows);
+      if (objs.length === 0) return { budget: 5000, spent: 0, perUserCap: 500, perTicketCap: 200, rareOpen: true };
+      var r = objs[0];
+      return {
+        budget: parseFloat(r.monthly_budget || 5000),
+        spent: parseFloat(r.monthly_spent || 0),
+        perUserCap: parseFloat(r.per_user_monthly_cap || 500),
+        perTicketCap: parseFloat(r.per_ticket_cap || 200),
+        rareOpen: !!(r.rare_pool_open || r.rare_pool_open === undefined ? true : r.rare_pool_open)
+      };
+    });
+  };
+
+  var _updateRiskBudget = function(data) {
+    var now = new Date().toISOString();
+    var monthKey = new Date().toISOString().substring(0,7);
+    return _tursoSql(
+      "INSERT OR REPLACE INTO risk_control (id, monthly_budget, monthly_spent, per_user_monthly_cap, per_ticket_cap, rare_pool_open, month_key, updated_at) VALUES ('global',?,?,?,?,?,?,?)",
+      [data.budget||5000, data.spent||0, data.perUserCap||500, data.perTicketCap||200, data.rareOpen?1:0, monthKey, now]
+    );
+  };
+
+  var _spendRiskBudget = function(amount) {
+    return _getRiskBudget().then(function(b) {
+      return _updateRiskBudget({ budget: b.budget, spent: b.spent + amount, perUserCap: b.perUserCap, perTicketCap: b.perTicketCap, rareOpen: b.rareOpen });
+    });
+  };
+
+  // ========== 用户月度奖励（Turso user_monthly_rewards 表） ==========
+  var _getUserMonthlyReward = function(userId) {
+    var monthKey = new Date().toISOString().substring(0,7);
+    return _tursoSql("SELECT * FROM user_monthly_rewards WHERE user_id=? AND month_key=? LIMIT 1", [userId, monthKey]).then(function(result) {
+      var objs = _tursoRowsToObjects(result.columns, result.rows);
+      if (objs.length === 0) return { totalReward: 0, drawCount: 0 };
+      return { totalReward: parseFloat(objs[0].total_reward || 0), drawCount: parseInt(objs[0].draw_count || 0, 10) };
+    });
+  };
+
+  var _addUserMonthlyReward = function(userId, rewardAmount) {
+    var monthKey = new Date().toISOString().substring(0,7);
+    var now = new Date().toISOString();
+    var rid = "umr_" + userId + "_" + monthKey;
+    return _tursoSql(
+      "INSERT INTO user_monthly_rewards (id, user_id, month_key, total_reward, draw_count, updated_at) VALUES (?,?,?,?,1,?) ON CONFLICT(id) DO UPDATE SET total_reward = total_reward + ?, draw_count = draw_count + 1, updated_at=?",
+      [rid, userId, monthKey, rewardAmount||0, now, rewardAmount||0, now]
+    );
+  };
+
+  // ========== Turso 全量同步助手函数 ==========
+  // 首次使用时把 localStorage 数据迁到 Turso
+  var _migrateLocalToTurso = function(userId) {
+    var promises = [];
+    // 用户等级
+    try {
+      var levels = JSON.parse(localStorage.getItem("jit_user_levels") || "{}");
+      if (levels && levels[userId]) {
+        var ld = levels[userId];
+        promises.push(_updateUserLevel(userId, { level: ld.level||0, exp: ld.exp||0, streak: ld.streak||0, totalVouchers: ld.totalVouchers||0, basicTickets: ld.basicTickets||0, rareTickets: ld.rareTickets||0, lastLogin: ld.lastLogin||localStorage.getItem("jit_last_login_"+userId)||"", badges: ld.badges||[], avatar: ld.avatar||"", nickname: ld.nickname||"", realName: ld.realName||"" }));
+      }
+    } catch(e) {}
+    // 抽奖券
+    try {
+      var tickets = JSON.parse(localStorage.getItem("jit_user_tickets") || "{}");
+      var cnt = parseInt(tickets[userId]||0, 10);
+      if (cnt > 0) promises.push(_addTickets(userId, cnt, "basic", "migrate"));
+    } catch(e) {}
+    // 老虎机/刮刮乐记录
+    try {
+      var slotRecords = JSON.parse(localStorage.getItem("jit_slot_records") || "[]");
+      if (slotRecords.length > 0) promises.push(_syncLotteryRecordsFromLocal(userId, slotRecords));
+    } catch(e) {}
+    try {
+      var lotteryResults = JSON.parse(localStorage.getItem("jit_lottery_results") || "[]");
+      if (lotteryResults.length > 0) promises.push(_syncLotteryRecordsFromLocal(userId, lotteryResults));
+    } catch(e) {}
+    // 中奖墙
+    try {
+      var winwall = JSON.parse(localStorage.getItem("jit_winwall") || "[]");
+      if (winwall.length > 0) promises.push(_syncWinWallFromLocal(winwall));
+    } catch(e) {}
+    // 任务奖励
+    try {
+      var taskRewards = JSON.parse(localStorage.getItem("jit_task_rewards") || "{}");
+      if (taskRewards && Object.keys(taskRewards).length > 0) promises.push(_syncTaskRewardsFromLocal(userId, taskRewards));
+    } catch(e) {}
+    // 装扮
+    try {
+      var outfits = JSON.parse(localStorage.getItem("jit_unlocked_outfits") || "[]");
+      if (outfits.length > 0) promises.push(_syncOutfitsFromLocal(userId, outfits));
+    } catch(e) {}
+    return Promise.allSettled(promises).then(function() {
+      localStorage.setItem("jit_migrated_to_turso", "1");
+      return true;
+    });
+  };
+
+  var _hasMigratedToTurso = function() {
+    return localStorage.getItem("jit_migrated_to_turso") === "1";
+  };
+
   // ========== 导出 ==========
   return {
     adminLogin: _adminLogin,
@@ -1020,6 +1361,36 @@ var JITApi = (function() {
     upsertCommunityBan: _upsertCommunityBan,
     removeCommunityBan: _removeCommunityBan,
     deleteCommunityStatus: _deleteCommunityStatus,
-    getTursoHelpers: _getTursoHelpers
+    getTursoHelpers: _getTursoHelpers,
+    // localStorage → Turso 迁移
+    getUserLevels: _getUserLevels,
+    updateUserLevel: _updateUserLevel,
+    incrementUserLevelField: _incrementUserLevelField,
+    getUserTickets: _getUserTickets,
+    getUserExpiredTickets: _getUserExpiredTickets,
+    addTickets: _addTickets,
+    useTicket: _useTicket,
+    expireOldTickets: _expireOldTickets,
+    getLotteryRecords: _getLotteryRecords,
+    addLotteryRecord: _addLotteryRecord,
+    syncLotteryRecordsFromLocal: _syncLotteryRecordsFromLocal,
+    getWinWall: _getWinWall,
+    addWinWallEntry: _addWinWallEntry,
+    syncWinWallFromLocal: _syncWinWallFromLocal,
+    getTaskRewards: _getTaskRewards,
+    addTaskReward: _addTaskReward,
+    syncTaskRewardsFromLocal: _syncTaskRewardsFromLocal,
+    getUserOutfits: _getUserOutfits,
+    unlockOutfit: _unlockOutfit,
+    syncOutfitsFromLocal: _syncOutfitsFromLocal,
+    getRiskBudget: _getRiskBudget,
+    updateRiskBudget: _updateRiskBudget,
+    spendRiskBudget: _spendRiskBudget,
+    getUserMonthlyReward: _getUserMonthlyReward,
+    addUserMonthlyReward: _addUserMonthlyReward,
+    migrateLocalToTurso: _migrateLocalToTurso,
+    hasMigratedToTurso: _hasMigratedToTurso,
+    syncLoad: _syncLoad,
+    syncSave: _syncSave
   };
 })();

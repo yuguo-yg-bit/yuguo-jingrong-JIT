@@ -236,6 +236,10 @@ var JITApp = (function() {
       _updateLogoutText();
       _refreshPointsDisplay();
       _loadNotifications();
+      // 首次登录时把 localStorage 数据迁到 Turso
+      if (!JITApi.hasMigratedToTurso()) {
+        JITApi.migrateLocalToTurso(savedUser).catch(function() {});
+      }
       _dailyLoginBonus(); // v2.0 每日签到
       _checkExpiredTickets(); // v2.0 过期券提醒
       _initOutfits(); // v2.0 装扮初始化
@@ -1801,6 +1805,18 @@ var JITApp = (function() {
     var key = "jit_user_levels";
     var all = {};
     try { all = JSON.parse(localStorage.getItem(key) || "{}"); } catch(e) {}
+    // 同步从 Turso 加载（非阻塞）
+    JITApi.getUserLevels().then(function(tursoLevels) {
+      if (tursoLevels && tursoLevels[userId]) {
+        var td = tursoLevels[userId];
+        var merged = all[userId] || {};
+        merged.level = Math.max(merged.level||0, td.level||0);
+        merged.exp = Math.max(merged.exp||0, td.exp||0);
+        merged.streak = Math.max(merged.streak||0, td.streak||0);
+        all[userId] = merged;
+        try { localStorage.setItem(key, JSON.stringify(all)); } catch(e) {}
+      }
+    }).catch(function() {});
     var data = all[userId] || { level: 0, exp: 0, streak: 0 };
     return data;
   };
@@ -1826,6 +1842,8 @@ var JITApp = (function() {
     }
     all[userId] = data;
     localStorage.setItem(key, JSON.stringify(all));
+    // 同步到 Turso
+    JITApi.updateUserLevel(userId, { level: data.level, exp: data.exp, streak: data.streak }).catch(function() {});
     return { levelData: data, leveledUp: leveledUp };
   };
 
@@ -2089,6 +2107,15 @@ var JITApp = (function() {
       username: _currentUser
     });
     localStorage.setItem("jit_lottery_results", JSON.stringify(lotteryResults));
+    // 同步到 Turso
+    JITApi.addLotteryRecord({
+      userId: _currentUser,
+      prizeName: prize.discount || prize.label || "",
+      prizeRate: prize.value || 0,
+      poolType: "scratch",
+      isWin: true,
+      date: new Date().toISOString()
+    }).catch(function() {});
     // 异步更新券信息
     // 【修复】原来只在 voucher._issueNumber 存在时才写库。迁移到 Turso 后部分凭证
     // 对象可能没有 _issueNumber，于是静默跳过保存 —— 用户表现为"抽完没保存折数"。
@@ -2197,6 +2224,17 @@ var JITApp = (function() {
       bestPrize: bestPrizeName
     });
     localStorage.setItem("jit_slot_records", JSON.stringify(slotRecords));
+    // 同步到 Turso
+    JITApi.addLotteryRecord({
+      userId: _currentUser,
+      voucherId: _voucherSaveKey(voucher),
+      poolType: "slot",
+      prizeName: bestPrizeName,
+      prizeRate: scratchPrize.value,
+      voucherAmount: parseFloat(voucher.amount || 0),
+      finalReward: totalReward,
+      isWin: totalReward > 0
+    }).catch(function() {});
 
     // 积分发放
     var ptsDelta = 10;
@@ -2238,6 +2276,8 @@ var JITApp = (function() {
     });
     if (wwData.length > 50) wwData = wwData.slice(0, 50);
     localStorage.setItem("jit_winwall", JSON.stringify(wwData));
+    // 同步到 Turso
+    JITApi.addWinWallEntry({ userId: username, prizeName: prizeName, prizeCash: amount }).catch(function() {});
     _renderWinWall();
   };
 
@@ -2425,6 +2465,8 @@ var JITApp = (function() {
   };
   var _setTaskRewards = function(rewards) {
     localStorage.setItem(_taskRewardsKey, JSON.stringify(rewards));
+    // 同步到 Turso
+    if (_currentUser) JITApi.syncTaskRewardsFromLocal(_currentUser, rewards).catch(function() {});
   };
 
   var _renderTasks = function(levelData) {
@@ -2529,6 +2571,12 @@ var JITApp = (function() {
   // ===== v2.0 风控状态 =====
   var _renderRiskStatus = function() {
     var budget = parseFloat(localStorage.getItem("jit_risk_budget") || "5000");
+    // 从 Turso 加载风控预算
+    JITApi.getRiskBudget().then(function(tursoRisk) {
+      if (tursoRisk && tursoRisk.budget) {
+        localStorage.setItem("jit_risk_budget", String(tursoRisk.budget));
+      }
+    }).catch(function() {});
     var riskBudget = document.getElementById("riskBudget");
     var riskSpentEl = document.getElementById("riskSpent");
     var riskRemain = document.getElementById("riskRemain");
@@ -2565,6 +2613,14 @@ var JITApp = (function() {
     var tickets = JSON.parse(localStorage.getItem("jit_user_tickets") || "{}");
     var count = tickets[_currentUser] || 0;
     statTickets.textContent = String(count);
+    // 从 Turso 同步真实券数
+    JITApi.getUserTickets(_currentUser).then(function(tursoCount) {
+      if (tursoCount > count) {
+        tickets[_currentUser] = tursoCount;
+        localStorage.setItem("jit_user_tickets", JSON.stringify(tickets));
+        statTickets.textContent = String(tursoCount);
+      }
+    }).catch(function() {});
   };
 
   // ===== v2.0 工作台主题装扮 + 头像框 =====
@@ -2590,6 +2646,8 @@ var JITApp = (function() {
   };
   var _saveUnlockedOutfits = function(outfits) {
     localStorage.setItem("jit_unlocked_outfits", JSON.stringify(outfits));
+    // 同步到 Turso
+    if (_currentUser) JITApi.syncOutfitsFromLocal(_currentUser, outfits).catch(function() {});
   };
 
   // 检查装扮是否已解锁
@@ -2811,6 +2869,24 @@ var JITApp = (function() {
   // 初始化中奖墙
   var _initWinWall = function() {
     _renderWinWall();
+    // 从 Turso 加载全局中奖墙（展示所有用户的中奖记录）
+    JITApi.getWinWall().then(function(tursoWall) {
+      if (tursoWall && tursoWall.length > 0) {
+        var wwData = JSON.parse(localStorage.getItem("jit_winwall") || "[]");
+        var existingKeys = {};
+        wwData.forEach(function(w) { existingKeys[w.user + "|" + w.time] = true; });
+        tursoWall.forEach(function(w) {
+          var key = (w.user_id||"") + "|" + (w.created_at||"");
+          if (!existingKeys[key]) {
+            wwData.push({ user: w.user_id || "", prize: w.prize_name || "", amount: w.prize_cash || 0, time: new Date(w.created_at || "").getTime() || Date.now() });
+          }
+        });
+        wwData.sort(function(a, b) { return (b.time || 0) - (a.time || 0); });
+        if (wwData.length > 100) wwData = wwData.slice(0, 100);
+        localStorage.setItem("jit_winwall", JSON.stringify(wwData));
+        _renderWinWall();
+      }
+    }).catch(function() {});
   };
 
   // 抽奖券过期提醒
@@ -2824,6 +2900,13 @@ var JITApp = (function() {
       expired[_currentUser] = 0;
       localStorage.setItem("jit_expired_tickets", JSON.stringify(expired));
     }
+    // 同步过期到 Turso
+    JITApi.expireOldTickets().catch(function() {});
+    JITApi.getUserExpiredTickets(_currentUser).then(function(tursoExpired) {
+      if (tursoExpired > 0 && !expiredToday) {
+        _showToast("⚠️ Turso 记录：您有 " + tursoExpired + " 张抽奖券已过期！", "");
+      }
+    }).catch(function() {});
   };
 
   // 每日签到/登录奖励抽奖券
@@ -2846,6 +2929,7 @@ var JITApp = (function() {
     allLevels[_currentUser] = levelData;
     localStorage.setItem("jit_user_levels", JSON.stringify(allLevels));
     localStorage.setItem("jit_last_login_" + _currentUser, today);
+    JITApi.updateUserLevel(_currentUser, { level: levelData.level, exp: levelData.exp, streak: levelData.streak, lastLogin: today }).catch(function() {});
 
     // 根据等级发抽奖券
     var tickets = JSON.parse(localStorage.getItem("jit_user_tickets") || "{}");
@@ -2854,6 +2938,7 @@ var JITApp = (function() {
     if (levelData.level >= 4) dailyTickets = 3;
     tickets[_currentUser] = (tickets[_currentUser] || 0) + dailyTickets;
     localStorage.setItem("jit_user_tickets", JSON.stringify(tickets));
+    JITApi.addTickets(_currentUser, dailyTickets, "basic", "daily_login").catch(function() {});
 
     if (levelData.streak > 1) {
       _showToast("🎁 连续打卡 " + levelData.streak + " 天！获得 " + dailyTickets + " 张抽奖券", "success");

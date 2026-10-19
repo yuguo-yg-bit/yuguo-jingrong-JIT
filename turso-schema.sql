@@ -295,3 +295,30 @@ CREATE TABLE IF NOT EXISTS oauth_tokens (
   created_at TEXT DEFAULT '',
   expires_at TEXT DEFAULT ''
 );
+
+-- ============================================================
+-- localStorage → Turso 迁移：任务奖励、装扮、过期券
+-- ============================================================
+
+-- 任务奖励表
+CREATE TABLE IF NOT EXISTS task_rewards (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  reward_type TEXT DEFAULT '',
+  reward_amount INTEGER DEFAULT 0,
+  claimed_at TEXT DEFAULT '',
+  created_at TEXT DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_rewards_user ON task_rewards(user_id);
+
+-- 用户装扮表
+CREATE TABLE IF NOT EXISTS user_outfits (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  outfit_id TEXT NOT NULL,
+  unlocked_at TEXT DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_outfits_user ON user_outfits(user_id);

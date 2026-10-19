@@ -986,6 +986,16 @@ var JITCommunity = (function() {
     if (!statTickets) return;
     var tickets = JSON.parse(localStorage.getItem("jit_user_tickets") || "{}");
     statTickets.textContent = String(tickets[_currentUser] || 0);
+    // 从 Turso 同步真实券数
+    if (JITApi && JITApi.getUserTickets) {
+      JITApi.getUserTickets(_currentUser).then(function(tursoCount) {
+        if (tursoCount > (tickets[_currentUser] || 0)) {
+          tickets[_currentUser] = tursoCount;
+          localStorage.setItem("jit_user_tickets", JSON.stringify(tickets));
+          statTickets.textContent = String(tursoCount);
+        }
+      }).catch(function() {});
+    }
   };
 
   // ===== 经验增加 =====
@@ -1000,6 +1010,10 @@ var JITCommunity = (function() {
     for (var i = LEVEL_CONFIG.length - 1; i >= 0; i--) { if (all[userId].exp >= LEVEL_CONFIG[i].expNeed) { newLevel = LEVEL_CONFIG[i].level; break; } }
     if (newLevel > all[userId].level) { all[userId].level = newLevel; result.leveledUp = true; }
     localStorage.setItem(key, JSON.stringify(all));
+    // 同步到 Turso
+    if (JITApi && JITApi.updateUserLevel) {
+      JITApi.updateUserLevel(userId, { level: all[userId].level, exp: all[userId].exp, streak: all[userId].streak }).catch(function() {});
+    }
     return result;
   };
 
