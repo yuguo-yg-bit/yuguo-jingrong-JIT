@@ -24,6 +24,7 @@
       <a class="admin-nav-item" data-tab="blacklist">🚫 黑名单</a>
       <a class="admin-nav-item" data-tab="urgentBl">⚡ 加急黑名单</a>
       <a class="admin-nav-item" data-tab="notifications">🔔 通知管理</a>
+      <a class="admin-nav-item" data-tab="community">🛡️ 社区监管</a>
       <a class="admin-nav-item" data-tab="settings">⚙️ 系统设置</a>
       <a class="admin-nav-item" data-tab="developer">🔧 开发者</a>
     </nav>
@@ -267,6 +268,81 @@
           <div id="notifDetailBody" style="margin-bottom:16px;"></div>
           <h4 style="margin-bottom:8px;">用户回复</h4>
           <div id="notifRepliesList" style="max-height:300px;overflow-y:auto;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 社区监管：动态检查 / 删除 / 禁言 ===== -->
+    <div class="admin-tab" id="tabCommunity">
+      <div class="admin-card">
+        <div class="admin-card-header">
+          <h3>🛡️ 社区监管</h3>
+          <p class="admin-card-desc">检查用户发布的社区动态，可删除违规内容；对违规用户可禁言（1天 / 3天 / 7天 / 永久），禁言期内无法发布动态。</p>
+        </div>
+        <div class="admin-card-body">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+            <h4 style="margin:0;">社区动态</h4>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <select class="form-input" id="communityFilter" style="width:auto;padding:6px 10px;">
+                <option value="all">全部动态</option>
+                <option value="banned">只看被禁言用户</option>
+              </select>
+              <button class="btn btn-approve" id="btnRefreshCommunity">🔄 刷新</button>
+            </div>
+          </div>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr><th>用户</th><th>内容</th><th>类型</th><th>发布时间</th><th style="width:120px;">操作</th></tr>
+              </thead>
+              <tbody id="communityStatusesTable">
+                <tr><td colspan="5" class="loading-cell">加载动态中...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <h4 style="margin:20px 0 10px;">禁言用户</h4>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr><th>用户</th><th>禁言状态</th><th>原因</th><th>操作人</th><th style="width:160px;">操作</th></tr>
+              </thead>
+              <tbody id="communityBansTable">
+                <tr><td colspan="5" class="loading-cell">加载中...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 禁言设置弹窗 ===== -->
+    <div class="modal-overlay" id="communityBanOverlay" style="display:none;">
+      <div class="modal-container" style="max-width:460px;">
+        <div class="modal-header">
+          <h3 class="modal-title">🚫 禁言用户</h3>
+          <button class="modal-close" id="btnBanClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">用户 <span class="required">*</span></label>
+            <input type="text" class="form-input" id="inputBanUser" readonly>
+          </div>
+          <div class="form-group">
+            <label class="form-label">禁言时长 <span class="required">*</span></label>
+            <select class="form-input" id="inputBanDuration">
+              <option value="1">1 天</option>
+              <option value="3">3 天</option>
+              <option value="7">7 天</option>
+              <option value="forever">永久</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">原因（可选）</label>
+            <input type="text" class="form-input" id="inputBanReason" placeholder="如：发布不当言论" maxlength="60">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-approve" id="btnBanConfirm" style="width:100%;">确认禁言</button>
         </div>
       </div>
     </div>
@@ -1086,10 +1162,10 @@
   }
 })();
 </script>
-<script src="js/config.js"></script>
-<script src="js/api.js"></script>
-<script src="js/points.js"></script>
-<script src="js/lottery.js"></script>
-<script src="js/admin-main.js"></script>
+<script src="js/config.js?v=3.2.0"></script>
+<script src="js/api.js?v=3.2.0"></script>
+<script src="js/points.js?v=3.2.0"></script>
+<script src="js/lottery.js?v=3.2.0"></script>
+<script src="js/admin-main.js?v=3.2.0"></script>
 </body>
 </html>

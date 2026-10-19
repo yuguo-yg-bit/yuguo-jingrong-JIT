@@ -1844,6 +1844,7 @@ var JITAdmin = (function() {
     blacklist: function() { loadBlacklist(); },
     urgentBl: function() { loadUrgentBlacklist(); },
     notifications: function() { loadNotifications(); },
+    community: function() { loadCommunityManage(); },
     settings: function() { loadSettings(); },
     developer: function() { loadSystemInfo(); }
   };
@@ -2073,6 +2074,24 @@ var JITAdmin = (function() {
       _isLoggedIn = false;
       location.reload();
     });
+
+    // 社区监管：刷新 / 筛选 / 禁言弹窗
+    var btnRefreshCommunity = document.getElementById("btnRefreshCommunity");
+    if (btnRefreshCommunity) btnRefreshCommunity.addEventListener("click", function() { loadCommunityManage(); });
+    var communityFilter = document.getElementById("communityFilter");
+    if (communityFilter) communityFilter.addEventListener("change", _renderCommunityStatuses);
+    var btnBanClose = document.getElementById("btnBanClose");
+    if (btnBanClose) btnBanClose.addEventListener("click", function() {
+      document.getElementById("communityBanOverlay").style.display = "none";
+    });
+    var btnBanConfirm = document.getElementById("btnBanConfirm");
+    if (btnBanConfirm) btnBanConfirm.addEventListener("click", _confirmBan);
+    var banOverlay = document.getElementById("communityBanOverlay");
+    if (banOverlay) {
+      banOverlay.addEventListener("click", function(e) {
+        if (e.target === banOverlay) banOverlay.style.display = "none";
+      });
+    }
 
     var navItems = document.querySelectorAll(".admin-nav-item");
     navItems.forEach(function(item) {
@@ -2417,6 +2436,160 @@ var JITAdmin = (function() {
     if (iso === "permanent") return "永久";
     try { return iso.replace("T", " ").substring(0, 16); } catch(e) { return iso; }
   }
+
+  // ===== 社区监管：动态检查 / 删除 / 禁言 =====
+  var _communityStatuses = [];
+  var _communityBans = {}; // user_id -> ban
+
+  var _isBanActiveNow = function(until) {
+    if (!until) return false;
+    if (String(until).indexOf("9999") === 0) return true;
+    try { return new Date(until).getTime() > Date.now(); } catch (e) { return false; }
+  };
+
+  var loadCommunityManage = function() {
+    JITApi.getCommunityStatuses().then(function(statuses) {
+      _communityStatuses = statuses || [];
+      _renderCommunityStatuses();
+    }).catch(function(e) {
+      var tbody = document.getElementById("communityStatusesTable");
+      if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">加载失败: ' + _escapeHtml(e.message || "") + '</td></tr>';
+    });
+    JITApi.getCommunityBans().then(function(bans) {
+      _communityBans = {};
+      (bans || []).forEach(function(b) { _communityBans[b.user_id] = b; });
+      _renderCommunityBans();
+    }).catch(function(e) {
+      var tbody = document.getElementById("communityBansTable");
+      if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">加载失败: ' + _escapeHtml(e.message || "") + '</td></tr>';
+    });
+  };
+
+  var _parseStatusText = function(content) {
+    try {
+      var o = JSON.parse(content);
+      if (o && typeof o === "object") return o.text || "";
+    } catch (e) {}
+    return content || "";
+  };
+
+  var _renderCommunityStatuses = function() {
+    var tbody = document.getElementById("communityStatusesTable");
+    if (!tbody) return;
+    var filterEl = document.getElementById("communityFilter");
+    var filter = filterEl ? filterEl.value : "all";
+    var list = _communityStatuses.filter(function(s) {
+      if (filter === "banned") {
+        var b = _communityBans[s.username];
+        return b && _isBanActiveNow(b.banned_until);
+      }
+      return true;
+    });
+    if (list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">暂无动态</td></tr>';
+      return;
+    }
+    var html = "";
+    list.forEach(function(s) {
+      var obj = null;
+      try { obj = JSON.parse(s.content || ""); } catch (e) {}
+      var typeTxt = "💬 聊天";
+      if (obj && obj.t === "voucher") typeTxt = "🧾 凭证";
+      else if (obj && obj.images && obj.images.length) typeTxt = "📷 图片";
+      var txt = _parseStatusText(s.content);
+      var b = _communityBans[s.username];
+      var banBadge = (b && _isBanActiveNow(b.banned_until)) ? '<span style="color:#f44336;font-size:11px;margin-left:4px;">🚫已禁言</span>' : "";
+      html += '<tr>';
+      html += '<td>' + _escapeHtml(s.username) + banBadge + '</td>';
+      html += '<td style="max-width:320px;word-break:break-all;">' + _escapeHtml(txt.substring(0, 60)) + (txt.length > 60 ? "..." : "") + '</td>';
+      html += '<td>' + typeTxt + '</td>';
+      html += '<td>' + _fmtIsoShort(s.created_at) + '</td>';
+      html += '<td><button class="action-btn community-del" data-id="' + _escapeHtml(String(s.id)) + '" data-user="' + _escapeHtml(s.username) + '">删除</button></td>';
+      html += '</tr>';
+    });
+    tbody.innerHTML = html;
+    tbody.querySelectorAll(".community-del").forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        var id = this.getAttribute("data-id");
+        var user = this.getAttribute("data-user");
+        if (!id) return;
+        if (!confirm("确认删除用户 [" + user + "] 的这条动态吗？删除后不可恢复。")) return;
+        JITApi.deleteCommunityStatus(id).then(function() {
+          _showToast("动态已删除");
+          loadCommunityManage();
+        }).catch(function(e) { _showToast("删除失败: " + e.message); });
+      });
+    });
+  };
+
+  var _renderCommunityBans = function() {
+    var tbody = document.getElementById("communityBansTable");
+    if (!tbody) return;
+    var list = Object.keys(_communityBans).map(function(u) { return _communityBans[u]; })
+      .filter(function(b) { return _isBanActiveNow(b.banned_until); })
+      .sort(function(a, b) { return String(a.created_at) < String(b.created_at) ? 1 : -1; });
+    if (list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">暂无被禁言用户</td></tr>';
+      return;
+    }
+    var html = "";
+    list.forEach(function(b) {
+      var isPerm = String(b.banned_until || "").indexOf("9999") === 0;
+      html += '<tr>';
+      html += '<td>' + _escapeHtml(b.user_id) + '</td>';
+      html += '<td>' + (isPerm ? '<span style="color:#f44336;font-weight:600;">永久</span>' : _fmtIsoShort(b.banned_until)) + '</td>';
+      html += '<td>' + _escapeHtml(b.reason || "—") + '</td>';
+      html += '<td>' + _escapeHtml(b.created_by || "admin") + '</td>';
+      html += '<td>' +
+        '<button class="action-btn community-unban" data-user="' + _escapeHtml(b.user_id) + '">解除</button> ' +
+        '<button class="action-btn community-reban" data-user="' + _escapeHtml(b.user_id) + '">改禁</button>' +
+      '</td>';
+      html += '</tr>';
+    });
+    tbody.innerHTML = html;
+    tbody.querySelectorAll(".community-unban").forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        var u = this.getAttribute("data-user");
+        if (!u) return;
+        if (!confirm("确认解除用户 [" + u + "] 的禁言吗？")) return;
+        JITApi.removeCommunityBan(u).then(function() {
+          _showToast("已解除 " + u + " 的禁言");
+          loadCommunityManage();
+        }).catch(function(e) { _showToast("操作失败: " + e.message); });
+      });
+    });
+    tbody.querySelectorAll(".community-reban").forEach(function(btn) {
+      btn.addEventListener("click", function() { openBanModal(this.getAttribute("data-user")); });
+    });
+  };
+
+  var openBanModal = function(username) {
+    var overlay = document.getElementById("communityBanOverlay");
+    if (!overlay) return;
+    document.getElementById("inputBanUser").value = username || "";
+    document.getElementById("inputBanReason").value = "";
+    document.getElementById("inputBanDuration").value = "1";
+    overlay.style.display = "flex";
+  };
+
+  var _confirmBan = function() {
+    var user = document.getElementById("inputBanUser").value.trim();
+    if (!user) { _showToast("缺少用户名"); return; }
+    var dur = document.getElementById("inputBanDuration").value;
+    var reason = document.getElementById("inputBanReason").value.trim();
+    var until;
+    if (dur === "forever") {
+      until = "9999-12-31T23:59:59.999Z";
+    } else {
+      var days = parseInt(dur, 10) || 1;
+      until = new Date(Date.now() + days * 86400000).toISOString();
+    }
+    JITApi.upsertCommunityBan(user, until, reason, "admin").then(function() {
+      _showToast("已禁言 " + user + (dur === "forever" ? "（永久）" : ""));
+      document.getElementById("communityBanOverlay").style.display = "none";
+      loadCommunityManage();
+    }).catch(function(e) { _showToast("操作失败: " + e.message); });
+  };
 
   var loadUrgentBlacklist = function() {
     var tbody = document.getElementById("urgentBlTable");

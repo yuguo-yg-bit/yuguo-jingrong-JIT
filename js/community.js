@@ -6,6 +6,9 @@ var JITCommunity = (function() {
   var _postType = "chat"; // chat | voucher
   var _selectedVoucher = null;
   var _myVouchersCache = null;
+  var _statusImages = [];   // 已上传图片 URL（最多3张）
+  var _statusLocation = null; // {name, lat, lng}
+  var MAX_STATUS_IMAGES = 3;
 
   var AVATAR_COLORS = [
     "linear-gradient(135deg, #42a5f5, #1e88e5)",
@@ -368,20 +371,54 @@ var JITCommunity = (function() {
 
   var _buildStatusBody = function(s) {
     var obj = _parseStatus(s.content);
-    if (obj.t === "voucher") {
-      var amount = parseFloat(obj.amount || 0);
-      return '<div class="feed-card-content voucher-card">' +
+    var html = "";
+
+    // 凭证卡（新格式 obj.voucher / 旧格式 obj 自身带 shop）
+    var vcard = null;
+    if (obj.t === "voucher") vcard = obj.voucher || (obj.shop ? obj : null);
+
+    if (vcard) {
+      var amount = parseFloat(vcard.amount || 0);
+      html += '<div class="feed-card-content voucher-card">' +
         '<div class="voucher-card-head">🧾 分享凭证</div>' +
-        '<div class="voucher-card-shop">' + _escapeHtml(obj.shop || "未知店铺") + "</div>" +
+        '<div class="voucher-card-shop">' + _escapeHtml(vcard.shop || "未知店铺") + "</div>" +
         '<div class="voucher-card-meta">' +
           (amount > 0 ? '<span class="voucher-card-amount">¥' + amount.toFixed(2) + "</span>" : "") +
-          (obj.discount ? '<span class="voucher-card-discount">' + _escapeHtml(obj.discount) + "</span>" : "") +
-          (obj.date ? '<span class="voucher-card-date">' + _escapeHtml(String(obj.date).substring(0, 10)) + "</span>" : "") +
+          (vcard.discount ? '<span class="voucher-card-discount">' + _escapeHtml(vcard.discount) + "</span>" : "") +
+          (vcard.date ? '<span class="voucher-card-date">' + _escapeHtml(String(vcard.date).substring(0, 10)) + "</span>" : "") +
         '</div>' +
-        (obj.text ? '<div class="voucher-card-text">' + _escapeHtml(obj.text) + "</div>" : "") +
       '</div>';
     }
-    return '<div class="feed-card-content">' + _escapeHtml(obj.text || "") + "</div>";
+
+    // 正文
+    if (obj.text) {
+      html += '<div class="feed-card-content">' + _escapeHtml(obj.text) + "</div>";
+    }
+
+    // 图片（自选附件）
+    if (obj.images && obj.images.length > 0) {
+      var imgs = "";
+      obj.images.forEach(function(url) {
+        if (!url) return;
+        imgs += '<img class="feed-card-img" src="' + _escapeHtml(url) + '" alt="动态图片" loading="lazy" referrerpolicy="no-referrer">';
+      });
+      if (imgs) html += '<div class="feed-card-images">' + imgs + "</div>";
+    }
+
+    // 位置（自选附件）
+    if (obj.location && obj.location.name) {
+      var locTitle = "";
+      if (obj.location.lat && obj.location.lng) {
+        locTitle = ' title="' + _escapeHtml(obj.location.lat + "," + obj.location.lng) + '"';
+      }
+      html += '<div class="feed-card-location"' + locTitle + '>📍 ' + _escapeHtml(obj.location.name) + "</div>";
+    }
+
+    // 兜底：无任何内容时显示原文
+    if (!html) {
+      html = '<div class="feed-card-content">' + _escapeHtml(obj.text || "") + "</div>";
+    }
+    return html;
   };
 
   var _formatTime = function(timeStr) {
@@ -427,7 +464,10 @@ var JITCommunity = (function() {
           var idx = parseInt(opt.getAttribute("data-idx"), 10);
           _selectedVoucher = mine[idx] || null;
           picker.querySelectorAll(".voucher-option").forEach(function(o) { o.classList.remove("active"); });
-          if (_selectedVoucher) opt.classList.add("active");
+          if (_selectedVoucher) {
+            opt.classList.add("active");
+            _updateVoucherBtnLabel();
+          }
         });
       });
     }).catch(function() {
@@ -435,30 +475,69 @@ var JITCommunity = (function() {
     });
   };
 
-  // ===== 发布状态 =====
+  // ===== 禁言判断 =====
+  var _isPermanentBan = function(until) {
+    return !!until && String(until).indexOf("9999") === 0;
+  };
+  var _isBanActive = function(until) {
+    if (!until) return false;
+    if (_isPermanentBan(until)) return true;
+    try { return new Date(until).getTime() > Date.now(); } catch (e) { return false; }
+  };
+  var _banRemainText = function(until) {
+    if (_isPermanentBan(until)) return "永久";
+    try {
+      var diff = new Date(until).getTime() - Date.now();
+      if (diff <= 0) return "已过期";
+      var days = Math.floor(diff / 86400000);
+      var hours = Math.floor((diff % 86400000) / 3600000);
+      if (days > 0) return days + "天" + hours + "小时";
+      return hours + "小时";
+    } catch (e) { return "未知"; }
+  };
+
+  // ===== 发布状态（先查禁言，再发布） =====
   var _postStatus = function() {
+    if (_isPosting) return;
+    if (!JITApi || !JITApi.getCommunityBan) { _doPostStatus(); return; }
+    JITApi.getCommunityBan(_currentUser).then(function(ban) {
+      if (ban && _isBanActive(ban.banned_until)) {
+        var reasonTxt = ban.reason ? "（原因：" + ban.reason + "）" : "";
+        _showToast("你已被禁言 " + _banRemainText(ban.banned_until) + "，无法发布动态" + reasonTxt, "error");
+        return;
+      }
+      _doPostStatus();
+    }).catch(function() { _doPostStatus(); });
+  };
+
+  var _doPostStatus = function() {
     if (_isPosting) return;
     var textarea = document.getElementById("statusTextarea");
     if (!textarea) return;
 
-    var content = "";
-    if (_postType === "voucher") {
-      if (!_selectedVoucher) { _showToast("请选择要分享的凭证", "error"); return; }
-      var v = _selectedVoucher;
-      content = JSON.stringify({
-        t: "voucher",
-        shop: v.shopName || "",
-        amount: v.amount || 0,
-        discount: v.discount || "",
-        date: v.date || "",
-        text: textarea.value.trim()
-      });
-    } else {
-      content = textarea.value.trim();
-      if (!content) { _showToast("请输入内容", "error"); return; }
-      if (content.length > 500) { _showToast("内容不能超过500字", "error"); return; }
-      content = JSON.stringify({ t: "chat", text: content });
+    var text = textarea.value.trim();
+    if (!text && _statusImages.length === 0 && !_selectedVoucher) {
+      _showToast("请输入内容或添加图片/凭证", "error");
+      return;
     }
+    if (text.length > 500) { _showToast("内容不能超过500字", "error"); return; }
+
+    var payload = { t: _postType, text: text };
+    if (_statusImages.length > 0) payload.images = _statusImages.slice();
+    if (_statusLocation && _statusLocation.name) payload.location = _statusLocation;
+    if (_selectedVoucher) {
+      payload.voucher = {
+        shop: _selectedVoucher.shopName || "",
+        amount: _selectedVoucher.amount || 0,
+        discount: _selectedVoucher.discount || "",
+        date: _selectedVoucher.date || ""
+      };
+    }
+    if (_postType === "voucher" && !_selectedVoucher) {
+      _showToast("请选择要分享的凭证", "error");
+      return;
+    }
+    var content = JSON.stringify(payload);
 
     _isPosting = true;
     var btn = document.getElementById("btnPostStatus");
@@ -472,6 +551,7 @@ var JITCommunity = (function() {
     ).then(function() {
       textarea.value = "";
       document.getElementById("composerCharCount").textContent = "0/500";
+      _clearStatusAttachments();
       _selectedVoucher = null;
       _renderVoucherPicker();
       _showToast("发布成功！", "success");
@@ -482,6 +562,109 @@ var JITCommunity = (function() {
       _isPosting = false;
       if (btn) { btn.disabled = false; btn.textContent = "发布"; }
     });
+  };
+
+  // ===== 附件操作：图片 / 位置 / 凭证 =====
+  var _clearStatusAttachments = function() {
+    _statusImages = [];
+    _statusLocation = null;
+    var preview = document.getElementById("composerImagePreview");
+    if (preview) preview.innerHTML = "";
+    var locRow = document.getElementById("composerLocationRow");
+    if (locRow) { locRow.style.display = "none"; }
+    var locInput = document.getElementById("statusLocationInput");
+    if (locInput) locInput.value = "";
+    var voucherBtn = document.getElementById("btnPickVoucher");
+    if (voucherBtn) voucherBtn.textContent = "🧾 凭证";
+  };
+
+  var _renderStatusImagePreview = function() {
+    var preview = document.getElementById("composerImagePreview");
+    if (!preview) return;
+    var html = "";
+    _statusImages.forEach(function(url, idx) {
+      html += '<div class="composer-img-item">' +
+        '<img src="' + _escapeHtml(url) + '" alt="图片' + (idx + 1) + '" referrerpolicy="no-referrer">' +
+        '<span class="composer-img-remove" data-idx="' + idx + '">✕</span>' +
+      '</div>';
+    });
+    preview.innerHTML = html;
+    preview.querySelectorAll(".composer-img-remove").forEach(function(el) {
+      el.addEventListener("click", function() {
+        var idx = parseInt(el.getAttribute("data-idx"), 10);
+        _statusImages.splice(idx, 1);
+        _renderStatusImagePreview();
+      });
+    });
+  };
+
+  var _handleStatusImages = function(files) {
+    if (!files || files.length === 0) return;
+    var remain = MAX_STATUS_IMAGES - _statusImages.length;
+    if (remain <= 0) { _showToast("最多上传 " + MAX_STATUS_IMAGES + " 张图片", "error"); return; }
+    if (!JITApi || !JITApi.uploadChatImage) { _showToast("图片上传功能不可用", "error"); return; }
+    var list = Array.prototype.slice.call(files).slice(0, remain);
+    var btn = document.getElementById("btnAddImages");
+    if (btn) btn.disabled = true;
+    _showToast("图片上传中...");
+    var jobs = list.map(function(file) {
+      return JITApi.uploadChatImage(file, _currentUser).then(function(url) {
+        return url || null;
+      }).catch(function() { return null; });
+    });
+    Promise.all(jobs).then(function(urls) {
+      var added = urls.filter(function(u) { return !!u; });
+      if (added.length > 0) {
+        _statusImages = _statusImages.concat(added);
+        _renderStatusImagePreview();
+        _showToast("已添加 " + added.length + " 张图片", "success");
+      } else {
+        _showToast("图片上传失败", "error");
+      }
+    }).finally(function() {
+      if (btn) btn.disabled = false;
+    });
+  };
+
+  var _openLocationRow = function() {
+    var row = document.getElementById("composerLocationRow");
+    if (!row) return;
+    row.style.display = "flex";
+    if (_statusLocation && _statusLocation.name) {
+      document.getElementById("statusLocationInput").value = _statusLocation.name;
+    }
+  };
+
+  var _locateMe = function() {
+    if (!navigator.geolocation) { _showToast("当前浏览器不支持定位", "error"); return; }
+    var btn = document.getElementById("btnLocateMe");
+    if (btn) btn.disabled = true;
+    _showToast("正在定位...");
+    navigator.geolocation.getCurrentPosition(function(pos) {
+      var lat = pos.coords.latitude.toFixed(5);
+      var lng = pos.coords.longitude.toFixed(5);
+      var input = document.getElementById("statusLocationInput");
+      var name = (input && input.value.trim()) || "我的位置";
+      _statusLocation = { name: name + "（" + lat + "," + lng + "）", lat: lat, lng: lng };
+      if (input) input.value = _statusLocation.name;
+      _showToast("已获取定位", "success");
+      if (btn) btn.disabled = false;
+    }, function() {
+      _showToast("定位失败，请手动输入地点", "error");
+      if (btn) btn.disabled = false;
+    });
+  };
+
+  var _toggleVoucherPicker = function() {
+    var picker = document.getElementById("voucherPicker");
+    if (!picker) return;
+    var isHidden = picker.style.display === "none" || !picker.style.display;
+    if (isHidden) {
+      picker.style.display = "block";
+      _renderVoucherPicker();
+    } else {
+      picker.style.display = "none";
+    }
   };
 
   // ===== 绑定事件 =====
@@ -509,6 +692,42 @@ var JITCommunity = (function() {
     var tabVoucher = document.getElementById("tabVoucher");
     if (tabChat) tabChat.addEventListener("click", function() { _setPostType("chat"); });
     if (tabVoucher) tabVoucher.addEventListener("click", function() { _setPostType("voucher"); });
+
+    // 自选附件：图片 / 位置 / 凭证
+    var btnAddImages = document.getElementById("btnAddImages");
+    if (btnAddImages) btnAddImages.addEventListener("click", function() {
+      document.getElementById("statusImageInput").click();
+    });
+    var statusImgInput = document.getElementById("statusImageInput");
+    if (statusImgInput) statusImgInput.addEventListener("change", function() {
+      _handleStatusImages(this.files);
+      this.value = "";
+    });
+    var btnAddLocation = document.getElementById("btnAddLocation");
+    if (btnAddLocation) btnAddLocation.addEventListener("click", _openLocationRow);
+    var btnLocateMe = document.getElementById("btnLocateMe");
+    if (btnLocateMe) btnLocateMe.addEventListener("click", _locateMe);
+    var btnRemoveLocation = document.getElementById("btnRemoveLocation");
+    if (btnRemoveLocation) btnRemoveLocation.addEventListener("click", function() {
+      _statusLocation = null;
+      var row = document.getElementById("composerLocationRow");
+      if (row) row.style.display = "none";
+      var input = document.getElementById("statusLocationInput");
+      if (input) input.value = "";
+    });
+    var locInput = document.getElementById("statusLocationInput");
+    if (locInput) locInput.addEventListener("input", function() {
+      var name = this.value.trim();
+      if (name) {
+        _statusLocation = _statusLocation && _statusLocation.lat
+          ? { name: name + "（" + _statusLocation.lat + "," + _statusLocation.lng + "）", lat: _statusLocation.lat, lng: _statusLocation.lng }
+          : { name: name, lat: "", lng: "" };
+      } else {
+        _statusLocation = null;
+      }
+    });
+    var btnPickVoucher = document.getElementById("btnPickVoucher");
+    if (btnPickVoucher) btnPickVoucher.addEventListener("click", _toggleVoucherPicker);
 
     // 资料编辑
     var btnEdit = document.getElementById("btnEditProfileHeader");
@@ -581,14 +800,24 @@ var JITCommunity = (function() {
     if (tabVoucher) tabVoucher.classList.toggle("active", type === "voucher");
     if (picker) {
       if (type === "voucher") {
-        picker.style.display = "";
+        picker.style.display = "block";
         _renderVoucherPicker();
         if (textarea) textarea.placeholder = "配一句话（可选）...";
       } else {
         picker.style.display = "none";
-        _selectedVoucher = null;
         if (textarea) textarea.placeholder = "分享你的状态...";
       }
+    }
+    _updateVoucherBtnLabel();
+  };
+
+  var _updateVoucherBtnLabel = function() {
+    var voucherBtn = document.getElementById("btnPickVoucher");
+    if (!voucherBtn) return;
+    if (_selectedVoucher) {
+      voucherBtn.textContent = "🧾 已选：" + _escapeHtml(String(_selectedVoucher.shopName || "").substring(0, 10));
+    } else {
+      voucherBtn.textContent = "🧾 凭证";
     }
   };
 
@@ -1013,7 +1242,7 @@ var JITCommunity = (function() {
       _initOutfits();
       _renderWinWall();
     });
-    document.getElementById("versionWatermark").textContent = "v3.1.1";
+    document.getElementById("versionWatermark").textContent = "v3.2.0";
   };
 
   return { init: init };

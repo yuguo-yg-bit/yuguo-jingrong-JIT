@@ -836,6 +836,46 @@ var JITApi = (function() {
     );
   };
 
+  // ========== 社区监管（禁言 + 删除动态） ==========
+  var _getCommunityBans = function() {
+    return _tursoSql("SELECT * FROM community_bans ORDER BY created_at DESC", []).then(function(result) {
+      return _tursoRowsToObjects(result.columns, result.rows);
+    });
+  };
+
+  var _getCommunityBan = function(username) {
+    return _tursoSql("SELECT * FROM community_bans WHERE user_id=? ORDER BY id DESC LIMIT 1", [username]).then(function(result) {
+      var rows = _tursoRowsToObjects(result.columns, result.rows);
+      return rows.length > 0 ? rows[0] : null;
+    });
+  };
+
+  // bannedUntil：ISO 时间字符串；永久传 "9999-12-31T23:59:59.999Z"
+  var _upsertCommunityBan = function(username, bannedUntil, reason, createdBy) {
+    var now = new Date().toISOString();
+    return _tursoSql("SELECT id FROM community_bans WHERE user_id=? LIMIT 1", [username]).then(function(result) {
+      var rows = _tursoRowsToObjects(result.columns, result.rows);
+      if (rows.length === 0) {
+        return _tursoSql(
+          "INSERT INTO community_bans (user_id, banned_until, reason, created_by, created_at) VALUES (?,?,?,?,?)",
+          [username, bannedUntil, reason || "", createdBy || "admin", now]
+        );
+      }
+      return _tursoSql(
+        "UPDATE community_bans SET banned_until=?, reason=?, created_by=?, created_at=? WHERE id=?",
+        [bannedUntil, reason || "", createdBy || "admin", now, String(rows[0].id)]
+      );
+    });
+  };
+
+  var _removeCommunityBan = function(username) {
+    return _tursoSql("DELETE FROM community_bans WHERE user_id=?", [username]);
+  };
+
+  var _deleteCommunityStatus = function(statusId) {
+    return _tursoSql("DELETE FROM community_statuses WHERE id=?", [String(statusId)]);
+  };
+
   // ========== 导出 ==========
   return {
     adminLogin: _adminLogin,
@@ -892,6 +932,11 @@ var JITApi = (function() {
     oauthVerifyToken: _oauthVerifyToken,
     getCommunityStatuses: _getCommunityStatuses,
     postCommunityStatus: _postCommunityStatus,
+    getCommunityBans: _getCommunityBans,
+    getCommunityBan: _getCommunityBan,
+    upsertCommunityBan: _upsertCommunityBan,
+    removeCommunityBan: _removeCommunityBan,
+    deleteCommunityStatus: _deleteCommunityStatus,
     getTursoHelpers: _getTursoHelpers
   };
 })();

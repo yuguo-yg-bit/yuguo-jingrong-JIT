@@ -10,10 +10,10 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>玉国社区 - 个人主页</title>
-<link rel="stylesheet" href="css/style.css?v=3.1.1">
+<link rel="stylesheet" href="css/style.css?v=3.2.0">
 </head>
 <body>
-<div class="version-watermark" id="versionWatermark">v3.1.1</div>
+<div class="version-watermark" id="versionWatermark">v3.2.0</div>
 <div class="bg-grid"></div>
 <div class="bg-particles" id="bgParticles"></div>
 
@@ -161,6 +161,21 @@
       </div>
       <textarea class="composer-textarea" id="statusTextarea" placeholder="分享你的状态..." maxlength="500"></textarea>
       <div class="voucher-picker" id="voucherPicker" style="display:none;"></div>
+      <!-- 自选附件：图片 / 位置 / 凭证 -->
+      <div class="composer-attachments" id="composerAttachments">
+        <div class="composer-image-preview" id="composerImagePreview"></div>
+        <div class="composer-location-row" id="composerLocationRow" style="display:none;">
+          <input class="composer-location-input" id="statusLocationInput" maxlength="40" placeholder="输入地点名称，如：珠海市香洲区">
+          <button class="composer-loc-btn" id="btnLocateMe" type="button">📍 自动定位</button>
+          <button class="composer-loc-remove" id="btnRemoveLocation" type="button">✕</button>
+        </div>
+        <div class="composer-toolbar">
+          <button class="composer-tool-btn" id="btnAddImages" type="button">📷 图片</button>
+          <button class="composer-tool-btn" id="btnAddLocation" type="button">📍 位置</button>
+          <button class="composer-tool-btn" id="btnPickVoucher" type="button">🧾 凭证</button>
+          <input type="file" accept="image/*" multiple id="statusImageInput" style="display:none;">
+        </div>
+      </div>
       <div class="composer-actions">
         <span class="composer-char-count" id="composerCharCount">0/500</span>
         <button class="composer-submit-btn" id="btnPostStatus">发布</button>
@@ -226,10 +241,10 @@
 <!-- Toast 容器 -->
 <div class="toast-container" id="toastContainer"></div>
 
-<script src="js/config.js?v=3.1.1"></script>
-<script src="js/api.js?v=3.1.1"></script>
-<script src="js/points.js?v=3.1.1"></script>
-<script src="js/lottery.js?v=3.1.1"></script>
-<script src="js/wheel.js?v=3.1.1"></script>
-<script src="js/community.js?v=3.1.1"></script>
+<script src="js/config.js?v=3.2.0"></script>
+<script src="js/api.js?v=3.2.0"></script>
+<script src="js/points.js?v=3.2.0"></script>
+<script src="js/lottery.js?v=3.2.0"></script>
+<script src="js/wheel.js?v=3.2.0"></script>
+<script src="js/community.js?v=3.2.0"></script>
 </body></html>
