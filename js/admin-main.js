@@ -242,7 +242,7 @@ var JITAdmin = (function() {
     }
 
     var html = '<tr>';
-    html += '<td>' + (isUrgent ? '<span style="display:inline-block;font-size:10px;padding:1px 5px;margin-right:4px;border-radius:3px;background:#f44336;color:#fff;font-weight:700;animation:pulse 1.5s infinite;">⚡加急</span>' : '') + _escapeHtml((issue.userId || data.userId || data.title || issue.user.login || "—").substring(0, 15)) + '</td>';
+    html += '<td>' + (isUrgent ? '<span style="display:inline-block;font-size:10px;padding:1px 5px;margin-right:4px;border-radius:3px;background:#f44336;color:#fff;font-weight:700;animation:pulse 1.5s infinite;">⚡加急</span>' : '') + _escapeHtml((issue.userId || data.userId || data.title || (issue.user && issue.user.login) || "—").substring(0, 15)) + '</td>';
     // 店铺列：电器附小标签
     var shopCell = (issue.shopName || data.shopName || "—").substring(0, 12);
     if (isElectric) {

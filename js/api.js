@@ -491,7 +491,7 @@ var JITApi = (function() {
   // ========== 管理员端 Turso 操作 ==========
   var _getAllVoucherIssueObjects = function() {
     return _tursoSql("SELECT * FROM vouchers ORDER BY created_at DESC", []).then(function(result) {
-      return _tursoRowsToObjects(result.columns, result.rows);
+      return _tursoRowsToObjects(result.columns, result.rows).map(_voucherRowToIssue);
     });
   };
 
@@ -529,7 +529,7 @@ var JITApi = (function() {
 
   var _getAllRegistrationIssueObjects = function() {
     return _tursoSql("SELECT * FROM registrations ORDER BY created_at DESC", []).then(function(result) {
-      return _tursoRowsToObjects(result.columns, result.rows);
+      return _tursoRowsToObjects(result.columns, result.rows).map(_registrationRowToIssue);
     });
   };
 
@@ -874,6 +874,76 @@ var JITApi = (function() {
 
   var _deleteCommunityStatus = function(statusId) {
     return _tursoSql("DELETE FROM community_statuses WHERE id=?", [String(statusId)]);
+  };
+
+  // ========== 管理端兼容层：Turso 行 → GitHub Issue 结构 ==========
+  // 迁移 Turso 后管理端渲染层仍按 GitHub Issue 字段访问（issue.user.login / issue.body / issue.labels / issue.number），
+  // 此处把 Turso 结构化行映射成兼容结构，避免管理端崩溃。
+  var _voucherRowToIssue = function(r) {
+    var st = String(r.status || "");
+    var labels = [];
+    if (st.indexOf("完成") > -1) labels.push("completed");
+    else if (st.indexOf("拒绝") > -1 || st.indexOf("驳回") > -1) labels.push("rejected");
+    else if (st.indexOf("通过") > -1) labels.push("approved");
+    else if (st.indexOf("已支付") > -1 || st.toLowerCase() === "paid") labels.push("paid");
+    else labels.push("pending");
+    if (String(r.is_urgent) === "1" || r.is_urgent === 1 || r.is_urgent === true) labels.push("urgent");
+    var lines = [
+      "｜用户ID：" + (r.user_id || ""),
+      "｜店铺名称：" + (r.shop_name || ""),
+      "｜店铺照片：" + (r.shop_photo || ""),
+      "｜商品订单照片：" + (r.order_photos || ""),
+      "｜定位：" + ((r.latitude || "") + "," + (r.longitude || "")),
+      "｜金额：" + (r.amount != null ? r.amount : ""),
+      "｜支付方式：" + (r.payment_method || ""),
+      "｜备注：" + (r.remark || ""),
+      "｜签字：" + (r.signature || ""),
+      "｜创建时间：" + (r.created_at || ""),
+      "｜状态：" + st,
+      "｜中奖打折：" + (r.discount || ""),
+      "｜不通过原因：" + (r.reject_reason || ""),
+      "｜凭证类型：" + (r.order_type || ""),
+      "｜购物平台：" + (r.platform || ""),
+      "｜订单号：" + (r.order_no || "")
+    ];
+    return {
+      id: r.id,
+      number: r.id,
+      userId: r.user_id,
+      user: { login: r.user_id },
+      title: r.shop_name,
+      body: lines.join("\n"),
+      labels: labels.map(function(l) { return { name: l }; }),
+      state: st,
+      status: st,
+      isUrgent: String(r.is_urgent) === "1" || r.is_urgent === 1 || r.is_urgent === true,
+      created_at: r.created_at,
+      updated_at: r.updated_at
+    };
+  };
+
+  var _registrationRowToIssue = function(r) {
+    var lines = [
+      "｜用户名：" + (r.username || ""),
+      "｜姓名：" + (r.full_name || ""),
+      "｜出生日期：" + (r.birthdate || ""),
+      "｜国家：" + (r.country || ""),
+      "｜省份：" + (r.province || ""),
+      "｜城市：" + (r.city || ""),
+      "｜邀请人：" + (r.referrer || ""),
+      "｜审核状态：" + (r.review_status || ""),
+      "｜注册时间：" + (r.created_at || "")
+    ];
+    return {
+      id: r.id,
+      number: r.id,
+      body: lines.join("\n"),
+      _oauthProvider: r.oauth_provider || "",
+      state: r.review_status || "pending",
+      status: r.review_status || "pending",
+      created_at: r.created_at,
+      user: { login: r.username || "" }
+    };
   };
 
   // ========== 导出 ==========
