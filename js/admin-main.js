@@ -1345,11 +1345,11 @@ var JITAdmin = (function() {
     JITApi.getChatMessages(currentChatUser.userId).then(function(msgs) {
       var allComments = msgs.map(function(c) {
         return {
-          type: c.sender === "admin" ? "admin" : "user",
-          body: c.content || "",
-          image_url: c.image_url || "",
-          time: c.created_at,
-          user: c.sender
+          type: c.from === "admin" ? "admin" : "user",
+          body: c.text || "",
+          image_url: c.image || "",
+          time: c.time,
+          user: c.from
         };
       });
       if (allComments.length === 0) {
