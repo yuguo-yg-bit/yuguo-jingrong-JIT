@@ -2627,6 +2627,32 @@ var JITApp = (function() {
   var _initOutfits = function() {
     var savedTheme = localStorage.getItem("jit_theme") || "default";
     var savedFrame = localStorage.getItem("jit_avatar_frame") || "none";
+
+    // 从 Turso 加载主题/头像框（可能比 localStorage 新）
+    if (_currentUser) {
+      JITApi.getUserLevel(_currentUser).then(function(levelData) {
+        if (levelData) {
+          if (levelData.theme && levelData.theme !== "default") {
+            savedTheme = levelData.theme;
+            localStorage.setItem("jit_theme", levelData.theme);
+          }
+          if (levelData.avatarFrame && levelData.avatarFrame !== "none") {
+            savedFrame = levelData.avatarFrame;
+            localStorage.setItem("jit_avatar_frame", levelData.avatarFrame);
+          }
+          if (levelData.avatar) {
+            localStorage.setItem("jit_avatar_" + _currentUser, levelData.avatar);
+          }
+        }
+      }).catch(function() {}).finally(function() {
+        _applyOutfitsAfterLoad(savedTheme, savedFrame);
+      });
+    } else {
+      _applyOutfitsAfterLoad(savedTheme, savedFrame);
+    }
+  };
+
+  var _applyOutfitsAfterLoad = function(savedTheme, savedFrame) {
     // 不自动解锁：没买过就退回默认
     if (savedTheme !== "default" && !_isOutfitUnlocked("theme", savedTheme)) {
       savedTheme = "default";
@@ -2716,6 +2742,10 @@ var JITApp = (function() {
       body.classList.add("theme-" + theme);
     }
     localStorage.setItem("jit_theme", theme || "default");
+    // 同步到 Turso
+    if (_currentUser) {
+      JITApi.updateUserLevel(_currentUser, { theme: theme || "default" }).catch(function() {});
+    }
     _refreshThemePickerUI();
   };
 
@@ -2760,6 +2790,10 @@ var JITApp = (function() {
       }
     }
     localStorage.setItem("jit_avatar_frame", frame || "none");
+    // 同步到 Turso
+    if (_currentUser) {
+      JITApi.updateUserLevel(_currentUser, { avatarFrame: frame || "none" }).catch(function() {});
+    }
     _refreshFramePickerUI();
   };
 

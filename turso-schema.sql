@@ -203,6 +203,8 @@ CREATE TABLE IF NOT EXISTS user_levels (
   last_upload TEXT DEFAULT '',
   badges TEXT DEFAULT '[]',
   avatar TEXT DEFAULT '',
+  avatar_frame TEXT DEFAULT 'none',
+  theme TEXT DEFAULT 'default',
   nickname TEXT DEFAULT '',
   real_name TEXT DEFAULT '',
   updated_at TEXT DEFAULT ''
@@ -280,7 +282,11 @@ CREATE INDEX IF NOT EXISTS idx_user_monthly_user ON user_monthly_rewards(user_id
 -- ============================================================
 -- v2.0 OAuth 大平台登录（GitHub / Microsoft / Apple / Email）
 -- ============================================================
+ALTER TABLE users ADD COLUMN frozen INTEGER DEFAULT 0;
 ALTER TABLE users ADD COLUMN oauth_provider TEXT DEFAULT '';
+
+ALTER TABLE user_levels ADD COLUMN theme TEXT DEFAULT 'default';
+ALTER TABLE user_levels ADD COLUMN avatar_frame TEXT DEFAULT 'none';
 ALTER TABLE users ADD COLUMN oauth_id TEXT DEFAULT '';
 ALTER TABLE registrations ADD COLUMN oauth_provider TEXT DEFAULT '';
 ALTER TABLE registrations ADD COLUMN oauth_id TEXT DEFAULT '';

@@ -383,6 +383,9 @@ var JITPoints = (function() {
     adminAddPoints: function(username, delta, reason) {
       return _changePoints(username, delta, reason, { forceAdmin: true });
     },
+    adminAdjust: function(username, delta, reason) {
+      return _changePoints(username, delta, reason, { forceAdmin: true });
+    },
     setFrozen: _setFrozen,
     resetPoints: _resetPoints
   };

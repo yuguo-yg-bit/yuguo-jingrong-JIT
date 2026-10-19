@@ -516,6 +516,48 @@ var JITApi = (function() {
     });
   };
 
+  // ========== 头像上传（GitHub 代理） ==========
+  var _uploadAvatar = function(base64DataUrl) {
+    if (!base64DataUrl) return Promise.resolve("");
+    var parts = base64DataUrl.split(",");
+    var base64Content = parts.length > 1 ? parts[1] : parts[0];
+    return _tursoCall("/upload-image", {
+      base64Data: base64Content,
+      folder: "avatars"
+    }).then(function(result) {
+      return result.url || "";
+    }).catch(function(err) {
+      console.warn("头像上传 GitHub 失败:", err.message);
+      return "";
+    });
+  };
+
+  // ========== 单用户等级查询 ==========
+  var _getUserLevel = function(userId) {
+    return _tursoSql("SELECT * FROM user_levels WHERE user_id=? LIMIT 1", [userId]).then(function(result) {
+      var objs = _tursoRowsToObjects(result.columns, result.rows);
+      if (objs.length === 0) return null;
+      var r = objs[0];
+      return {
+        userId: r.user_id || userId,
+        level: parseInt(r.level || 0, 10),
+        exp: parseInt(r.exp || 0, 10),
+        streak: parseInt(r.streak_days || 0, 10),
+        totalVouchers: parseInt(r.total_vouchers || 0, 10),
+        basicTickets: parseInt(r.basic_tickets || 0, 10),
+        rareTickets: parseInt(r.rare_tickets || 0, 10),
+        lastLogin: r.last_login || "",
+        lastUpload: r.last_upload || "",
+        badges: (function() { try { return JSON.parse(r.badges || "[]"); } catch(e) { return []; } })(),
+        avatar: r.avatar || "",
+        theme: r.theme || "default",
+        avatarFrame: r.avatar_frame || "none",
+        nickname: r.nickname || "",
+        realName: r.real_name || ""
+      };
+    });
+  };
+
   // ========== 管理员端 Turso 操作 ==========
   var _getAllVoucherIssueObjects = function() {
     // 排除【积分】【注册申请】【注册用户】等系统占位行
@@ -810,6 +852,34 @@ var JITApi = (function() {
     console.warn("OAuth 迁移跳过（可能已执行过）:", err.message);
   });
 
+  // ===== 积分迁移（确保 users 表有 frozen 列，user_levels 有 theme/avatar_frame） =====
+  var _runPointsMigration = function() {
+    var chain = Promise.resolve();
+    chain = chain.then(function() {
+      return _tursoCall("/sql", { sql: "ALTER TABLE users ADD COLUMN frozen INTEGER DEFAULT 0", params: [] }).catch(function(err) {
+        if (err.message && err.message.indexOf("duplicate column") > -1) return;
+        console.warn("frozen 列迁移跳过:", err.message);
+      });
+    });
+    chain = chain.then(function() {
+      return _tursoCall("/sql", { sql: "ALTER TABLE user_levels ADD COLUMN theme TEXT DEFAULT 'default'", params: [] }).catch(function(err) {
+        if (err.message && err.message.indexOf("duplicate column") > -1) return;
+        console.warn("theme 列迁移跳过:", err.message);
+      });
+    });
+    chain = chain.then(function() {
+      return _tursoCall("/sql", { sql: "ALTER TABLE user_levels ADD COLUMN avatar_frame TEXT DEFAULT 'none'", params: [] }).catch(function(err) {
+        if (err.message && err.message.indexOf("duplicate column") > -1) return;
+        console.warn("avatar_frame 列迁移跳过:", err.message);
+      });
+    });
+    return chain;
+  };
+
+  _runPointsMigration().catch(function(err) {
+    console.warn("积分迁移跳过（可能已执行过）:", err.message);
+  });
+
   // ========== 加急黑名单（Turso） ==========
   var _addToUrgentBlacklistTurso = function(username, reason, until, operator) {
     var now = new Date().toISOString();
@@ -1003,6 +1073,8 @@ var JITApi = (function() {
           lastUpload: r.last_upload || "",
           badges: (function() { try { return JSON.parse(r.badges || "[]"); } catch(e) { return []; } })(),
           avatar: r.avatar || "",
+          theme: r.theme || "default",
+          avatarFrame: r.avatar_frame || "none",
           nickname: r.nickname || "",
           realName: r.real_name || ""
         };
@@ -1014,8 +1086,8 @@ var JITApi = (function() {
   var _updateUserLevel = function(userId, data) {
     var now = new Date().toISOString();
     return _tursoSql(
-      "INSERT OR REPLACE INTO user_levels (user_id, level, exp, streak_days, total_vouchers, basic_tickets, rare_tickets, last_login, last_upload, badges, avatar, nickname, real_name, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-      [userId, data.level||0, data.exp||0, data.streak||0, data.totalVouchers||0, data.basicTickets||0, data.rareTickets||0, data.lastLogin||"", data.lastUpload||"", JSON.stringify(data.badges||[]), data.avatar||"", data.nickname||"", data.realName||"", now]
+      "INSERT OR REPLACE INTO user_levels (user_id, level, exp, streak_days, total_vouchers, basic_tickets, rare_tickets, last_login, last_upload, badges, avatar, theme, avatar_frame, nickname, real_name, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      [userId, data.level||0, data.exp||0, data.streak||0, data.totalVouchers||0, data.basicTickets||0, data.rareTickets||0, data.lastLogin||"", data.lastUpload||"", JSON.stringify(data.badges||[]), data.avatar||"", data.theme||"default", data.avatarFrame||"none", data.nickname||"", data.realName||"", now]
     );
   };
 
@@ -1318,6 +1390,8 @@ var JITApi = (function() {
     getVoucherUsers: _getVoucherUsers,
     markChatRead: _markChatRead,
     uploadChatImage: _uploadChatImage,
+    uploadAvatar: _uploadAvatar,
+    uploadImageToProxy: _uploadImageToProxy,
     markVoucherCompleted: _markVoucherCompleted,
     markVoucherPaid: _markVoucherPaid,
     registerUser: _submitRegistrationRequest,
@@ -1364,6 +1438,7 @@ var JITApi = (function() {
     getTursoHelpers: _getTursoHelpers,
     // localStorage → Turso 迁移
     getUserLevels: _getUserLevels,
+    getUserLevel: _getUserLevel,
     updateUserLevel: _updateUserLevel,
     incrementUserLevelField: _incrementUserLevelField,
     getUserTickets: _getUserTickets,

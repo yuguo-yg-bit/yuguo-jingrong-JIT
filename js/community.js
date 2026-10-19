@@ -241,6 +241,13 @@ var JITCommunity = (function() {
       _refreshUserCenterUI();
       _closeEditProfile();
       _showToast("头像更新成功", "success");
+      // 上传到 GitHub 并同步到 Turso
+      JITApi.uploadAvatar(dataUrl).then(function(url) {
+        if (url) {
+          localStorage.setItem("jit_avatar_" + _currentUser, url);
+          return JITApi.updateUserLevel(_currentUser, { avatar: url });
+        }
+      }).catch(function() {});
     };
     reader.readAsDataURL(file);
   };
@@ -1099,6 +1106,13 @@ var JITCommunity = (function() {
       if (ac) ac.innerHTML = '<img src="' + dataUrl + '" alt="avatar">';
       _renderProfileHeader();
       _showToast("头像更新成功", "success");
+      // 上传到 GitHub 并同步到 Turso
+      JITApi.uploadAvatar(dataUrl).then(function(url) {
+        if (url) {
+          localStorage.setItem("jit_avatar_" + _currentUser, url);
+          return JITApi.updateUserLevel(_currentUser, { avatar: url });
+        }
+      }).catch(function() {});
     };
     reader.readAsDataURL(file);
   };
@@ -1164,6 +1178,10 @@ var JITCommunity = (function() {
     var pa = document.getElementById("profileAvatar");
     if (pa) { pa.classList.remove("frame-gold", "frame-diamond", "frame-ruby", "frame-rainbow"); if (frame && frame !== "none") pa.classList.add("frame-" + frame); }
     localStorage.setItem("jit_avatar_frame", frame || "none");
+    // 同步到 Turso
+    if (_currentUser) {
+      JITApi.updateUserLevel(_currentUser, { avatarFrame: frame || "none" }).catch(function() {});
+    }
     _refreshFramePickerUI();
   };
 
