@@ -461,7 +461,7 @@ var JITApi = (function() {
 
   var _getAllChatUsers = function() {
     return _tursoSql(
-      "SELECT DISTINCT user_id FROM chat_messages ORDER BY (SELECT MAX(created_at) FROM chat_messages AS cm2 WHERE cm2.user_id=cm1.user_id) DESC",
+      "SELECT user_id, MAX(created_at) AS last_at FROM chat_messages GROUP BY user_id ORDER BY last_at DESC",
       []
     ).then(function(result) {
       var objs = _tursoRowsToObjects(result.columns, result.rows);
@@ -490,7 +490,8 @@ var JITApi = (function() {
 
   // ========== 管理员端 Turso 操作 ==========
   var _getAllVoucherIssueObjects = function() {
-    return _tursoSql("SELECT * FROM vouchers ORDER BY created_at DESC", []).then(function(result) {
+    // 排除【积分】【注册申请】【注册用户】等系统占位行
+    return _tursoSql("SELECT * FROM vouchers WHERE user_id NOT LIKE '【%】%' AND shop_name NOT LIKE '【%】%' ORDER BY created_at DESC", []).then(function(result) {
       return _tursoRowsToObjects(result.columns, result.rows).map(_voucherRowToIssue);
     });
   };
@@ -534,13 +535,11 @@ var JITApi = (function() {
   };
 
   var _approveRegistrationTurso = function(regId) {
-    var now = new Date().toISOString();
-    return _tursoSql("UPDATE registrations SET review_status='approved', updated_at=? WHERE id=?", [now, String(regId)]);
+    return _tursoSql("UPDATE registrations SET review_status='approved' WHERE id=?", [String(regId)]);
   };
 
   var _rejectRegistrationTurso = function(regId) {
-    var now = new Date().toISOString();
-    return _tursoSql("UPDATE registrations SET review_status='rejected', updated_at=? WHERE id=?", [now, String(regId)]);
+    return _tursoSql("UPDATE registrations SET review_status='rejected' WHERE id=?", [String(regId)]);
   };
 
   // ========== 注册系统（Turso） ==========

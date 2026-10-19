@@ -1242,7 +1242,7 @@ var JITCommunity = (function() {
       _initOutfits();
       _renderWinWall();
     });
-    document.getElementById("versionWatermark").textContent = "v3.2.1";
+    document.getElementById("versionWatermark").textContent = "v3.2.2";
   };
 
   return { init: init };
