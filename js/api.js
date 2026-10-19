@@ -575,15 +575,12 @@ var JITApi = (function() {
       var fullName = data.fullName || "";
       var password = data.password || "";
       var referrer = data.referrer || "";
+      var regId = "reg_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
       return _tursoSql(
-        "INSERT INTO registrations (username, full_name, password, referrer, review_status, created_at, updated_at) VALUES (?,?,?,?,'pending',?,?)",
-        [username, fullName, password, referrer, now, now]
+        "INSERT INTO registrations (id, username, password_hash, full_name, referrer, review_status, created_at) VALUES (?,?,?,?,?,'pending',?)",
+        [regId, username, password, fullName, referrer, now]
       ).then(function() {
-        return _tursoSql("SELECT last_insert_rowid() AS id", []);
-      }).then(function(result) {
-        var objs = _tursoRowsToObjects(result.columns, result.rows);
-        var newId = objs.length > 0 ? String(objs[0].id) : "";
-        return { number: newId, html_url: "#" };
+        return { number: regId, html_url: "#" };
       });
     });
   };
@@ -605,7 +602,7 @@ var JITApi = (function() {
   var _verifyRegisteredUser = function(username, password) {
     return _findRegisteredUser(username).then(function(result) {
       if (!result) return { valid: false, reason: "not_found" };
-      if (result.password !== password) return { valid: false, reason: "wrong_password" };
+      if (result.password_hash !== password) return { valid: false, reason: "wrong_password" };
       return { valid: true, user: result, fullName: result.full_name || result.username || "" };
     });
   };
