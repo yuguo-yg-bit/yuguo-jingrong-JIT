@@ -5,6 +5,7 @@ var JITCommunity = (function() {
   var _TURSO = null;
   var _postType = "chat"; // chat | voucher
   var _selectedVoucher = null;
+  var _myVouchersCache = null;
 
   var AVATAR_COLORS = [
     "linear-gradient(135deg, #42a5f5, #1e88e5)",
@@ -94,8 +95,7 @@ var JITCommunity = (function() {
   var _getBadges = function() {
     var levelData = _getUserLevel(_currentUser);
     var badges = [];
-    var vouchers = [];
-    try { vouchers = JSON.parse(localStorage.getItem("jit_current_data") || "[]"); } catch (e) {}
+    var vouchers = _getLocalVouchers();
     var records = [];
     try { records = JSON.parse(localStorage.getItem("jit_slot_records") || "[]"); } catch (e) {}
     var myRecords = records.filter(function(r) { return r.username === _currentUser; });
@@ -273,7 +273,7 @@ var JITCommunity = (function() {
     if (feed) feed.innerHTML = '<div class="feed-loading">加载动态中...</div>';
 
     return _TURSO("SELECT * FROM community_statuses ORDER BY created_at DESC LIMIT 200", []).then(function(result) {
-      var rows = _TURSO.rowsToObjects(result);
+      var rows = _TURSO.rowsToObjects(result.columns, result.rows);
       _statuses = rows.map(function(r) {
         return {
           username: r.username || "",
@@ -399,36 +399,39 @@ var JITCommunity = (function() {
     }
   };
 
-  // ===== 凭证选择器 =====
+  // ===== 凭证选择器（从 Turso 读取真实凭证） =====
   var _renderVoucherPicker = function() {
     var picker = document.getElementById("voucherPicker");
     if (!picker) return;
-    var vouchers = [];
-    try { vouchers = JSON.parse(localStorage.getItem("jit_current_data") || "[]"); } catch (e) {}
-    var mine = vouchers.filter(function(v) {
-      return v.user === _currentUser && v.shopName && v.shopName !== "【聊天专用】" && v.paymentMethod !== "chat";
-    });
-    if (mine.length === 0) {
-      picker.innerHTML = '<div class="voucher-picker-empty">暂无凭证可分享，先去工作台上传凭证吧</div>';
-      return;
-    }
-    var html = "";
-    mine.slice(0, 20).forEach(function(v, idx) {
-      var amount = parseFloat(v.amount || 0);
-      html += '<div class="voucher-option" data-idx="' + idx + '">' +
-        '<span class="voucher-opt-shop">' + _escapeHtml(v.shopName) + "</span>" +
-        (amount > 0 ? '<span class="voucher-opt-amount">¥' + amount.toFixed(2) + "</span>" : "") +
-        (v.discount ? '<span class="voucher-opt-discount">' + _escapeHtml(v.discount) + "</span>" : "") +
-      '</div>';
-    });
-    picker.innerHTML = html;
-    picker.querySelectorAll(".voucher-option").forEach(function(opt) {
-      opt.addEventListener("click", function() {
-        var idx = parseInt(opt.getAttribute("data-idx"), 10);
-        _selectedVoucher = mine[idx] || null;
-        picker.querySelectorAll(".voucher-option").forEach(function(o) { o.classList.remove("active"); });
-        if (_selectedVoucher) opt.classList.add("active");
+    picker.innerHTML = '<div class="voucher-picker-empty">加载凭证中...</div>';
+    JITApi.getVouchers(_currentUser).then(function(vouchers) {
+      var mine = (vouchers || []).filter(function(v) {
+        return v.shopName && v.shopName !== "【聊天专用】" && v.paymentMethod !== "chat";
       });
+      if (mine.length === 0) {
+        picker.innerHTML = '<div class="voucher-picker-empty">暂无凭证可分享，先去工作台上传凭证吧</div>';
+        return;
+      }
+      var html = "";
+      mine.slice(0, 20).forEach(function(v, idx) {
+        var amount = parseFloat(v.amount || 0);
+        html += '<div class="voucher-option" data-idx="' + idx + '">' +
+          '<span class="voucher-opt-shop">' + _escapeHtml(v.shopName) + "</span>" +
+          (amount > 0 ? '<span class="voucher-opt-amount">¥' + amount.toFixed(2) + "</span>" : "") +
+          (v.discount ? '<span class="voucher-opt-discount">' + _escapeHtml(v.discount) + "</span>" : "") +
+        '</div>';
+      });
+      picker.innerHTML = html;
+      picker.querySelectorAll(".voucher-option").forEach(function(opt) {
+        opt.addEventListener("click", function() {
+          var idx = parseInt(opt.getAttribute("data-idx"), 10);
+          _selectedVoucher = mine[idx] || null;
+          picker.querySelectorAll(".voucher-option").forEach(function(o) { o.classList.remove("active"); });
+          if (_selectedVoucher) opt.classList.add("active");
+        });
+      });
+    }).catch(function() {
+      picker.innerHTML = '<div class="voucher-picker-empty">凭证加载失败，请稍后重试</div>';
     });
   };
 
@@ -607,9 +610,21 @@ var JITCommunity = (function() {
     }).catch(function() { return 0; });
   };
 
-  // ===== 获取本地凭证列表 =====
+  // ===== 从 Turso 加载我的凭证（缓存，供徽章/任务/统计使用） =====
+  var _loadMyVouchers = function() {
+    if (!_currentUser || !JITApi || !JITApi.getVouchers) return Promise.resolve([]);
+    return JITApi.getVouchers(_currentUser).then(function(vouchers) {
+      _myVouchersCache = Array.isArray(vouchers) ? vouchers : [];
+      return _myVouchersCache;
+    }).catch(function() {
+      _myVouchersCache = [];
+      return _myVouchersCache;
+    });
+  };
+
+  // ===== 获取我的凭证列表（同步读取缓存） =====
   var _getLocalVouchers = function() {
-    try { return JSON.parse(localStorage.getItem("jit_current_data") || "[]"); } catch(e) { return []; }
+    return _myVouchersCache || [];
   };
 
   // ===== 徽章配置 =====
@@ -989,14 +1004,16 @@ var JITCommunity = (function() {
     }
 
     _initParticles();
-    _renderProfileHeader();
-    _refreshUserCenterUI();
-    _bindEvents();
-    _loadStatuses();
-    _refreshLocalPoints();
-    _initOutfits();
-    _renderWinWall();
-    document.getElementById("versionWatermark").textContent = "v3.1.0";
+    _loadMyVouchers().then(function() {
+      _renderProfileHeader();
+      _refreshUserCenterUI();
+      _bindEvents();
+      _loadStatuses();
+      _refreshLocalPoints();
+      _initOutfits();
+      _renderWinWall();
+    });
+    document.getElementById("versionWatermark").textContent = "v3.1.1";
   };
 
   return { init: init };
