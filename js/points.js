@@ -1,8 +1,8 @@
 // ============================================================
 // 积分系统核心模块 JITPoints
 // 存储方案（Turso）：
-//   - points_accounts 表：用户名、积分、签到记录、冻结状态
-//   - points_logs 表：积分流水（delta, reason, time）
+//   - users 表：积分、签到记录、冻结状态（复用 users.id 作为 username）
+//   - points_records 表：积分流水（delta, reason, created_at）
 //   - 通过 _tursoCall/_tursoSql 代理调用 Turso 数据库
 //   - localStorage 做缓存：jit_points_{username}
 // ============================================================
@@ -31,6 +31,21 @@ var JITPoints = (function() {
     return h(sql, params);
   };
 
+  var _tursoObjects = function(sql, params) {
+    return _turso(sql, params).then(function(result) {
+      var columns = result.columns || [];
+      var rows = result.rows || [];
+      var objs = rows.map(function(row) {
+        var obj = {};
+        columns.forEach(function(col, i) {
+          obj[col] = row[i] !== undefined ? row[i] : "";
+        });
+        return obj;
+      });
+      return objs;
+    });
+  };
+
   var _todayStr = function() {
     return new Date().toISOString().split("T")[0];
   };
@@ -55,18 +70,17 @@ var JITPoints = (function() {
 
   // ------- 确保账户存在 -------
   var _ensureAccount = function(username) {
-    return _turso(
-      "SELECT id, username, points, sign_ins, last_sign_in, streak_days, frozen FROM points_accounts WHERE username = ?",
+    return _tursoObjects(
+      "SELECT id, points, sign_ins, last_sign_in, streak_days, frozen FROM users WHERE id = ?",
       [username]
-    ).then(function(result) {
-      var rows = result.rows || [];
+    ).then(function(rows) {
       if (rows.length > 0) return rows[0];
       var now = new Date().toISOString();
       return _turso(
-        "INSERT INTO points_accounts (username, points, sign_ins, last_sign_in, streak_days, frozen, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
-        [username, 0, "[]", "", 0, 0, now, now]
+        "INSERT INTO users (id, password_hash, points, sign_ins, last_sign_in, streak_days, frozen, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+        [username, "", 0, "[]", "", 0, 0, now, now]
       ).then(function() {
-        return { id: 0, username: username, points: 0, sign_ins: "[]", last_sign_in: "", streak_days: 0, frozen: 0 };
+        return { id: username, points: 0, sign_ins: "[]", last_sign_in: "", streak_days: 0, frozen: 0 };
       });
     });
   };
@@ -81,11 +95,11 @@ var JITPoints = (function() {
   // ------- 获取积分流水 -------
   var _getLogs = function(username, limit) {
     limit = limit || 100;
-    return _turso(
-      "SELECT delta, reason, created_at FROM points_logs WHERE username = ? ORDER BY created_at DESC LIMIT ?",
+    return _tursoObjects(
+      "SELECT delta, reason, created_at FROM points_records WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
       [username, String(limit)]
-    ).then(function(result) {
-      return (result.rows || []).map(function(r) {
+    ).then(function(rows) {
+      return rows.map(function(r) {
         return {
           delta: r.delta || 0,
           reason: r.reason || "",
@@ -97,11 +111,11 @@ var JITPoints = (function() {
   };
 
   var _getAllLogs = function(username) {
-    return _turso(
-      "SELECT delta, reason, created_at FROM points_logs WHERE username = ? ORDER BY created_at DESC",
+    return _tursoObjects(
+      "SELECT delta, reason, created_at FROM points_records WHERE user_id = ? ORDER BY created_at DESC",
       [username]
-    ).then(function(result) {
-      return (result.rows || []).map(function(r) {
+    ).then(function(rows) {
+      return rows.map(function(r) {
         return {
           delta: r.delta || 0,
           reason: r.reason || "",
@@ -115,9 +129,10 @@ var JITPoints = (function() {
   // ------- 添加积分流水 -------
   var _addLog = function(username, delta, reason) {
     var now = new Date().toISOString();
+    var logId = "plog_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     return _turso(
-      "INSERT INTO points_logs (username, delta, reason, created_at) VALUES (?,?,?,?)",
-      [username, delta, reason, now]
+      "INSERT INTO points_records (id, user_id, delta, reason, created_at) VALUES (?,?,?,?,?)",
+      [logId, username, delta, reason, now]
     );
   };
 
@@ -156,7 +171,7 @@ var JITPoints = (function() {
       var newPoints = (account.points || 0) + delta;
       var now = new Date().toISOString();
       return _turso(
-        "UPDATE points_accounts SET points = ?, updated_at = ? WHERE username = ?",
+        "UPDATE users SET points = ?, updated_at = ? WHERE id = ?",
         [newPoints, now, username]
       ).then(function() {
         return _addLog(username, delta, reason).then(function() {
@@ -203,7 +218,7 @@ var JITPoints = (function() {
 
       var now = new Date().toISOString();
       return _turso(
-        "UPDATE points_accounts SET sign_ins = ?, last_sign_in = ?, streak_days = ?, updated_at = ? WHERE username = ?",
+        "UPDATE users SET sign_ins = ?, last_sign_in = ?, streak_days = ?, updated_at = ? WHERE id = ?",
         [JSON.stringify(signIns), today, streak, now, username]
       ).then(function() {
         var result = { signedIn: true, streakDays: streak, bonusGranted: false, bonusPoints: 0 };
@@ -276,14 +291,13 @@ var JITPoints = (function() {
 
   // ------- 管理员：获取所有用户积分 -------
   var _getAllUsersPoints = function() {
-    return _turso(
-      "SELECT username, points, sign_ins, last_sign_in, streak_days, frozen FROM points_accounts"
-    ).then(function(result) {
-      var rows = result.rows || [];
+    return _tursoObjects(
+      "SELECT id, points, sign_ins, last_sign_in, streak_days, frozen FROM users"
+    ).then(function(rows) {
       var promises = rows.map(function(account) {
-        return _getLogs(account.username, 20).then(function(logs) {
+        return _getLogs(account.id, 20).then(function(logs) {
           return {
-            username: account.username,
+            username: account.id,
             points: account.points || 0,
             streakDays: account.streak_days || 0,
             lastSignIn: account.last_sign_in || "",
@@ -309,7 +323,7 @@ var JITPoints = (function() {
     var now = new Date().toISOString();
     return _ensureAccount(username).then(function() {
       return _turso(
-        "UPDATE points_accounts SET frozen = ?, updated_at = ? WHERE username = ?",
+        "UPDATE users SET frozen = ?, updated_at = ? WHERE id = ?",
         [val, now, username]
       ).then(function() {
         var cached = _loadLocal(username);
@@ -330,7 +344,7 @@ var JITPoints = (function() {
       var now = new Date().toISOString();
       return _addLog(username, -currentPts, "管理员清零积分").then(function() {
         return _turso(
-          "UPDATE points_accounts SET points = 0, updated_at = ? WHERE username = ?",
+          "UPDATE users SET points = 0, updated_at = ? WHERE id = ?",
           [now, username]
         ).then(function() {
           var cached = _loadLocal(username);

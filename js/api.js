@@ -507,6 +507,18 @@ var JITApi = (function() {
     return _tursoSql("DELETE FROM vouchers WHERE id=?", [String(issueNumber)]).then(function() { _invalidateCache("allVouchers"); });
   };
 
+  var _updateVoucherWithLottery = function(voucherId, voucherData) {
+    var now = new Date().toISOString();
+    return _tursoSql(
+      "UPDATE vouchers SET discount=?, final_price=?, updated_at=? WHERE id=?",
+      [voucherData.discount || "", voucherData.finalPrice || "", now, String(voucherId)]
+    ).then(function() {
+      _invalidateCache("allVouchers");
+      _invalidateCache("allVouchersForId");
+      return { number: voucherId, html_url: "#" };
+    });
+  };
+
   var _updateVoucherFields = function(issueNumber, fields) {
     var now = new Date().toISOString();
     var setClauses = [];
@@ -573,10 +585,14 @@ var JITApi = (function() {
       var fullName = data.fullName || "";
       var password = data.password || "";
       var referrer = data.referrer || "";
+      var birthdate = data.birthdate || "";
+      var country = data.country || "";
+      var province = data.province || "";
+      var city = data.city || "";
       var regId = "reg_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
       return _tursoSql(
-        "INSERT INTO registrations (id, username, password_hash, full_name, referrer, review_status, created_at) VALUES (?,?,?,?,?,'pending',?)",
-        [regId, username, password, fullName, referrer, now]
+        "INSERT INTO registrations (id, username, password_hash, full_name, birthdate, country, province, city, referrer, review_status, created_at) VALUES (?,?,?,?,?,?,?,?,?,'pending',?)",
+        [regId, username, password, fullName, birthdate, country, province, city, referrer, now]
       ).then(function() {
         return { number: regId, html_url: "#" };
       });
@@ -964,6 +980,7 @@ var JITApi = (function() {
     markVoucherCompleted: _markVoucherCompleted,
     markVoucherPaid: _markVoucherPaid,
     registerUser: _submitRegistrationRequest,
+    submitRegistrationRequest: _submitRegistrationRequest,
     findRegisteredUser: _findRegisteredUser,
     findPendingRegistration: _findPendingRegistration,
     verifyRegisteredUser: _verifyRegisteredUser,
@@ -983,6 +1000,7 @@ var JITApi = (function() {
     updateVoucherStatusTurso: _updateVoucherStatusTurso,
     deleteVoucherTurso: _deleteVoucherTurso,
     updateVoucherFields: _updateVoucherFields,
+    updateVoucherWithLottery: _updateVoucherWithLottery,
     getAllRegistrationIssueObjects: _getAllRegistrationIssueObjects,
     approveRegistrationTurso: _approveRegistrationTurso,
     rejectRegistrationTurso: _rejectRegistrationTurso,
