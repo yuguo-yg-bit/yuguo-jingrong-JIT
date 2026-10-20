@@ -36,6 +36,7 @@ Options -Indexes
   RewriteRule ^index(\.html)?$ index.html [L]
   RewriteRule ^work(\.html)?$ work.html [L]
   RewriteRule ^AdMiN_AdMiN(\.html)?$ AdMiN_AdMiN.html [L]
+  RewriteRule ^login(\.html)?$ login.html [L]
 
   # 静态资源按常规处理
   RewriteCond %{REQUEST_FILENAME} \.(css|js|png|jpg|jpeg|gif|svg|ico|json|xml|txt|woff|woff2|ttf|eot|webp|mp4|webm|wasm|map|avif)$ [NC]
