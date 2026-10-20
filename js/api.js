@@ -7,6 +7,22 @@ var JITApi = (function() {
   var _currentOperator = function() {
     try { return localStorage.getItem("jit_current_user") || "anonymous"; } catch(e) { return "anonymous"; }
   };
+  var _sessionToken = function() {
+    try { return localStorage.getItem("jit_session_token") || ""; } catch(e) { return ""; }
+  };
+  // 密码哈希（SHA-256 + 用户名盐；防数据库明文泄露）
+  var _sha256hex = function(str) {
+    try {
+      return crypto.subtle.digest("SHA-256", new TextEncoder().encode(str)).then(function(buf) {
+        return Array.from(new Uint8Array(buf)).map(function(b) { return b.toString(16).padStart(2, "0"); }).join("");
+      });
+    } catch (e) {
+      return Promise.reject(new Error("当前环境不支持哈希计算"));
+    }
+  };
+  var _hashPw = function(password, username) {
+    return _sha256hex("jit_salt_2026#" + String(username) + "#" + String(password));
+  };
   var _tursoCall = function(endpoint, body) {
     var payload = body || {};
     // 统一携带操作人（审计用）
@@ -15,7 +31,8 @@ var JITApi = (function() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Auth-Token": _tursoAuth
+        "X-Auth-Token": _tursoAuth,
+        "X-Session-Token": _sessionToken()
       },
       body: JSON.stringify(payload)
     }).then(function(resp) {
@@ -689,11 +706,14 @@ var JITApi = (function() {
       var province = data.province || "";
       var city = data.city || "";
       var regId = "reg_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-      return _tursoSql(
-        "INSERT INTO registrations (id, username, password_hash, full_name, birthdate, country, province, city, referrer, review_status, created_at) VALUES (?,?,?,?,?,?,?,?,?,'pending',?)",
-        [regId, username, password, fullName, birthdate, country, province, city, referrer, now]
-      ).then(function() {
-        return { number: regId, html_url: "#" };
+      // 密码哈希存储（不再存明文）
+      return _hashPw(password, username).then(function(hash) {
+        return _tursoSql(
+          "INSERT INTO registrations (id, username, password_hash, full_name, birthdate, country, province, city, referrer, review_status, created_at) VALUES (?,?,?,?,?,?,?,?,?,'pending',?)",
+          [regId, username, "sha256$" + hash, fullName, birthdate, country, province, city, referrer, now]
+        ).then(function() {
+          return { number: regId, html_url: "#" };
+        });
       });
     });
   };
@@ -715,8 +735,42 @@ var JITApi = (function() {
   var _verifyRegisteredUser = function(username, password) {
     return _findRegisteredUser(username).then(function(result) {
       if (!result) return { valid: false, reason: "not_found" };
-      if (result.password_hash !== password) return { valid: false, reason: "wrong_password" };
+      var stored = String(result.password_hash || "");
+      if (stored.indexOf("sha256$") === 0) {
+        // 哈希存储：比对哈希
+        return _hashPw(password, username).then(function(hash) {
+          if (stored !== "sha256$" + hash) return { valid: false, reason: "wrong_password" };
+          return { valid: true, user: result, fullName: result.full_name || result.username || "" };
+        });
+      }
+      // 旧明文数据：比对明文，成功后就地升级为哈希
+      if (stored !== password) return { valid: false, reason: "wrong_password" };
+      _hashPw(password, username).then(function(hash) {
+        return _tursoSql("UPDATE registrations SET password_hash=? WHERE username=? AND review_status='approved'", ["sha256$" + hash, username]).catch(function() {});
+      });
       return { valid: true, user: result, fullName: result.full_name || result.username || "" };
+    });
+  };
+
+  // ========== 登录（发会话 token，代理端校验） ==========
+  var _login = function(username, password) {
+    if (!username || !password) return Promise.reject(new Error("请输入用户名和密码"));
+    return _hashPw(password, username).then(function(hash) {
+      return _tursoCall("/login", {
+        username: username,
+        password: password,
+        passwordHash: "sha256$" + hash,
+        role: "user"
+      }).then(function(res) {
+        if (res.ok && res.token) {
+          try {
+            localStorage.setItem("jit_session_token", res.token);
+            localStorage.setItem("jit_session_user", res.username || username);
+            localStorage.setItem("jit_session_role", res.role || "user");
+          } catch (e) {}
+        }
+        return res;
+      });
     });
   };
 
@@ -858,6 +912,11 @@ var JITApi = (function() {
         return _tursoSql("DELETE FROM oauth_tokens WHERE token=?", [token]).then(function() { return null; });
       }
       return _tursoSql("UPDATE oauth_tokens SET last_used_at=? WHERE token=?", [new Date().toISOString(), token]).then(function() {
+        try {
+          localStorage.setItem("jit_session_token", token);
+          localStorage.setItem("jit_session_user", r.username || "");
+          localStorage.setItem("jit_session_role", "user");
+        } catch (e) {}
         return { username: r.username || "", token: token, expiresAt: expiresAt };
       });
     });
@@ -944,14 +1003,22 @@ var JITApi = (function() {
     });
   };
 
-  // ========== 管理员登录验证 ==========
+  // ========== 管理员登录验证（走会话） ==========
   var _adminLogin = function(passwordHash) {
-    return _tursoSql(
-      "SELECT id FROM users WHERE id='admin' AND password_hash=? AND is_admin=1",
-      [passwordHash]
-    ).then(function(result) {
-      var objs = _tursoRowsToObjects(result.columns, result.rows);
-      return objs.length > 0;
+    return _tursoCall("/login", {
+      username: "admin",
+      passwordHash: passwordHash,
+      role: "admin"
+    }).then(function(res) {
+      if (res.ok && res.token) {
+        try {
+          localStorage.setItem("jit_session_token", res.token);
+          localStorage.setItem("jit_session_user", "admin");
+          localStorage.setItem("jit_session_role", "admin");
+        } catch (e) {}
+        return true;
+      }
+      return false;
     }).catch(function() {
       return false;
     });
@@ -1434,6 +1501,7 @@ var JITApi = (function() {
     findRegisteredUser: _findRegisteredUser,
     findPendingRegistration: _findPendingRegistration,
     verifyRegisteredUser: _verifyRegisteredUser,
+    login: _login,
     getReferrals: _getReferrals,
     getPendingRegistrations: _getPendingRegistrations,
     approveRegistration: _approveRegistration,

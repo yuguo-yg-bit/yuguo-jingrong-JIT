@@ -598,8 +598,8 @@
       var btn = document.getElementById("btnLogin");
       btn.disabled = true;
       btn.textContent = "验证中...";
-      JITApi.verifyRegisteredUser(username, password).then(function(result) {
-        if (result) {
+      JITApi.login(username, password).then(function(res) {
+        if (res && res.ok) {
           localStorage.setItem("jit_current_user", username);
           _showToast("登录成功，欢迎 " + username, "success");
           setTimeout(function() { window.location.replace("/work"); }, 600);

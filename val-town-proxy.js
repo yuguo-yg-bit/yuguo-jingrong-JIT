@@ -61,7 +61,7 @@ export default async function (req) {
       "notifications","notification_replies","blacklist","urgent_blacklist","registrations",
       "whitelist","sys_config","test_ping","test_users","oauth_tokens","task_rewards",
       "user_levels","lottery_tickets","lottery_records","win_wall","risk_control",
-      "user_monthly_rewards","user_outfits","community_statuses","community_bans","sqlite_sequence","ledger","audit_logs"
+      "user_monthly_rewards","user_outfits","community_statuses","community_bans","sqlite_sequence","ledger","audit_logs","sessions"
     ];
     const DANGER_KEYWORDS = ["DROP","ATTACH","DETACH","VACUUM","REINDEX","TRIGGER","TRUNCATE","PRAGMA"];
 
@@ -222,12 +222,125 @@ export default async function (req) {
       }
     }
 
+    // ========== 登录（发会话 token，密码哈希校验） ==========
+    if (path === "/login" && req.method === "POST") {
+      const body = await req.json();
+      const { username, password, passwordHash, role } = body;
+      if (!username || typeof username !== "string" || username.length > 50) {
+        return jsonResponse({ error: "缺少合法 username" }, 400);
+      }
+      const isAdmin = String(role || "") === "admin";
+      const nowIso = new Date().toISOString();
+      const { ip, ua } = getClientInfo();
+
+      let valid = false;
+      let dbUser = null;
+      if (isAdmin) {
+        // admin：前端 SHA-256(盐+密码) 后比对
+        if (!passwordHash) return jsonResponse({ error: "缺少 passwordHash" }, 400);
+        const q = await execTurso("SELECT id, password_hash FROM users WHERE id='admin' AND is_admin=1", []);
+        const rows = q.data?.results?.[0]?.response?.result?.rows || q.data?.results?.[0]?.response?.results?.rows || [];
+        if (rows.length > 0 && rows[0][1]?.value === passwordHash) valid = true;
+        dbUser = { username: "admin", role: "admin" };
+      } else {
+        // 注册用户：兼容明文→就地升级为哈希（sha256$ 前缀）
+        if (!password && !passwordHash) return jsonResponse({ error: "缺少密码" }, 400);
+        const q = await execTurso("SELECT username, password_hash FROM registrations WHERE username=? AND review_status='approved' LIMIT 1", [username]);
+        const rows = q.data?.results?.[0]?.response?.result?.rows || q.data?.results?.[0]?.response?.results?.rows || [];
+        if (rows.length > 0) {
+          const stored = rows[0][1]?.value ?? "";
+          const s = String(stored);
+          if (String(passwordHash || "").indexOf("sha256$") === 0 && s === String(passwordHash)) {
+            valid = true;
+          } else if (password && s === String(password)) {
+            // 老数据明文：验证通过后就地升级为哈希
+            valid = true;
+            const hash = "sha256$" + String(passwordHash || "");
+            if (hash.length > 10) {
+              execTurso("UPDATE registrations SET password_hash=? WHERE username=? AND review_status='approved'", [hash, username]).catch(function() {});
+            }
+          }
+          dbUser = { username: username, role: "user" };
+        }
+      }
+
+      if (!valid) {
+        logAudit("LOGIN_FAILED", username, "sessions", "", "登录失败（密码错误或用户不存在）", "/login", "", "fail");
+        return jsonResponse({ error: "用户名或密码错误" }, 401);
+      }
+
+      // 生成会话（7 天有效）
+      const token = "sess_" + crypto.randomUUID ? crypto.randomUUID().replace(/-/g, "") : (Date.now().toString(36) + Math.random().toString(36).slice(2, 18));
+      const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+      await execTurso("INSERT OR REPLACE INTO sessions (token, username, role, created_at, expires_at, ip, ua) VALUES (?,?,?,?,?,?,?)",
+        [token, dbUser.username, dbUser.role, nowIso, expiresAt, ip, ua]);
+      logAudit("LOGIN_SUCCESS", dbUser.username, "sessions", token, "登录成功（" + dbUser.role + "）", "/login", "", "ok");
+      return jsonResponse({ ok: true, token, username: dbUser.username, role: dbUser.role, expiresAt });
+    }
+
+    // ========== 会话校验（写资金操作强制） ==========
+    async function requireSession() {
+      const token = (req.headers.get("x-session-token") || "").trim();
+      if (!token) return { error: "缺少登录会话，请先登录" };
+      // 1) 标准会话
+      const q = await execTurso("SELECT username, role, expires_at FROM sessions WHERE token=?", [token]);
+      const rows = q.data?.results?.[0]?.response?.result?.rows || q.data?.results?.[0]?.response?.results?.rows || [];
+      if (rows.length > 0) {
+        const username = rows[0][0]?.value ?? rows[0][0];
+        const role = rows[0][1]?.value ?? rows[0][1];
+        const exp = rows[0][2]?.value ?? rows[0][2];
+        if (exp && new Date(exp).getTime() < Date.now()) return { error: "会话已过期，请重新登录" };
+        return { username: String(username), role: String(role || "user"), token };
+      }
+      // 2) 兼容 OAuth token（oauth_tokens 未过期视为有效会话）
+      const q2 = await execTurso("SELECT username, expires_at FROM oauth_tokens WHERE token=? LIMIT 1", [token]);
+      const rows2 = q2.data?.results?.[0]?.response?.result?.rows || q2.data?.results?.[0]?.response?.results?.rows || [];
+      if (rows2.length > 0) {
+        const username = rows2[0][0]?.value ?? rows2[0][0];
+        const expMs = Number(rows2[0][1]?.value ?? rows2[0][1] ?? 0);
+        if (expMs > 0 && Date.now() >= expMs) return { error: "OAuth 会话已过期，请重新登录" };
+        return { username: String(username), role: "user", token };
+      }
+      return { error: "会话无效，请重新登录" };
+    }
+
+    // ========== 资金操作限流（60 秒内同操作人最多 15 次） ==========
+    async function rateLimitPoints(operator) {
+      try {
+        const q = await execTurso(
+          "SELECT COUNT(*) AS c FROM audit_logs WHERE action='POINTS_CHANGE' AND operator=? AND created_at > ?",
+          [operator, new Date(Date.now() - 60000).toISOString()]);
+        const rows = q.data?.results?.[0]?.response?.result?.rows || q.data?.results?.[0]?.response?.results?.rows || [];
+        const c = rows.length > 0 ? Number(rows[0][0]?.value ?? rows[0][0] ?? 0) : 0;
+        if (c >= 15) {
+          logAudit("RATE_LIMIT", operator, "", "", "60 秒内积分操作超频被限流", "/points", "", "blocked");
+          return true;
+        }
+      } catch (e) {}
+      return false;
+    }
+
     // ========== 账务入账（积分变更唯一入口，原子+幂等） ==========
     // 所有余额变动必须走这里：先落 ledger 流水（biz_no 幂等），再更新 users.points。
     // 同一 bizNo 重复提交只生效一次，防止重复扣款/加款。
     if (path === "/points" && req.method === "POST") {
       const body = await req.json();
       const { bizNo, userId, delta, reason, refId, operator } = body;
+
+      // 强制会话校验：必须登录且操作用户与会话一致（防伪冒/越权）
+      const sess = await requireSession();
+      if (sess.error) {
+        logAudit("POINTS_NO_SESSION", String(operator || "anonymous"), "users", String(userId || ""), sess.error, "/points", String(bizNo || ""), "blocked");
+        return jsonResponse({ error: sess.error }, 403);
+      }
+      if (sess.username !== userId && !(sess.role === "admin" && String(operator) === "admin")) {
+        logAudit("POINTS_SESSION_MISMATCH", sess.username, "users", String(userId || ""), "会话用户与操作用户不一致", "/points", String(bizNo || ""), "blocked");
+        return jsonResponse({ error: "会话与操作用户不一致，已拒绝" }, 403);
+      }
+      // 限流
+      if (await rateLimitPoints(sess.username)) {
+        return jsonResponse({ error: "操作过于频繁，请稍后再试" }, 429);
+      }
 
       if (!bizNo || typeof bizNo !== "string" || bizNo.length > 64) {
         return jsonResponse({ error: "缺少合法幂等单号 bizNo" }, 400);
@@ -303,7 +416,17 @@ export default async function (req) {
       if (!userId || typeof userId !== "string" || userId.length > 50) {
         return jsonResponse({ error: "缺少合法 userId" }, 400);
       }
-      if (viewer !== userId) {
+      // 强制会话校验
+      const sess = await requireSession();
+      if (sess.error) {
+        logAudit("BALANCE_NO_SESSION", String(viewer || "anonymous"), "users", userId, sess.error, "/balance", "", "blocked");
+        return jsonResponse({ error: sess.error }, 403);
+      }
+      if (sess.username !== userId && !(sess.role === "admin" && String(viewer) === "admin")) {
+        logAudit("BALANCE_QUERY_BLOCKED", sess.username, "users", userId, "越权查询他人余额被拒绝", "/balance", "", "blocked");
+        return jsonResponse({ error: "禁止查询他人余额" }, 403);
+      }
+      if (viewer !== userId && String(viewer) !== "admin") {
         logAudit("BALANCE_QUERY_BLOCKED", String(viewer || "anonymous"), "users", userId, "越权查询他人余额被拒绝", "/balance", "", "blocked");
         return jsonResponse({ error: "禁止查询他人余额" }, 403);
       }
