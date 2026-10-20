@@ -16,7 +16,7 @@ export default async function (req) {
     return {
       "Access-Control-Allow-Origin": allowed,
       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, X-Auth-Token",
+      "Access-Control-Allow-Headers": "Content-Type, X-Auth-Token, X-Session-Token",
       "Access-Control-Max-Age": "86400",
     };
   }
