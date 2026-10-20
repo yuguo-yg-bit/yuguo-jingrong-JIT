@@ -101,12 +101,7 @@ export default async function (req) {
           if (ALLOWED_TABLES.indexOf(mIdx[1].toLowerCase()) === -1) throw new Error("非法建索引表: " + mIdx[1]);
         }
       }
-      // 6) 表名白名单（SELECT/INSERT/UPDATE/DELETE）
-      const tableRefs = trimmed.match(/\b(FROM|INTO|UPDATE|JOIN)\s+([A-Za-z_0-9]+)/gi) || [];
-      for (let i = 0; i < tableRefs.length; i++) {
-        const t = tableRefs[i].split(/\s+/)[1].toLowerCase();
-        if (ALLOWED_TABLES.indexOf(t) === -1) throw new Error("非法表名: " + t);
-      }
+      // 6) 表名白名单已移除（正则提取不可靠，Keep: 危险关键字 + 多语句 + WHERE 强制等硬规则）
     }
 
     // ========== 通用：执行 Turso 请求 ==========
@@ -270,7 +265,7 @@ export default async function (req) {
       }
 
       // 生成会话（7 天有效）
-      const token = "sess_" + crypto.randomUUID ? crypto.randomUUID().replace(/-/g, "") : (Date.now().toString(36) + Math.random().toString(36).slice(2, 18));
+      const token = "sess_" + (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, "") : Date.now().toString(36) + Math.random().toString(36).slice(2, 18));
       const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
       await execTurso("INSERT OR REPLACE INTO sessions (token, username, role, created_at, expires_at, ip, ua) VALUES (?,?,?,?,?,?,?)",
         [token, dbUser.username, dbUser.role, nowIso, expiresAt, ip, ua]);
