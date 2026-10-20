@@ -55,6 +55,60 @@ export default async function (req) {
       return jsonResponse({ ok: true, time: new Date().toISOString() });
     }
 
+    // ========== SQL 安全校验层（防注入/防删库） ==========
+    const ALLOWED_TABLES = [
+      "users","vouchers","points_records","points_logs","points_accounts","chat_messages",
+      "notifications","notification_replies","blacklist","urgent_blacklist","registrations",
+      "whitelist","sys_config","test_ping","test_users","oauth_tokens","task_rewards",
+      "user_levels","lottery_tickets","lottery_records","win_wall","risk_control",
+      "user_monthly_rewards","user_outfits","community_statuses","community_bans","sqlite_sequence"
+    ];
+    const DANGER_KEYWORDS = ["DROP","ATTACH","DETACH","VACUUM","REINDEX","TRIGGER","TRUNCATE","PRAGMA"];
+
+    function assertSqlSafe(sql) {
+      if (!sql || typeof sql !== "string") throw new Error("sql 必须是字符串");
+      const trimmed = sql.trim();
+      const upper = trimmed.toUpperCase().replace(/\s+/g, " ");
+      // 1) 禁止多语句（防堆叠注入）
+      const semis = (trimmed.match(/;/g) || []).length;
+      if (semis > 1) throw new Error("禁止多语句执行");
+      if (semis === 1 && !/;$/.test(trimmed)) throw new Error("SQL 格式异常");
+      // 2) 危险关键字黑名单
+      for (let i = 0; i < DANGER_KEYWORDS.length; i++) {
+        if (new RegExp("\\b" + DANGER_KEYWORDS[i] + "\\b", "i").test(upper)) {
+          throw new Error("禁止危险语句: " + DANGER_KEYWORDS[i]);
+        }
+      }
+      // 3) ALTER 只允许 ADD COLUMN（迁移用）
+      if (/^ALTER\s+/i.test(trimmed)) {
+        if (!/^ALTER\s+TABLE\s+[A-Za-z_0-9]+\s+ADD\s+COLUMN\s+/i.test(trimmed)) {
+          throw new Error("只允许 ADD COLUMN 迁移语句");
+        }
+      }
+      // 4) UPDATE / DELETE 强制 WHERE（防全表修改/清空）
+      if (/^(UPDATE|DELETE)\s+/i.test(trimmed)) {
+        if (!/\bWHERE\b/i.test(upper)) throw new Error("UPDATE/DELETE 必须带 WHERE");
+      }
+      // 5) 建表只允许 IF NOT EXISTS 且表名白名单（防 CREATE TABLE AS 拖库）
+      if (/^CREATE\s+/i.test(trimmed)) {
+        const mTable = trimmed.match(/^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([A-Za-z_0-9]+)/i);
+        if (mTable) {
+          if (ALLOWED_TABLES.indexOf(mTable[1].toLowerCase()) === -1) throw new Error("非法建表: " + mTable[1]);
+          if (!/IF\s+NOT\s+EXISTS/i.test(upper)) throw new Error("建表必须 IF NOT EXISTS");
+        } else {
+          const mIdx = trimmed.match(/^CREATE\s+INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?[A-Za-z_0-9]+\s+ON\s+([A-Za-z_0-9]+)/i);
+          if (!mIdx) throw new Error("非法 CREATE 语句");
+          if (ALLOWED_TABLES.indexOf(mIdx[1].toLowerCase()) === -1) throw new Error("非法建索引表: " + mIdx[1]);
+        }
+      }
+      // 6) 表名白名单（SELECT/INSERT/UPDATE/DELETE）
+      const tableRefs = trimmed.match(/\b(FROM|INTO|UPDATE|JOIN)\s+([A-Za-z_0-9]+)/gi) || [];
+      for (let i = 0; i < tableRefs.length; i++) {
+        const t = tableRefs[i].split(/\s+/)[1].toLowerCase();
+        if (ALLOWED_TABLES.indexOf(t) === -1) throw new Error("非法表名: " + t);
+      }
+    }
+
     // ========== 通用：执行 Turso 请求 ==========
     async function execTurso(sql, params) {
       const tursoReq = {
@@ -97,6 +151,13 @@ export default async function (req) {
 
       if (!sql) {
         return jsonResponse({ error: "缺少 sql 参数" }, 400);
+      }
+
+      // 安全校验：危险语句 / 多语句 / 全表修改 / 非法表名一律拒绝
+      try {
+        assertSqlSafe(sql);
+      } catch (e) {
+        return jsonResponse({ error: "SQL 安全校验失败: " + e.message }, 403);
       }
 
       const { ok: tursoOk, status: tursoStatus, data } = await execTurso(sql, params);
