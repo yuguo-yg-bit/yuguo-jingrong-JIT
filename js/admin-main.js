@@ -1862,6 +1862,7 @@ var JITAdmin = (function() {
     urgentBl: function() { loadUrgentBlacklist(); },
     notifications: function() { loadNotifications(); },
     community: function() { loadCommunityManage(); },
+    audit: function() { loadAuditLogs(); },
     settings: function() { loadSettings(); },
     developer: function() { loadSystemInfo(); }
   };
@@ -2097,6 +2098,15 @@ var JITAdmin = (function() {
     if (btnRefreshCommunity) btnRefreshCommunity.addEventListener("click", function() { loadCommunityManage(); });
     var communityFilter = document.getElementById("communityFilter");
     if (communityFilter) communityFilter.addEventListener("change", _renderCommunityStatuses);
+    // 安全日志
+    var btnRefreshAudit = document.getElementById("btnRefreshAudit");
+    if (btnRefreshAudit) btnRefreshAudit.addEventListener("click", function() { loadAuditLogs(); });
+    var auditActionFilter = document.getElementById("auditActionFilter");
+    if (auditActionFilter) auditActionFilter.addEventListener("change", _renderAuditLogs);
+    var auditStatusFilter = document.getElementById("auditStatusFilter");
+    if (auditStatusFilter) auditStatusFilter.addEventListener("change", _renderAuditLogs);
+    var auditSearchInput = document.getElementById("auditSearchInput");
+    if (auditSearchInput) auditSearchInput.addEventListener("input", _renderAuditLogs);
     var btnBanClose = document.getElementById("btnBanClose");
     if (btnBanClose) btnBanClose.addEventListener("click", function() {
       document.getElementById("communityBanOverlay").style.display = "none";
@@ -2501,6 +2511,71 @@ var JITAdmin = (function() {
       var tbody = document.getElementById("communityBansTable");
       if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">加载失败: ' + _escapeHtml(e.message || "") + '</td></tr>';
     });
+  };
+
+  // ===== 安全日志 =====
+  var _auditAll = [];
+  var loadAuditLogs = function() {
+    JITApi.getTursoHelpers()("SELECT id, action, operator, target_type, target_id, detail, endpoint, ip, ua, biz_no, status, created_at FROM audit_logs ORDER BY created_at DESC LIMIT 500", [])
+      .then(function(res) {
+        var objs = (res.rows || []).map(function(row, i) {
+          var o = {};
+          (res.columns || []).forEach(function(c, j) { o[c] = row[j] !== undefined ? row[j] : ""; });
+          return o;
+        });
+        _auditAll = objs;
+        _renderAuditLogs();
+      }).catch(function(e) {
+        var tbody = document.getElementById("auditLogsTable");
+        if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="loading-cell">加载失败: ' + _escapeHtml(e.message || "") + '</td></tr>';
+      });
+  };
+
+  var _auditActionLabel = function(a) {
+    return {
+      "SQL_EXEC": "SQL 执行",
+      "SQL_BLOCKED": "危险语句拦截",
+      "SQL_ERROR": "SQL 错误",
+      "POINTS_CHANGE": "积分变动",
+      "BALANCE_QUERY": "余额查询",
+      "BALANCE_QUERY_BLOCKED": "越权查询拦截"
+    }[a] || a;
+  };
+
+  var _renderAuditLogs = function() {
+    var tbody = document.getElementById("auditLogsTable");
+    if (!tbody) return;
+    var actionF = document.getElementById("auditActionFilter") ? document.getElementById("auditActionFilter").value : "";
+    var statusF = document.getElementById("auditStatusFilter") ? document.getElementById("auditStatusFilter").value : "";
+    var kw = document.getElementById("auditSearchInput") ? document.getElementById("auditSearchInput").value.trim().toLowerCase() : "";
+    var list = _auditAll.filter(function(l) {
+      if (actionF && l.action !== actionF) return false;
+      if (statusF && l.status !== statusF) return false;
+      if (kw) {
+        var hay = ((l.operator || "") + " " + (l.target_id || "") + " " + (l.detail || "")).toLowerCase();
+        if (hay.indexOf(kw) === -1) return false;
+      }
+      return true;
+    });
+    if (!list.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="loading-cell">暂无日志</td></tr>';
+      return;
+    }
+    var html = list.map(function(l) {
+      var t = (l.created_at || "").replace("T", " ").slice(0, 19);
+      var stColor = l.status === "blocked" ? "#f44336" : (l.status === "fail" ? "#ff9800" : (l.status === "dup" ? "#9e9e9e" : "#4caf50"));
+      var opTxt = l.operator === "anonymous" ? "<span style='color:#9e9e9e;'>anonymous</span>" : _escapeHtml(l.operator || "");
+      return '<tr>' +
+        '<td style="white-space:nowrap;font-size:12px;">' + _escapeHtml(t) + '</td>' +
+        '<td><span style="font-weight:600;">' + _escapeHtml(_auditActionLabel(l.action)) + '</span></td>' +
+        '<td>' + opTxt + '</td>' +
+        '<td>' + _escapeHtml(l.target_id || "") + '</td>' +
+        '<td style="max-width:320px;word-break:break-all;font-size:12px;color:#555;">' + _escapeHtml(l.detail || "") + '</td>' +
+        '<td style="font-size:12px;">' + _escapeHtml(l.ip || "") + '</td>' +
+        '<td><span style="color:' + stColor + ';font-weight:600;">' + _escapeHtml(l.status || "") + '</span></td>' +
+        '</tr>';
+    }).join("");
+    tbody.innerHTML = html;
   };
 
   var _parseStatusText = function(content) {

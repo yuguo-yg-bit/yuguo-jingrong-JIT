@@ -150,26 +150,33 @@ var JITPoints = (function() {
     );
   };
 
-  // ------- 对外：获取用户积分 -------
+  // ------- 对外：获取用户积分（余额走 /balance 只查自己） -------
   var _getUserPoints = function(username, forceCloud) {
     var cached = _loadLocal(username);
     if (cached && !forceCloud) {
       return Promise.resolve(cached);
     }
     return _ensureAccount(username).then(function(account) {
-      return _getAllLogs(username).then(function(logs) {
-        var result = {
-          username: username,
-          points: account.points || 0,
-          streakDays: account.streak_days || 0,
-          lastSignIn: account.last_sign_in || "",
-          signIns: _parseSignIns(account.sign_ins),
-          logs: logs,
-          frozen: Number(account.frozen) === 1,
-          accountId: account.id
-        };
-        _saveLocal(username, result);
-        return result;
+      // 余额走代理 /balance（只能查自己，越权被拒+留痕）
+      var helper = (typeof JITApi !== "undefined" && JITApi.getTursoHelpers) ? JITApi.getTursoHelpers() : null;
+      var ptsP = (helper && helper.getBalance)
+        ? helper.getBalance(username).then(function(r) { return r.points; }).catch(function() { return account.points || 0; })
+        : Promise.resolve(account.points || 0);
+      return ptsP.then(function(pts) {
+        return _getAllLogs(username).then(function(logs) {
+          var result = {
+            username: username,
+            points: pts,
+            streakDays: account.streak_days || 0,
+            lastSignIn: account.last_sign_in || "",
+            signIns: _parseSignIns(account.sign_ins),
+            logs: logs,
+            frozen: Number(account.frozen) === 1,
+            accountId: account.id
+          };
+          _saveLocal(username, result);
+          return result;
+        });
       });
     });
   };

@@ -1342,7 +1342,7 @@ var JITCommunity = (function() {
       _initOutfits();
       _renderWinWall();
     });
-    document.getElementById("versionWatermark").textContent = "v3.3.5";
+    document.getElementById("versionWatermark").textContent = "v3.3.6";
   };
 
   return { init: init };

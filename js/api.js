@@ -4,14 +4,20 @@ var JITApi = (function() {
   var _tursoAuth = "Jrb@025808";
 
   // ========== Turso 代理调用 ==========
+  var _currentOperator = function() {
+    try { return localStorage.getItem("jit_current_user") || "anonymous"; } catch(e) { return "anonymous"; }
+  };
   var _tursoCall = function(endpoint, body) {
+    var payload = body || {};
+    // 统一携带操作人（审计用）
+    if (!payload.operator) payload.operator = _currentOperator();
     return fetch(_tursoProxy + endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-Auth-Token": _tursoAuth
       },
-      body: JSON.stringify(body || {})
+      body: JSON.stringify(payload)
     }).then(function(resp) {
       if (!resp.ok) {
         return resp.text().then(function(txt) {
@@ -83,6 +89,18 @@ var JITApi = (function() {
     // 账务入账：积分变更唯一写入口（代理端原子+幂等，前端只读余额）
     fn.postPoints = function(payload) {
       return _tursoCall("/points", payload);
+    };
+    // 查自己余额（代理端校验 viewer===target，越权拒绝+留痕）
+    fn.getBalance = function(username) {
+      return _tursoCall("/balance", { userId: username, viewer: _currentOperator() });
+    };
+    // 显式审计日志
+    fn.audit = function(action, detail, targetType, targetId, bizNo) {
+      return _tursoCall("/audit", {
+        action: action, operator: _currentOperator(),
+        targetType: targetType || "", targetId: targetId || "",
+        detail: detail || "", bizNo: bizNo || ""
+      }).catch(function() {});
     };
     return fn;
   };

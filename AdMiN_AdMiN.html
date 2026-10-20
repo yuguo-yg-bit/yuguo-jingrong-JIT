@@ -320,6 +320,54 @@
       </div>
     </div>
 
+    <!-- ===== 安全日志 ===== -->
+    <div class="admin-tab" id="tabAudit">
+      <div class="admin-card">
+        <div class="admin-card-header">
+          <h3>📜 安全日志</h3>
+          <p class="admin-card-desc">记录所有关键操作（SQL 执行、积分变动、余额查询、越权拦截、危险语句拦截），仅管理员可见，日志仅追加不可删除。</p>
+        </div>
+        <div class="admin-card-body">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+            <h4 style="margin:0;">操作日志</h4>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <select class="form-input" id="auditActionFilter" style="width:auto;padding:6px 10px;">
+                <option value="">全部动作</option>
+                <option value="SQL_EXEC">SQL 执行</option>
+                <option value="SQL_BLOCKED">危险语句拦截</option>
+                <option value="POINTS_CHANGE">积分变动</option>
+                <option value="BALANCE_QUERY">余额查询</option>
+                <option value="BALANCE_QUERY_BLOCKED">越权查询拦截</option>
+                <option value="SQL_ERROR">SQL 错误</option>
+              </select>
+              <select class="form-input" id="auditStatusFilter" style="width:auto;padding:6px 10px;">
+                <option value="">全部状态</option>
+                <option value="ok">正常</option>
+                <option value="blocked">已拦截</option>
+                <option value="fail">失败</option>
+                <option value="dup">重复单号</option>
+              </select>
+              <button class="btn btn-approve" id="btnRefreshAudit">🔄 刷新</button>
+            </div>
+          </div>
+          <div style="margin-bottom:12px;">
+            <input type="text" class="form-input" id="auditSearchInput" placeholder="🔍 搜索操作人或对象..." style="max-width:320px;">
+          </div>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr><th>时间</th><th>动作</th><th>操作人</th><th>对象</th><th>详情</th><th>IP</th><th>状态</th></tr>
+              </thead>
+              <tbody id="auditLogsTable">
+                <tr><td colspan="7" class="loading-cell">加载日志中...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="admin-card-desc" style="margin-top:10px;">仅显示最近 500 条；完整日志存于数据库 audit_logs 表。</p>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== 禁言设置弹窗 ===== -->
     <div class="modal-overlay" id="communityBanOverlay" style="display:none;">
       <div class="modal-container" style="max-width:460px;">
@@ -1170,10 +1218,10 @@
   }
 })();
 </script>
-<script src="js/config.js?v=3.3.5"></script>
-<script src="js/api.js?v=3.3.5"></script>
-<script src="js/points.js?v=3.3.5"></script>
-<script src="js/lottery.js?v=3.3.5"></script>
-<script src="js/admin-main.js?v=3.3.5"></script>
+<script src="js/config.js?v=3.3.6"></script>
+<script src="js/api.js?v=3.3.6"></script>
+<script src="js/points.js?v=3.3.6"></script>
+<script src="js/lottery.js?v=3.3.6"></script>
+<script src="js/admin-main.js?v=3.3.6"></script>
 </body>
 </html>

@@ -61,7 +61,7 @@ export default async function (req) {
       "notifications","notification_replies","blacklist","urgent_blacklist","registrations",
       "whitelist","sys_config","test_ping","test_users","oauth_tokens","task_rewards",
       "user_levels","lottery_tickets","lottery_records","win_wall","risk_control",
-      "user_monthly_rewards","user_outfits","community_statuses","community_bans","sqlite_sequence","ledger"
+      "user_monthly_rewards","user_outfits","community_statuses","community_bans","sqlite_sequence","ledger","audit_logs"
     ];
     const DANGER_KEYWORDS = ["DROP","ATTACH","DETACH","VACUUM","REINDEX","TRIGGER","TRUNCATE","PRAGMA"];
 
@@ -134,6 +134,31 @@ export default async function (req) {
       return { ok: tursoRes.ok, status: tursoRes.status, data, rawText };
     }
 
+    // ========== 审计日志（详细、仅追加，全部写入数据库） ==========
+    function getClientInfo() {
+      const h = req.headers || {};
+      let ip = h.get("cf-connecting-ip") || h.get("x-real-ip") || h.get("x-forwarded-for") || "";
+      if (ip.indexOf(",") > -1) ip = ip.split(",")[0].trim();
+      const ua = h.get("user-agent") || "";
+      return { ip, ua };
+    }
+
+    function logAudit(action, operator, targetType, targetId, detail, endpoint, bizNo, status) {
+      const { ip, ua } = getClientInfo();
+      const aid = "aud_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+      const now = new Date().toISOString();
+      const st = status || "ok";
+      try {
+        execTurso(
+          "INSERT INTO audit_logs (id, action, operator, target_type, target_id, detail, endpoint, ip, ua, biz_no, status, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+          [aid, String(action || "").slice(0, 60), String(operator || "anonymous").slice(0, 60),
+           String(targetType || "").slice(0, 40), String(targetId || "").slice(0, 100),
+           String(detail || "").slice(0, 500), String(endpoint || "").slice(0, 40),
+           ip, String(ua).slice(0, 200), String(bizNo || "").slice(0, 80), st, now]
+        ).catch(function() {});
+      } catch (e) {}
+    }
+
     // ========== 调试：返回原始 Turso 响应 ==========
     if (path === "/debug-sql" && req.method === "POST") {
       const body = await req.json();
@@ -148,23 +173,28 @@ export default async function (req) {
     if (path === "/sql" && req.method === "POST") {
       const body = await req.json();
       const { sql, params } = body;
+      const op = String(body.operator || "anonymous").slice(0, 60);
 
       if (!sql) {
         return jsonResponse({ error: "缺少 sql 参数" }, 400);
       }
 
-      // 安全校验：危险语句 / 多语句 / 全表修改 / 非法表名一律拒绝
+      // 安全校验：危险语句 / 多语句 / 全表修改 / 非法表名一律拒绝（拦截行为记日志）
       try {
         assertSqlSafe(sql);
       } catch (e) {
+        logAudit("SQL_BLOCKED", op, "", "", e.message, "/sql", "", "blocked");
         return jsonResponse({ error: "SQL 安全校验失败: " + e.message }, 403);
       }
 
+      const sqlKind = sql.trim().replace(/\s+/g, " ").substring(0, 100);
       const { ok: tursoOk, status: tursoStatus, data } = await execTurso(sql, params);
 
       if (!tursoOk) {
+        logAudit("SQL_ERROR", op, "", "", "HTTP " + tursoStatus + " " + sqlKind, "/sql", "", "fail");
         throw new Error(`Turso HTTP ${tursoStatus}: ${JSON.stringify(data).substring(0, 300)}`);
       }
+      logAudit("SQL_EXEC", op, "", "", sqlKind, "/sql", "", "ok");
 
       const result = data.results?.[0];
       if (!result) throw new Error("Turso 返回空结果");
@@ -262,7 +292,38 @@ export default async function (req) {
         const balRes = pResults[2]?.response?.result || pResults[2]?.response?.results || pResults[2];
         if (balRes && balRes.rows) balance = balRes.rows[0]?.[0]?.value ?? balRes.rows[0]?.[0];
       } catch (e) {}
+      logAudit("POINTS_CHANGE", op, "users", userId, (amt > 0 ? "+" : "") + amt + " 积分： " + why, "/points", bizNo, inserted ? "ok" : "dup");
       return jsonResponse({ ok: true, inserted, balance, bizNo });
+    }
+
+    // ========== 余额查询（只能查自己，越权拒绝并记日志） ==========
+    if (path === "/balance" && req.method === "POST") {
+      const body = await req.json();
+      const { userId, viewer } = body;
+      if (!userId || typeof userId !== "string" || userId.length > 50) {
+        return jsonResponse({ error: "缺少合法 userId" }, 400);
+      }
+      if (viewer !== userId) {
+        logAudit("BALANCE_QUERY_BLOCKED", String(viewer || "anonymous"), "users", userId, "越权查询他人余额被拒绝", "/balance", "", "blocked");
+        return jsonResponse({ error: "禁止查询他人余额" }, 403);
+      }
+      const q = await execTurso("SELECT COALESCE(points,0) AS p FROM users WHERE id=?", [userId]);
+      let points = null;
+      try {
+        const inner = q.data.results?.[0]?.response?.result || q.data.results?.[0]?.response?.results || q.data;
+        if (inner && inner.rows) points = inner.rows[0]?.[0]?.value ?? inner.rows[0]?.[0];
+      } catch (e) {}
+      logAudit("BALANCE_QUERY", String(viewer || "anonymous"), "users", userId, "查询自身余额", "/balance", "", "ok");
+      return jsonResponse({ ok: true, points });
+    }
+
+    // ========== 显式审计日志端点（业务自定义动作） ==========
+    if (path === "/audit" && req.method === "POST") {
+      const body = await req.json();
+      const { action, operator, targetType, targetId, detail, bizNo } = body;
+      if (!action || typeof action !== "string") return jsonResponse({ error: "缺少 action" }, 400);
+      logAudit(action, String(operator || "anonymous"), String(targetType || ""), String(targetId || ""), String(detail || ""), "/audit", String(bizNo || ""), "ok");
+      return jsonResponse({ ok: true });
     }
 
     // ========== 批量建表 ==========
