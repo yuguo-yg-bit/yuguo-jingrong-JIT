@@ -61,7 +61,7 @@ export default async function (req) {
       "notifications","notification_replies","blacklist","urgent_blacklist","registrations",
       "whitelist","sys_config","test_ping","test_users","oauth_tokens","task_rewards",
       "user_levels","lottery_tickets","lottery_records","win_wall","risk_control",
-      "user_monthly_rewards","user_outfits","community_statuses","community_bans","sqlite_sequence"
+      "user_monthly_rewards","user_outfits","community_statuses","community_bans","sqlite_sequence","ledger"
     ];
     const DANGER_KEYWORDS = ["DROP","ATTACH","DETACH","VACUUM","REINDEX","TRIGGER","TRUNCATE","PRAGMA"];
 
@@ -190,6 +190,79 @@ export default async function (req) {
           lastInsertRowid: inner.last_insert_rowid || result.last_insert_rowid || null
         });
       }
+    }
+
+    // ========== 账务入账（积分变更唯一入口，原子+幂等） ==========
+    // 所有余额变动必须走这里：先落 ledger 流水（biz_no 幂等），再更新 users.points。
+    // 同一 bizNo 重复提交只生效一次，防止重复扣款/加款。
+    if (path === "/points" && req.method === "POST") {
+      const body = await req.json();
+      const { bizNo, userId, delta, reason, refId, operator } = body;
+
+      if (!bizNo || typeof bizNo !== "string" || bizNo.length > 64) {
+        return jsonResponse({ error: "缺少合法幂等单号 bizNo" }, 400);
+      }
+      if (!userId || typeof userId !== "string" || userId.length > 50) {
+        return jsonResponse({ error: "缺少合法 userId" }, 400);
+      }
+      const amt = Math.round(Number(delta || 0));
+      if (!amt || !isFinite(amt)) return jsonResponse({ error: "变动金额必须为非零数字" }, 400);
+      if (Math.abs(amt) > 100000000) return jsonResponse({ error: "单笔变动金额超限" }, 400);
+      const why = String(reason || "").slice(0, 200);
+      const ref = String(refId || "").slice(0, 100);
+      const op = String(operator || "system").slice(0, 50);
+      const now = new Date().toISOString();
+      const lid = "ld_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+      // 原子 pipeline（Turso 在同一事务执行全部语句）：
+      // 1) 幂等插入流水（biz_no 唯一，已存在则跳过）
+      // 2) 余额 = 该用户流水 SUM（原则：流水唯一可信源，余额为派生视图；重放时流水不增→余额不变）
+      // 3) 读取最新余额返回
+      const mkArg = (v) => ({ type: "text", value: String(v) });
+      const requests = [
+        {
+          type: "execute",
+          stmt: {
+            sql: "INSERT INTO ledger (id, biz_no, user_id, amount, balance_after, reason, ref_id, operator, created_at) SELECT ?, ?, ?, ?, (SELECT COALESCE(points,0) FROM users WHERE id=?) + ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)",
+            args: [lid, bizNo, userId, amt, userId, amt, why, ref, op, now, bizNo].map(mkArg)
+          }
+        },
+        {
+          type: "execute",
+          stmt: {
+            sql: "UPDATE users SET points = (SELECT COALESCE(SUM(amount),0) FROM ledger WHERE user_id=?), updated_at=? WHERE id=? AND EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)",
+            args: [userId, now, userId, bizNo].map(mkArg)
+          }
+        },
+        {
+          type: "execute",
+          stmt: {
+            sql: "SELECT COALESCE(points,0) AS p FROM users WHERE id=?",
+            args: [userId].map(mkArg)
+          }
+        }
+      ];
+
+      const tursoRes = await fetch(TURSO_API, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${TURSO_TOKEN}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ requests }),
+      });
+      const pData = await tursoRes.json();
+      if (!tursoRes.ok) {
+        throw new Error("账务执行失败: " + JSON.stringify(pData).substring(0, 300));
+      }
+      const pResults = pData.results || [];
+      const first = pResults[0]?.response?.result || pResults[0]?.response?.results || pResults[0];
+      const insertedRows = first ? (first.rows_affected ?? first.row_count ?? first.rows_written ?? 0) : 0;
+      const inserted = insertedRows > 0;
+      // 余额
+      let balance = null;
+      try {
+        const balRes = pResults[2]?.response?.result || pResults[2]?.response?.results || pResults[2];
+        if (balRes && balRes.rows) balance = balRes.rows[0]?.[0]?.value ?? balRes.rows[0]?.[0];
+      } catch (e) {}
+      return jsonResponse({ ok: true, inserted, balance, bizNo });
     }
 
     // ========== 批量建表 ==========

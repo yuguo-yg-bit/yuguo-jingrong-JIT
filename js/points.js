@@ -174,7 +174,7 @@ var JITPoints = (function() {
     });
   };
 
-  // ------- 对外：修改积分 -------
+  // ------- 对外：修改积分（唯一入口走代理 /points 账务入账） -------
   var _changePoints = function(username, delta, reason, opts) {
     if (delta === 0) return Promise.resolve(0);
     opts = opts || {};
@@ -182,27 +182,43 @@ var JITPoints = (function() {
       if (!opts.forceAdmin && Number(account.frozen) === 1) {
         throw new Error("积分账户已冻结，暂不可赚取或消耗积分");
       }
-      var newPoints = Math.max(0, _num(account.points) + _num(delta));
-      var now = new Date().toISOString();
-      return _turso(
-        "UPDATE users SET points = ?, updated_at = ? WHERE id = ?",
-        [newPoints, now, username]
-      ).then(function() {
-        return _addLog(username, newPoints - _num(account.points), reason).then(function() {
-          var cached = _loadLocal(username);
-          if (cached) {
-            cached.points = Math.max(0, newPoints);
-            cached.logs = cached.logs || [];
-            cached.logs.unshift({
-              delta: delta,
-              reason: reason,
-              time: now.replace("T", " ").slice(0, 16),
-              createdAt: now
-            });
-            _saveLocal(username, cached);
-          }
-          return Math.max(0, newPoints);
-        });
+      var amt = Math.round(Number(delta));
+      if (!amt || !isFinite(amt) || Math.abs(amt) > 100000000) {
+        return Promise.reject(new Error("非法积分变动值"));
+      }
+      // 幂等单号：同一单号重放只生效一次（防网络重试双扣）
+      var bizNo = "biz_" + username + "_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+      var helper = (typeof JITApi !== "undefined" && JITApi.getTursoHelpers) ? JITApi.getTursoHelpers() : null;
+      var post = helper && helper.postPoints
+        ? helper.postPoints({
+            bizNo: bizNo,
+            userId: username,
+            delta: amt,
+            reason: String(reason || "积分变动"),
+            refId: opts.refId || "",
+            operator: opts.forceAdmin ? "admin" : "system"
+          })
+        : Promise.reject(new Error("账务入账接口不可用"));
+      return post.then(function(res) {
+        var newPoints = (res.balance != null && res.balance !== "") ? Number(res.balance) : Math.max(0, _num(account.points) + amt);
+        var now = new Date().toISOString();
+        // 流水落 points_records 供展示（权威流水在 ledger，幂等跳过时不重复记）
+        if (res.inserted !== false) {
+          _addLog(username, amt, reason).catch(function() {});
+        }
+        var cached = _loadLocal(username);
+        if (cached) {
+          cached.points = newPoints;
+          cached.logs = cached.logs || [];
+          cached.logs.unshift({
+            delta: amt,
+            reason: reason,
+            time: now.replace("T", " ").slice(0, 16),
+            createdAt: now
+          });
+          _saveLocal(username, cached);
+        }
+        return newPoints;
       });
     });
   };
@@ -350,31 +366,41 @@ var JITPoints = (function() {
     });
   };
 
-  // ------- 管理员：清零积分 -------
+  // ------- 管理员：清零积分（走账务入账） -------
   var _resetPoints = function(username) {
     return _ensureAccount(username).then(function(account) {
       var currentPts = Number(account.points || 0);
       if (currentPts === 0) return 0;
-      var now = new Date().toISOString();
-      return _addLog(username, -currentPts, "管理员清零积分").then(function() {
-        return _turso(
-          "UPDATE users SET points = 0, updated_at = ? WHERE id = ?",
-          [now, username]
-        ).then(function() {
-          var cached = _loadLocal(username);
-          if (cached) {
-            cached.points = 0;
-            cached.logs = cached.logs || [];
-            cached.logs.unshift({
-              delta: -currentPts,
-              reason: "管理员清零积分",
-              time: now.replace("T", " ").slice(0, 16),
-              createdAt: now
-            });
-            _saveLocal(username, cached);
-          }
-          return 0;
-        });
+      var bizNo = "biz_reset_" + username + "_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+      var helper = (typeof JITApi !== "undefined" && JITApi.getTursoHelpers) ? JITApi.getTursoHelpers() : null;
+      var post = helper && helper.postPoints
+        ? helper.postPoints({
+            bizNo: bizNo,
+            userId: username,
+            delta: -currentPts,
+            reason: "管理员清零积分",
+            refId: "",
+            operator: "admin"
+          })
+        : Promise.reject(new Error("账务入账接口不可用"));
+      return post.then(function(res) {
+        var now = new Date().toISOString();
+        if (res.inserted !== false) {
+          _addLog(username, -currentPts, "管理员清零积分").catch(function() {});
+        }
+        var cached = _loadLocal(username);
+        if (cached) {
+          cached.points = 0;
+          cached.logs = cached.logs || [];
+          cached.logs.unshift({
+            delta: -currentPts,
+            reason: "管理员清零积分",
+            time: now.replace("T", " ").slice(0, 16),
+            createdAt: now
+          });
+          _saveLocal(username, cached);
+        }
+        return 0;
       });
     });
   };

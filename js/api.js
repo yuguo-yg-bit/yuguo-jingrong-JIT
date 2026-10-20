@@ -80,6 +80,10 @@ var JITApi = (function() {
       return _tursoSql(sql, params);
     };
     fn.rowsToObjects = _tursoRowsToObjects;
+    // 账务入账：积分变更唯一写入口（代理端原子+幂等，前端只读余额）
+    fn.postPoints = function(payload) {
+      return _tursoCall("/points", payload);
+    };
     return fn;
   };
 
