@@ -281,7 +281,7 @@
       <div class="admin-card">
         <div class="admin-card-header">
           <h3>🛡️ 社区监管</h3>
-          <p class="admin-card-desc">检查用户发布的社区动态，可删除违规内容；对违规用户可禁言（1天 / 3天 / 7天 / 永久），禁言期内无法发布动态。</p>
+          <p class="admin-card-desc">检查用户发布的社区动态，可删除违规内容；对违规用户可禁言（1 / 3 / 7 / 自定义天数 / 永久），禁言期内无法发布动态。</p>
         </div>
         <div class="admin-card-body">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
@@ -291,13 +291,14 @@
                 <option value="all">全部动态</option>
                 <option value="banned">只看被禁言用户</option>
               </select>
+              <button class="btn btn-approve" id="btnBanAdd" style="background:rgba(244,67,54,0.15);border:1px solid rgba(244,67,54,0.5);color:#f44336;">🚫 新增禁言</button>
               <button class="btn btn-approve" id="btnRefreshCommunity">🔄 刷新</button>
             </div>
           </div>
           <div class="admin-table-wrap">
             <table class="admin-table">
               <thead>
-                <tr><th>用户</th><th>内容</th><th>类型</th><th>发布时间</th><th style="width:120px;">操作</th></tr>
+                <tr><th>用户</th><th>内容</th><th>类型</th><th>发布时间</th><th style="width:170px;">操作</th></tr>
               </thead>
               <tbody id="communityStatusesTable">
                 <tr><td colspan="5" class="loading-cell">加载动态中...</td></tr>
@@ -329,7 +330,7 @@
         <div class="modal-body">
           <div class="form-group">
             <label class="form-label">用户 <span class="required">*</span></label>
-            <input type="text" class="form-input" id="inputBanUser" readonly>
+            <input type="text" class="form-input" id="inputBanUser" placeholder="选择动态里的用户，或直接输入用户名">
           </div>
           <div class="form-group">
             <label class="form-label">禁言时长 <span class="required">*</span></label>
@@ -337,8 +338,10 @@
               <option value="1">1 天</option>
               <option value="3">3 天</option>
               <option value="7">7 天</option>
+              <option value="custom">自定义天数…</option>
               <option value="forever">永久</option>
             </select>
+            <input type="number" class="form-input" id="inputBanDurationCustom" min="1" max="3650" placeholder="输入天数（1 ~ 3650）" style="display:none;margin-top:8px;">
           </div>
           <div class="form-group">
             <label class="form-label">原因（可选）</label>

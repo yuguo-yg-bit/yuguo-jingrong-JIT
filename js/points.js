@@ -69,12 +69,26 @@ var JITPoints = (function() {
   };
 
   // ------- 确保账户存在 -------
+  // Turso 代理把数值也以字符串返回（points="30"），必须先转成数字，
+  // 否则 "30" + 1090 会变成字符串拼接 "301090"，积分被越加越离谱。
+  var _num = function(v) {
+    var n = Number(v);
+    return isNaN(n) ? 0 : n;
+  };
+
+  var _normalizeAccount = function(acc) {
+    acc.points = _num(acc.points);
+    acc.streak_days = _num(acc.streak_days);
+    acc.frozen = _num(acc.frozen);
+    return acc;
+  };
+
   var _ensureAccount = function(username) {
     return _tursoObjects(
       "SELECT id, points, sign_ins, last_sign_in, streak_days, frozen FROM users WHERE id = ?",
       [username]
     ).then(function(rows) {
-      if (rows.length > 0) return rows[0];
+      if (rows.length > 0) return _normalizeAccount(rows[0]);
       var now = new Date().toISOString();
       return _turso(
         "INSERT INTO users (id, password_hash, points, sign_ins, last_sign_in, streak_days, frozen, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -168,13 +182,13 @@ var JITPoints = (function() {
       if (!opts.forceAdmin && Number(account.frozen) === 1) {
         throw new Error("积分账户已冻结，暂不可赚取或消耗积分");
       }
-      var newPoints = Number(account.points || 0) + Number(delta || 0);
+      var newPoints = Math.max(0, _num(account.points) + _num(delta));
       var now = new Date().toISOString();
       return _turso(
         "UPDATE users SET points = ?, updated_at = ? WHERE id = ?",
         [newPoints, now, username]
       ).then(function() {
-        return _addLog(username, delta, reason).then(function() {
+        return _addLog(username, newPoints - _num(account.points), reason).then(function() {
           var cached = _loadLocal(username);
           if (cached) {
             cached.points = Math.max(0, newPoints);
@@ -298,8 +312,8 @@ var JITPoints = (function() {
         return _getLogs(account.id, 20).then(function(logs) {
           return {
             username: account.id,
-            points: account.points || 0,
-            streakDays: account.streak_days || 0,
+            points: _num(account.points),
+            streakDays: _num(account.streak_days),
             lastSignIn: account.last_sign_in || "",
             signIns: _parseSignIns(account.sign_ins),
             logs: logs,

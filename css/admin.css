@@ -353,6 +353,15 @@ body {
   visibility: visible;
 }
 
+/* 部分弹窗（通知发送/通知详情/禁言/加急黑名单）是用 style.display="flex" 直接打开的，
+   没有加 .active 类，会因为默认的 opacity:0 + visibility:hidden 看不见（表现为按钮点了没反应）。
+   这里让设置了内联 display:flex 的弹窗直接可见。 */
+.modal-overlay[style*="display: flex"],
+.modal-overlay[style*="display:flex"] {
+  opacity: 1;
+  visibility: visible;
+}
+
 .review-modal {
   background: linear-gradient(135deg, #0a0e27 0%, #1a237e 100%);
   border: 1px solid var(--border-color);

@@ -2101,6 +2101,18 @@ var JITAdmin = (function() {
     if (btnBanClose) btnBanClose.addEventListener("click", function() {
       document.getElementById("communityBanOverlay").style.display = "none";
     });
+    // 顶部「新增禁言」：不依赖动态列表，可直接输入用户名禁言
+    var btnBanAdd = document.getElementById("btnBanAdd");
+    if (btnBanAdd) btnBanAdd.addEventListener("click", function() { openBanModal(""); });
+    // 选「自定义天数」时显示天数输入框
+    var banDurationSel = document.getElementById("inputBanDuration");
+    if (banDurationSel) banDurationSel.addEventListener("change", function() {
+      var custom = document.getElementById("inputBanDurationCustom");
+      if (custom) {
+        custom.style.display = (this.value === "custom") ? "block" : "none";
+        if (this.value !== "custom") custom.value = "";
+      }
+    });
     var btnBanConfirm = document.getElementById("btnBanConfirm");
     if (btnBanConfirm) btnBanConfirm.addEventListener("click", _confirmBan);
     var banOverlay = document.getElementById("communityBanOverlay");
@@ -2530,10 +2542,16 @@ var JITAdmin = (function() {
       html += '<td style="max-width:320px;word-break:break-all;">' + _escapeHtml(txt.substring(0, 60)) + (txt.length > 60 ? "..." : "") + '</td>';
       html += '<td>' + typeTxt + '</td>';
       html += '<td>' + _fmtIsoShort(s.created_at) + '</td>';
-      html += '<td><button class="action-btn community-del" data-id="' + _escapeHtml(String(s.id)) + '" data-user="' + _escapeHtml(s.username) + '">删除</button></td>';
+      html += '<td style="white-space:nowrap;">'
+        + '<button class="action-btn community-ban" data-user="' + _escapeHtml(s.username) + '" style="margin-right:4px;border-color:#f44336;color:#f44336;background:rgba(244,67,54,0.12);">禁言</button>'
+        + '<button class="action-btn community-del" data-id="' + _escapeHtml(String(s.id)) + '" data-user="' + _escapeHtml(s.username) + '">删除</button>'
+        + '</td>';
       html += '</tr>';
     });
     tbody.innerHTML = html;
+    tbody.querySelectorAll(".community-ban").forEach(function(btn) {
+      btn.addEventListener("click", function() { openBanModal(this.getAttribute("data-user")); });
+    });
     tbody.querySelectorAll(".community-del").forEach(function(btn) {
       btn.addEventListener("click", function() {
         var id = this.getAttribute("data-id");
@@ -2594,24 +2612,32 @@ var JITAdmin = (function() {
     if (!overlay) return;
     document.getElementById("inputBanUser").value = username || "";
     document.getElementById("inputBanReason").value = "";
-    document.getElementById("inputBanDuration").value = "1";
+    var durSel = document.getElementById("inputBanDuration");
+    durSel.value = "1";
+    var durCustom = document.getElementById("inputBanDurationCustom");
+    if (durCustom) { durCustom.value = ""; durCustom.style.display = "none"; }
     overlay.style.display = "flex";
   };
 
   var _confirmBan = function() {
     var user = document.getElementById("inputBanUser").value.trim();
-    if (!user) { _showToast("缺少用户名"); return; }
+    if (!user) { _showToast("请填写要禁言的用户名"); return; }
     var dur = document.getElementById("inputBanDuration").value;
     var reason = document.getElementById("inputBanReason").value.trim();
+    var days = 0;
     var until;
     if (dur === "forever") {
       until = "9999-12-31T23:59:59.999Z";
+    } else if (dur === "custom") {
+      days = parseInt((document.getElementById("inputBanDurationCustom") || {}).value, 10);
+      if (!days || days < 1) { _showToast("请输入自定义天数（至少 1 天）"); return; }
+      until = new Date(Date.now() + days * 86400000).toISOString();
     } else {
-      var days = parseInt(dur, 10) || 1;
+      days = parseInt(dur, 10) || 1;
       until = new Date(Date.now() + days * 86400000).toISOString();
     }
     JITApi.upsertCommunityBan(user, until, reason, "admin").then(function() {
-      _showToast("已禁言 " + user + (dur === "forever" ? "（永久）" : ""));
+      _showToast("已禁言 " + user + (dur === "forever" ? "（永久）" : ("（" + days + " 天）")));
       document.getElementById("communityBanOverlay").style.display = "none";
       loadCommunityManage();
     }).catch(function(e) { _showToast("操作失败: " + e.message); });
