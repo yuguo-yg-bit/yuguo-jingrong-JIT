@@ -168,7 +168,7 @@ var JITPoints = (function() {
       if (!opts.forceAdmin && Number(account.frozen) === 1) {
         throw new Error("积分账户已冻结，暂不可赚取或消耗积分");
       }
-      var newPoints = (account.points || 0) + delta;
+      var newPoints = Number(account.points || 0) + Number(delta || 0);
       var now = new Date().toISOString();
       return _turso(
         "UPDATE users SET points = ?, updated_at = ? WHERE id = ?",
@@ -339,7 +339,7 @@ var JITPoints = (function() {
   // ------- 管理员：清零积分 -------
   var _resetPoints = function(username) {
     return _ensureAccount(username).then(function(account) {
-      var currentPts = account.points || 0;
+      var currentPts = Number(account.points || 0);
       if (currentPts === 0) return 0;
       var now = new Date().toISOString();
       return _addLog(username, -currentPts, "管理员清零积分").then(function() {

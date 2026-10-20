@@ -1525,7 +1525,7 @@ var JITAdmin = (function() {
     JITApi.getBlacklistRows().then(function(rows) {
       var cloudMap = {};
       (rows || []).forEach(function(r) {
-        cloudMap[r.username] = { reason: r.reason || "—", time: r.time || r.created_at || "—", type: r.type || "dynamic" };
+        cloudMap[r.username] = { reason: r.reason || "—", time: r.time || r.created_at || "—", type: r.type || "dynamic", until: r.until || "" };
       });
       var localMap = JITConfig.getDynamicBlacklist();
       var merged = {};
@@ -1549,11 +1549,28 @@ var JITAdmin = (function() {
     var html = "";
     list.forEach(function(item) {
       var isStatic = item.type === "static";
+      // 封禁期限显示
+      var untilText = "—";
+      if (item.until) {
+        var exp = new Date(item.until);
+        if (!isNaN(exp.getTime())) {
+          var remainMs = exp.getTime() - Date.now();
+          if (remainMs > 0) {
+            var remainDays = Math.ceil(remainMs / 86400000);
+            untilText = remainDays + " 天后到期";
+          } else {
+            untilText = '<span style="color:#ff9800;">已到期（自动解除）</span>';
+          }
+        }
+      } else if (!isStatic) {
+        untilText = "永久";
+      }
       html += '<tr>';
       html += '<td>' + (isStatic ? '<span class="status-badge rejected" style="background:rgba(123,31,162,0.2);color:#ce93d8;border-color:rgba(123,31,162,0.4);">静态</span>' : '<span class="status-badge pending">动态</span>') + '</td>';
       html += '<td style="font-weight:600;">' + _escapeHtml(item.username) + '</td>';
       html += '<td>' + _escapeHtml(item.reason || "—") + '</td>';
       html += '<td>' + _escapeHtml(item.time || "—") + '</td>';
+      html += '<td>' + untilText + '</td>';
       html += '<td>';
       if (isStatic) {
         html += '<span style="color:#9e9e9e;font-size:12px;">config.js内置，改代码移除</span>';
@@ -2172,16 +2189,25 @@ var JITAdmin = (function() {
       btnBlacklistAdd.addEventListener("click", function() {
         var userInput = document.getElementById("blacklistNewUser");
         var reasonInput = document.getElementById("blacklistNewReason");
+        var daysInput = document.getElementById("blacklistNewDays");
         var username = userInput ? userInput.value.trim() : "";
         var reason = reasonInput ? reasonInput.value.trim() : "";
+        var days = daysInput ? parseInt(daysInput.value || "0", 10) : 0;
         if (!username) { _showToast("请输入用户名"); return; }
         if (username === "admin") { _showToast("不能封禁admin用户"); return; }
         if (JITConfig.isBlacklisted(username)) { _showToast("该用户已在黑名单中"); return; }
-        JITConfig.addToBlacklist(username, reason);
-        JITApi.addToBlacklistTurso(username, reason, "dynamic").catch(function(){});
+        // 计算封禁期限：天数>0 → 到期时间；否则永久
+        var until = "";
+        if (days > 0) {
+          var exp = new Date(Date.now() + days * 24 * 3600 * 1000);
+          until = exp.toISOString();
+        }
+        JITConfig.addToBlacklist(username, reason, until);
+        JITApi.addToBlacklistTurso(username, reason, "dynamic", until).catch(function(){});
         if (userInput) userInput.value = "";
         if (reasonInput) reasonInput.value = "";
-        _showToast("已将 " + username + " 加入黑名单");
+        if (daysInput) daysInput.value = "";
+        _showToast("已将 " + username + " 加入黑名单" + (until ? "（" + days + " 天）" : "（永久）"));
         loadBlacklist();
       });
     }

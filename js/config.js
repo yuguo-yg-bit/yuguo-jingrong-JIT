@@ -131,6 +131,7 @@ var JITConfig = (function() {
           username: u,
           reason: dyn[u].reason || "—",
           time: dyn[u].time || "—",
+          until: dyn[u].until || "",
           type: "dynamic"
         });
       });
@@ -138,11 +139,11 @@ var JITConfig = (function() {
     },
     getDynamicBlacklist: function() { return _getDynamicBlacklist(); },
     setDynamicBlacklist: _setDynamicBlacklist,
-    // 加入动态黑名单（UI 里点「加入黑名单」调用）
-    addToBlacklist: function(username, reason) {
+    // 加入动态黑名单（UI 里点「加入黑名单」调用）；until 为空=永久，否则为到期 ISO 时间
+    addToBlacklist: function(username, reason, until) {
       if (!username) return false;
       var dyn = _getDynamicBlacklist();
-      dyn[username] = { reason: reason || "", time: new Date().toLocaleString("zh-CN") };
+      dyn[username] = { reason: reason || "", time: new Date().toLocaleString("zh-CN"), until: until || "" };
       _setDynamicBlacklist(dyn);
       return true;
     },
@@ -162,7 +163,18 @@ var JITConfig = (function() {
       if (!username) return false;
       if (_blacklist.indexOf(username) !== -1) return true;
       var dyn = _getDynamicBlacklist();
-      return !!dyn[username];
+      var item = dyn[username];
+      if (!item) return false;
+      // 有期限的封禁：到期自动失效
+      if (item.until) {
+        var exp = new Date(item.until);
+        if (!isNaN(exp.getTime()) && exp.getTime() <= Date.now()) {
+          delete dyn[username];
+          _setDynamicBlacklist(dyn);
+          return false;
+        }
+      }
+      return true;
     },
     isWhitelisted: function(username) {
       return _whitelist.indexOf(username) !== -1;

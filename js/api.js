@@ -715,9 +715,10 @@ var JITApi = (function() {
   var _sendNotification = function(title, content, targetUsers) {
     var now = new Date().toISOString();
     var targetStr = Array.isArray(targetUsers) ? targetUsers.join(",") : (targetUsers || "all");
+    var notifId = "ntf_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     return _tursoSql(
-      "INSERT INTO notifications (title, content, target_users, created_at) VALUES (?,?,?,?)",
-      [title, content, targetStr, now]
+      "INSERT INTO notifications (id, title, content, target_users, created_at) VALUES (?,?,?,?,?)",
+      [notifId, title, content, targetStr, now]
     ).then(function() {
       return { ok: true };
     });
@@ -903,11 +904,11 @@ var JITApi = (function() {
   };
 
   // ========== 普通黑名单（Turso） ==========
-  var _addToBlacklistTurso = function(username, reason, type) {
+  var _addToBlacklistTurso = function(username, reason, type, until) {
     var now = new Date().toISOString();
     return _tursoSql(
-      "INSERT OR REPLACE INTO blacklist (username, reason, time, type, created_at) VALUES (?,?,?,?,?)",
-      [username, reason || "", now, type || "dynamic", now]
+      "INSERT OR REPLACE INTO blacklist (username, reason, time, type, until, created_at) VALUES (?,?,?,?,?,?)",
+      [username, reason || "", now, type || "dynamic", until || "", now]
     );
   };
 
