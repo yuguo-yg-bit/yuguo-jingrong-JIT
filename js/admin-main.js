@@ -1617,7 +1617,7 @@ var JITAdmin = (function() {
       if (username === "admin") return;
       var d = data[username];
       var pts = d.points || 0;
-      var frozen = !!d.frozen;
+      var frozen = Number(d.frozen) === 1;
       var streak = d.streakDays || 0;
       var statusHtml = frozen
         ? '<span class="status-badge rejected" style="background:rgba(33,150,243,0.2);color:#2196f3;border:1px solid rgba(33,150,243,0.4);">🧊 已冻结</span>'

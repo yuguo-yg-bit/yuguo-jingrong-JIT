@@ -151,7 +151,7 @@ var JITPoints = (function() {
           lastSignIn: account.last_sign_in || "",
           signIns: _parseSignIns(account.sign_ins),
           logs: logs,
-          frozen: !!(account.frozen),
+          frozen: Number(account.frozen) === 1,
           accountId: account.id
         };
         _saveLocal(username, result);
@@ -165,7 +165,7 @@ var JITPoints = (function() {
     if (delta === 0) return Promise.resolve(0);
     opts = opts || {};
     return _ensureAccount(username).then(function(account) {
-      if (!opts.forceAdmin && account.frozen) {
+      if (!opts.forceAdmin && Number(account.frozen) === 1) {
         throw new Error("积分账户已冻结，暂不可赚取或消耗积分");
       }
       var newPoints = (account.points || 0) + delta;
@@ -303,7 +303,7 @@ var JITPoints = (function() {
             lastSignIn: account.last_sign_in || "",
             signIns: _parseSignIns(account.sign_ins),
             logs: logs,
-            frozen: !!(account.frozen)
+            frozen: Number(account.frozen) === 1
           };
         });
       });

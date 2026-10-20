@@ -1162,15 +1162,34 @@ var JITCommunity = (function() {
 
   // ===== 装扮系统 =====
   var _getUnlockedOutfits = function() { try { return JSON.parse(localStorage.getItem("jit_unlocked_outfits") || "[]"); } catch(e) { return []; } };
-  var _saveUnlockedOutfits = function(o) { localStorage.setItem("jit_unlocked_outfits", JSON.stringify(o)); };
+  var _saveUnlockedOutfits = function(o) {
+    localStorage.setItem("jit_unlocked_outfits", JSON.stringify(o));
+    // 同步到 Turso（数据库为准）
+    if (_currentUser && JITApi && JITApi.syncOutfitsFromLocal) {
+      JITApi.syncOutfitsFromLocal(_currentUser, o).catch(function() {});
+    }
+  };
   var _isOutfitUnlocked = function(type, id) { if (id === "default" || id === "none") return true; return _getUnlockedOutfits().indexOf(type + "_" + id) !== -1; };
 
+  // 用积分解锁装扮（先扣分成功，才解锁；冻结/积分不足会被拒绝）
   var _unlockOutfit = function(type, id, cost) {
-    if (_isOutfitUnlocked(type, id)) return true;
-    if (_currentPoints < cost) return false;
+    if (_isOutfitUnlocked(type, id)) return Promise.resolve(true);
+    if (_currentPoints < cost) {
+      _showToast("积分不足！需要 " + cost + " 积分", "error");
+      return Promise.resolve(false);
+    }
+    if (JITPoints && JITPoints.changePoints) {
+      return JITPoints.changePoints(_currentUser, -cost, "解锁装扮: " + id).then(function() {
+        var ul = _getUnlockedOutfits(); ul.push(type + "_" + id); _saveUnlockedOutfits(ul);
+        _refreshLocalPoints();
+        return true;
+      }).catch(function(err) {
+        _showToast("解锁失败：" + ((err && err.message) ? err.message : "积分操作被拒绝（可能账户已冻结）"), "error");
+        return false;
+      });
+    }
     var ul = _getUnlockedOutfits(); ul.push(type + "_" + id); _saveUnlockedOutfits(ul);
-    if (JITPoints && JITPoints.changePoints) { JITPoints.changePoints(_currentUser, -cost, "解锁装扮: " + id).then(function() { _refreshLocalPoints(); }).catch(function() {}); } else { _refreshLocalPoints(); }
-    return true;
+    return Promise.resolve(true);
   };
 
   var _showBuyConfirm = function(type, id, cost, name, onConfirm) {
@@ -1204,7 +1223,14 @@ var JITCommunity = (function() {
     if (cost <= 0) { _applyTheme(theme); _showToast("🎨 主题装扮已切换", "success"); _refreshUserCenterUI(); return; }
     if (_currentPoints < cost) { _showToast("积分不足！需要 " + cost + " 积分，当前只有 " + _currentPoints + " 积分", "error"); return; }
     var names = { ocean: "深海蓝主题", forest: "森林绿主题", rose: "玫瑰金主题", sunset: "日落橙主题", galaxy: "星云紫主题" };
-    _showBuyConfirm("theme", theme, cost, names[theme] || (theme + "主题"), function() { _unlockOutfit("theme", theme, cost); _applyTheme(theme); _showToast("🎨 已解锁" + (names[theme] || theme) + "！（消耗 " + cost + " 积分）", "success"); _refreshUserCenterUI(); });
+    _showBuyConfirm("theme", theme, cost, names[theme] || (theme + "主题"), function() {
+      _unlockOutfit("theme", theme, cost).then(function(ok) {
+        if (!ok) return;
+        _applyTheme(theme);
+        _showToast("🎨 已解锁" + (names[theme] || theme) + "！（消耗 " + cost + " 积分）", "success");
+        _refreshUserCenterUI();
+      });
+    });
   };
 
   var _applyAvatarFrame = function(frame) {
@@ -1225,7 +1251,14 @@ var JITCommunity = (function() {
     if (cost <= 0) { _applyAvatarFrame(frame); _showToast("🖼️ 头像框已切换", "success"); _refreshUserCenterUI(); return; }
     if (_currentPoints < cost) { _showToast("积分不足！需要 " + cost + " 积分，当前只有 " + _currentPoints + " 积分", "error"); return; }
     var names = { gold: "金框头像框", diamond: "钻石头像框", ruby: "红宝石头像框", rainbow: "彩虹头像框" };
-    _showBuyConfirm("frame", frame, cost, names[frame] || (frame + "头像框"), function() { _unlockOutfit("frame", frame, cost); _applyAvatarFrame(frame); _showToast("🖼️ 已解锁" + (names[frame] || frame) + "！（消耗 " + cost + " 积分）", "success"); _refreshUserCenterUI(); });
+    _showBuyConfirm("frame", frame, cost, names[frame] || (frame + "头像框"), function() {
+      _unlockOutfit("frame", frame, cost).then(function(ok) {
+        if (!ok) return;
+        _applyAvatarFrame(frame);
+        _showToast("🖼️ 已解锁" + (names[frame] || frame) + "！（消耗 " + cost + " 积分）", "success");
+        _refreshUserCenterUI();
+      });
+    });
   };
 
   var _refreshThemePickerUI = function() {
@@ -1309,7 +1342,7 @@ var JITCommunity = (function() {
       _initOutfits();
       _renderWinWall();
     });
-    document.getElementById("versionWatermark").textContent = "v3.3.2";
+    document.getElementById("versionWatermark").textContent = "v3.3.3";
   };
 
   return { init: init };

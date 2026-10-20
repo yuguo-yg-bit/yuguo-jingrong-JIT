@@ -2695,22 +2695,29 @@ var JITApp = (function() {
     return unlocked.indexOf(type + "_" + id) !== -1;
   };
 
-  // 用积分解锁装扮
+  // 用积分解锁装扮（先扣分成功，才解锁；冻结/积分不足会被拒绝）
   var _unlockOutfit = function(type, id, cost) {
-    if (_isOutfitUnlocked(type, id)) return true;
-    if (_currentPoints < cost) return false;
+    if (_isOutfitUnlocked(type, id)) return Promise.resolve(true);
+    if (_currentPoints < cost) {
+      _showToast("积分不足！需要 " + cost + " 积分", "error");
+      return Promise.resolve(false);
+    }
+    if (JITPoints && JITPoints.changePoints) {
+      return JITPoints.changePoints(_currentUser, -cost, "解锁装扮: " + id).then(function() {
+        var unlocked = _getUnlockedOutfits();
+        unlocked.push(type + "_" + id);
+        _saveUnlockedOutfits(unlocked);
+        _refreshPointsDisplay(true);
+        return true;
+      }).catch(function(err) {
+        _showToast("解锁失败：" + ((err && err.message) ? err.message : "积分操作被拒绝（可能账户已冻结）"), "error");
+        return false;
+      });
+    }
     var unlocked = _getUnlockedOutfits();
     unlocked.push(type + "_" + id);
     _saveUnlockedOutfits(unlocked);
-    // 扣除积分
-    if (JITPoints && JITPoints.changePoints) {
-      JITPoints.changePoints(_currentUser, -cost, "解锁装扮: " + id).then(function() {
-        _refreshPointsDisplay(true);
-      }).catch(function() {});
-    } else {
-      _refreshPointsDisplay(true);
-    }
-    return true;
+    return Promise.resolve(true);
   };
 
   // 购买确认弹窗
@@ -2785,10 +2792,12 @@ var JITApp = (function() {
     var themeNames = { ocean: "深海蓝主题", forest: "森林绿主题", rose: "玫瑰金主题", sunset: "日落橙主题", galaxy: "星云紫主题" };
     var name = themeNames[theme] || (theme + "主题");
     _showBuyConfirm("theme", theme, cost, name, function() {
-      _unlockOutfit("theme", theme, cost);
-      _applyTheme(theme);
-      _showToast("🎨 已解锁" + name + "！（消耗 " + cost + " 积分）", "success");
-      _refreshUserCenterUI();
+      _unlockOutfit("theme", theme, cost).then(function(ok) {
+        if (!ok) return;
+        _applyTheme(theme);
+        _showToast("🎨 已解锁" + name + "！（消耗 " + cost + " 积分）", "success");
+        _refreshUserCenterUI();
+      });
     });
   };
 
@@ -2833,10 +2842,12 @@ var JITApp = (function() {
     var frameNames = { gold: "金框头像框", diamond: "钻石头像框", ruby: "红宝石头像框", rainbow: "彩虹头像框" };
     var name = frameNames[frame] || (frame + "头像框");
     _showBuyConfirm("frame", frame, cost, name, function() {
-      _unlockOutfit("frame", frame, cost);
-      _applyAvatarFrame(frame);
-      _showToast("🖼️ 已解锁" + name + "！（消耗 " + cost + " 积分）", "success");
-      _refreshUserCenterUI();
+      _unlockOutfit("frame", frame, cost).then(function(ok) {
+        if (!ok) return;
+        _applyAvatarFrame(frame);
+        _showToast("🖼️ 已解锁" + name + "！（消耗 " + cost + " 积分）", "success");
+        _refreshUserCenterUI();
+      });
     });
   };
 
