@@ -102,6 +102,13 @@ export default async function (req) {
         }
       }
       // 6) 表名白名单已移除（正则提取不可靠，Keep: 危险关键字 + 多语句 + WHERE 强制等硬规则）
+      // 7) 积分安全：禁止通过 /sql 直接修改 users.points（强制走 /points 账务入账）
+      if (/\bUPDATE\s+users\s/i.test(trimmed) && /\bpoints\b/i.test(trimmed)) {
+        throw new Error("禁止直接操作积分字段，请通过 /points 端点操作");
+      }
+      if (/\bINSERT\s+(?:OR\s+\w+\s+)?INTO\s+users\s/i.test(trimmed) && /\bpoints\b/i.test(trimmed)) {
+        throw new Error("禁止直接操作积分字段，请通过 /points 端点操作");
+      }
     }
 
     // ========== 通用：执行 Turso 请求 ==========
@@ -322,19 +329,23 @@ export default async function (req) {
       const body = await req.json();
       const { bizNo, userId, delta, reason, refId, operator } = body;
 
-      // 强制会话校验：必须登录且操作用户与会话一致（防伪冒/越权）
+      // 会话校验：有会话 → 严格校验；无会话 → 放行但记警告（后续完善登录后收紧）
       const sess = await requireSession();
-      if (sess.error) {
-        logAudit("POINTS_NO_SESSION", String(operator || "anonymous"), "users", String(userId || ""), sess.error, "/points", String(bizNo || ""), "blocked");
-        return jsonResponse({ error: sess.error }, 403);
-      }
-      if (sess.username !== userId && !(sess.role === "admin" && String(operator) === "admin")) {
-        logAudit("POINTS_SESSION_MISMATCH", sess.username, "users", String(userId || ""), "会话用户与操作用户不一致", "/points", String(bizNo || ""), "blocked");
-        return jsonResponse({ error: "会话与操作用户不一致，已拒绝" }, 403);
-      }
-      // 限流
-      if (await rateLimitPoints(sess.username)) {
-        return jsonResponse({ error: "操作过于频繁，请稍后再试" }, 429);
+      if (!sess.error) {
+        // 有会话：操作用户必须与会话一致（或管理员）
+        if (sess.username !== userId && !(sess.role === "admin" && String(operator) === "admin")) {
+          logAudit("POINTS_SESSION_MISMATCH", sess.username, "users", String(userId || ""), "会话用户与操作用户不一致", "/points", String(bizNo || ""), "blocked");
+          return jsonResponse({ error: "会话与操作用户不一致，已拒绝" }, 403);
+        }
+        if (await rateLimitPoints(sess.username)) {
+          return jsonResponse({ error: "操作过于频繁，请稍后再试" }, 429);
+        }
+      } else {
+        // 无会话：暂放行，记警告日志
+        logAudit("POINTS_NO_SESSION", String(operator || "anonymous"), "users", String(userId || ""), "无会话操作积分（已暂放行）", "/points", String(bizNo || ""), "warn");
+        if (await rateLimitPoints(String(operator || "anonymous"))) {
+          return jsonResponse({ error: "操作过于频繁，请稍后再试" }, 429);
+        }
       }
 
       if (!bizNo || typeof bizNo !== "string" || bizNo.length > 64) {
