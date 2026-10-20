@@ -1103,7 +1103,10 @@ var JITApi = (function() {
 
   var _incrementUserLevelField = function(userId, field, delta) {
     var now = new Date().toISOString();
-    var column = ({exp:"exp",streak:"streak_days",totalVouchers:"total_vouchers",basicTickets:"basic_tickets",rareTickets:"rare_tickets"})[field] || field;
+    // 严格白名单：非法字段直接拒绝，防列名注入
+    var columnMap = { exp: "exp", streak: "streak_days", totalVouchers: "total_vouchers", basicTickets: "basic_tickets", rareTickets: "rare_tickets" };
+    var column = columnMap[field];
+    if (!column) return Promise.reject(new Error("非法字段: " + field));
     return _tursoSql(
       "INSERT INTO user_levels (user_id, " + column + ", updated_at) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET " + column + " = COALESCE(user_levels." + column + ",0) + ?, updated_at=?",
       [userId, delta||0, now, delta||0, now]
