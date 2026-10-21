@@ -329,15 +329,20 @@ export default async function (req) {
       const body = await req.json();
       const { bizNo, userId, delta, reason, refId, operator } = body;
 
-      // 会话校验：有会话 → 严格校验；无会话 → 放行但记警告（后续完善登录后收紧）
+      // 会话校验：有会话 → 校验身份；无会话 → 放行但记警告（后续完善登录后收紧）
+      // 注意：/points 本就允许无会话调用，所以“会话属于别的账号”时 403 只会误伤
+      // （退出登录没清 token、换账号登录等），按无会话处理即可，安全等级不变。
+      let sessionOperator = "";
       const sess = await requireSession();
       if (!sess.error) {
-        // 有会话：操作用户必须与会话一致（或管理员）
-        if (sess.username !== userId && !(sess.role === "admin" && String(operator) === "admin")) {
-          logAudit("POINTS_SESSION_MISMATCH", sess.username, "users", String(userId || ""), "会话用户与操作用户不一致", "/points", String(bizNo || ""), "blocked");
-          return jsonResponse({ error: "会话与操作用户不一致，已拒绝" }, 403);
+        const isAdminSession = sess.role === "admin";
+        if (sess.username === userId || isAdminSession) {
+          // 身份一致（或管理员代操作）：入账操作人以会话为准，不信任前端传的 operator
+          sessionOperator = isAdminSession ? "admin" : sess.username;
+        } else {
+          logAudit("POINTS_SESSION_MISMATCH", sess.username, "users", String(userId || ""), "会话与操作用户不一致（按无会话放行）", "/points", String(bizNo || ""), "warn");
         }
-        if (await rateLimitPoints(sess.username)) {
+        if (await rateLimitPoints(sessionOperator || String(operator || userId || "anonymous"))) {
           return jsonResponse({ error: "操作过于频繁，请稍后再试" }, 429);
         }
       } else {
@@ -359,7 +364,7 @@ export default async function (req) {
       if (Math.abs(amt) > 100000000) return jsonResponse({ error: "单笔变动金额超限" }, 400);
       const why = String(reason || "").slice(0, 200);
       const ref = String(refId || "").slice(0, 100);
-      const op = String(operator || "system").slice(0, 50);
+      const op = String(sessionOperator || operator || "system").slice(0, 50);
       const now = new Date().toISOString();
       const lid = "ld_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
@@ -428,12 +433,9 @@ export default async function (req) {
         logAudit("BALANCE_NO_SESSION", String(viewer || "anonymous"), "users", userId, sess.error, "/balance", "", "blocked");
         return jsonResponse({ error: sess.error }, 403);
       }
-      if (sess.username !== userId && !(sess.role === "admin" && String(viewer) === "admin")) {
+      const isAdminSession = sess.role === "admin";
+      if (!isAdminSession && (sess.username !== userId || String(viewer) !== String(userId))) {
         logAudit("BALANCE_QUERY_BLOCKED", sess.username, "users", userId, "越权查询他人余额被拒绝", "/balance", "", "blocked");
-        return jsonResponse({ error: "禁止查询他人余额" }, 403);
-      }
-      if (viewer !== userId && String(viewer) !== "admin") {
-        logAudit("BALANCE_QUERY_BLOCKED", String(viewer || "anonymous"), "users", userId, "越权查询他人余额被拒绝", "/balance", "", "blocked");
         return jsonResponse({ error: "禁止查询他人余额" }, 403);
       }
       const q = await execTurso("SELECT COALESCE(points,0) AS p FROM users WHERE id=?", [userId]);

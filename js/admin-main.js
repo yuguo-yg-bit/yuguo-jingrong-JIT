@@ -2090,6 +2090,12 @@ var JITAdmin = (function() {
 
     document.getElementById("btnAdminLogout").addEventListener("click", function() {
       _isLoggedIn = false;
+      // 退出管理员必须清掉会话 token，否则同一个浏览器再用普通账号操作会 403
+      try {
+        localStorage.removeItem("jit_session_token");
+        localStorage.removeItem("jit_session_user");
+        localStorage.removeItem("jit_session_role");
+      } catch (e) {}
       location.reload();
     });
 

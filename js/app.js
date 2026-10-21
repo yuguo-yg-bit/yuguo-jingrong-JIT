@@ -218,6 +218,16 @@ var JITApp = (function() {
     } catch (e) {}
 
     var savedUser = localStorage.getItem("jit_current_user");
+    // 会话 token 只能属于当前登录账号，否则代理会判定“会话与操作用户不一致”
+    // （典型场景：在管理员页登录过，退出时没清 token，再用普通账号操作积分就 403）
+    try {
+      var tokUser = localStorage.getItem("jit_session_user") || "";
+      if (tokUser && savedUser && tokUser !== savedUser) {
+        localStorage.removeItem("jit_session_token");
+        localStorage.removeItem("jit_session_user");
+        localStorage.removeItem("jit_session_role");
+      }
+    } catch (e) {}
     if (savedUser) {
       // 黑名单/白名单检查（防止被封禁用户自动登录绕过）
       if (JITConfig.isBlacklisted(savedUser)) {
@@ -758,6 +768,9 @@ var JITApp = (function() {
     if (btnLogout) {
       btnLogout.addEventListener("click", function() {
         localStorage.removeItem("jit_current_user");
+        localStorage.removeItem("jit_session_token");
+        localStorage.removeItem("jit_session_user");
+        localStorage.removeItem("jit_session_role");
         _currentUser = null;
         _showToast("已退出登录", "");
         setTimeout(function() {
