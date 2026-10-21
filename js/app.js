@@ -1556,8 +1556,6 @@ var JITApp = (function() {
     pageVouchers.forEach(function(v) {
       var statusClass = v.statusType || "pending";
       var statusText = v.status || "待审核";
-      if (v.statusType === "completed") statusText = "已完成交易";
-      if (v.statusType === "paid") statusText = "已付款·待确认";
       var isElectric = !!(v.electric || v.voucherType === "电器凭证");
       var discount = v.discount || "-";
       var paymentNote = _translatePaymentMethod(v.paymentMethod) || v.paymentNote || "-";

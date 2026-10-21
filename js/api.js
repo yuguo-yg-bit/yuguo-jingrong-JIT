@@ -176,11 +176,12 @@ var JITApi = (function() {
     if (db.payment_method && db.payment_method.indexOf("工会先代替") > -1) paymentMethodType = "unionFirst";
 
     var statusType;
-    if (db.status === "已完成交易") statusType = "completed";
-    else if (db.payment_status === "paid" || db.status === "已付款·待确认") statusType = "paid";
-    else if (db.status === "approved") statusType = "approved";
-    else if (db.status === "rejected") statusType = "rejected";
-    else statusType = "pending";
+    var statusText = db.status || "待审核";
+    if (db.status === "已完成交易" || db.status === "completed") { statusType = "completed"; statusText = "已完成交易"; }
+    else if (db.payment_status === "paid" || db.status === "已付款·待确认" || db.status === "paid") { statusType = "paid"; statusText = "已付款·待确认"; }
+    else if (db.status === "approved") { statusType = "approved"; statusText = "已通过"; }
+    else if (db.status === "rejected") { statusType = "rejected"; statusText = "已拒绝"; }
+    else { statusType = "pending"; statusText = "待审核"; }
 
     return {
       electric: isElectric,
@@ -199,7 +200,7 @@ var JITApi = (function() {
       originalPrice: originalPriceStr,
       finalPrice: finalPriceStr,
       amount: String(db.amount || ""),
-      status: db.status || "待审核",
+      status: statusText,
       statusType: statusType,
       shopPhoto: db.shop_photo || "",
       orderPhotos: db.order_photos || "",
@@ -613,9 +614,19 @@ var JITApi = (function() {
 
   var _updateVoucherStatusTurso = function(issueNumber, action, reason, extra) {
     var now = new Date().toISOString();
-    var newStatus = action === "approved" ? "approved" : (action === "rejected" ? "rejected" : "pending");
+    var newStatus;
+    if (action === "approved") newStatus = "approved";
+    else if (action === "rejected") newStatus = "rejected";
+    else if (action === "completed") newStatus = "completed";
+    else if (action === "paid") newStatus = "paid";
+    else newStatus = "pending";
     var sql = "UPDATE vouchers SET status=?, reject_reason=COALESCE(NULLIF(?,''),reject_reason), updated_at=? WHERE id=?";
     var params = [newStatus, reason || "", now, String(issueNumber)];
+    // 电器补贴：额外更新补贴比例和金额
+    if (extra && extra.isElectric) {
+      sql = "UPDATE vouchers SET status=?, reject_reason=COALESCE(NULLIF(?,''),reject_reason), electric_subsidy_rate=?, electric_subsidy_amount=?, updated_at=? WHERE id=?";
+      params = [newStatus, reason || "", String(extra.subsidyRate || ""), String(extra.subsidyAmount || ""), now, String(issueNumber)];
+    }
     return _tursoSql(sql, params).then(function() { _invalidateCache("allVouchers"); });
   };
 
@@ -1084,11 +1095,12 @@ var JITApi = (function() {
   // 此处把 Turso 结构化行映射成兼容结构，避免管理端崩溃。
   var _voucherRowToIssue = function(r) {
     var st = String(r.status || "");
+    var stLower = st.toLowerCase();
     var labels = [];
-    if (st.indexOf("完成") > -1) labels.push("completed");
-    else if (st.indexOf("拒绝") > -1 || st.indexOf("驳回") > -1) labels.push("rejected");
-    else if (st.indexOf("通过") > -1) labels.push("approved");
-    else if (st.indexOf("已支付") > -1 || st.toLowerCase() === "paid") labels.push("paid");
+    if (st.indexOf("完成") > -1 || stLower === "completed") labels.push("completed");
+    else if (st.indexOf("拒绝") > -1 || st.indexOf("驳回") > -1 || stLower === "rejected") labels.push("rejected");
+    else if (st.indexOf("通过") > -1 || stLower === "approved") labels.push("approved");
+    else if (st.indexOf("已支付") > -1 || stLower === "paid") labels.push("paid");
     else labels.push("pending");
     if (String(r.is_urgent) === "1" || r.is_urgent === 1 || r.is_urgent === true) labels.push("urgent");
     var lines = [
