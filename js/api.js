@@ -119,6 +119,16 @@ var JITApi = (function() {
         detail: detail || "", bizNo: bizNo || ""
       }).catch(function() {});
     };
+    // 农场数据：从数据库加载
+    fn.loadFarmData = function(username) {
+      return _tursoCall("/farm-load", { userId: username }).then(function(res) {
+        return res.data || null;
+      });
+    };
+    // 农场数据：保存到数据库
+    fn.saveFarmData = function(username, data) {
+      return _tursoCall("/farm-save", { userId: username, data: data });
+    };
     return fn;
   };
 

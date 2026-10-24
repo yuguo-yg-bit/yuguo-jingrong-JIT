@@ -61,7 +61,7 @@ export default async function (req) {
       "notifications","notification_replies","blacklist","urgent_blacklist","registrations",
       "whitelist","sys_config","test_ping","test_users","oauth_tokens","task_rewards",
       "user_levels","lottery_tickets","lottery_records","win_wall","risk_control",
-      "user_monthly_rewards","user_outfits","community_statuses","community_bans","sqlite_sequence","ledger","audit_logs","sessions"
+      "user_monthly_rewards","user_outfits","community_statuses","community_bans","sqlite_sequence","ledger","audit_logs","sessions","farm_data"
     ];
     const DANGER_KEYWORDS = ["DROP","ATTACH","DETACH","VACUUM","REINDEX","TRIGGER","TRUNCATE","PRAGMA"];
 
@@ -992,6 +992,73 @@ export default async function (req) {
       await execTurso("DELETE FROM oauth_tokens WHERE token=?", [token]);
 
       return jsonResponse({ ok: true, username: uname, provider: provider, oauth_id: oauthId });
+    }
+
+    // ========== 农场数据：从数据库加载 ==========
+    if (path === "/farm-load" && req.method === "POST") {
+      const body = await req.json();
+      const { userId } = body;
+      if (!userId || typeof userId !== "string" || userId.length > 50) {
+        return jsonResponse({ error: "缺少合法 userId" }, 400);
+      }
+      const sess = await requireSession();
+      if (sess.error) {
+        logAudit("FARM_LOAD_NO_SESSION", String(userId), "farm_data", userId, sess.error, "/farm-load", "", "blocked");
+        return jsonResponse({ error: sess.error }, 403);
+      }
+      if (sess.role !== "admin" && sess.username !== userId) {
+        logAudit("FARM_LOAD_BLOCKED", sess.username, "farm_data", userId, "越权读取他人农场数据被拒绝", "/farm-load", "", "blocked");
+        return jsonResponse({ error: "禁止读取他人农场数据" }, 403);
+      }
+      try {
+        await execTurso("CREATE TABLE IF NOT EXISTS farm_data (user_id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL)", []);
+      } catch (e) {}
+      const q = await execTurso("SELECT data FROM farm_data WHERE user_id=?", [userId]);
+      const inner = q.data.results?.[0]?.response?.result || q.data.results?.[0]?.response?.results || q.data;
+      let data = null;
+      try {
+        if (inner && inner.rows && inner.rows.length > 0) {
+          const raw = typeof inner.rows[0][0] === "object" && "value" in inner.rows[0][0] ? inner.rows[0][0].value : inner.rows[0][0];
+          data = JSON.parse(raw);
+        }
+      } catch (e) {}
+      logAudit("FARM_LOAD", userId, "farm_data", userId, "加载农场数据", "/farm-load", "", "ok");
+      return jsonResponse({ ok: true, data });
+    }
+
+    // ========== 农场数据：保存到数据库 ==========
+    if (path === "/farm-save" && req.method === "POST") {
+      const body = await req.json();
+      const { userId, data } = body;
+      if (!userId || typeof userId !== "string" || userId.length > 50) {
+        return jsonResponse({ error: "缺少合法 userId" }, 400);
+      }
+      if (!data || typeof data !== "object") {
+        return jsonResponse({ error: "缺少合法 data" }, 400);
+      }
+      const sess = await requireSession();
+      if (sess.error) {
+        logAudit("FARM_SAVE_NO_SESSION", String(userId), "farm_data", userId, sess.error, "/farm-save", "", "blocked");
+        return jsonResponse({ error: sess.error }, 403);
+      }
+      if (sess.role !== "admin" && sess.username !== userId) {
+        logAudit("FARM_SAVE_BLOCKED", sess.username, "farm_data", userId, "越权写入他人农场数据被拒绝", "/farm-save", "", "blocked");
+        return jsonResponse({ error: "禁止写入他人农场数据" }, 403);
+      }
+      const now = new Date().toISOString();
+      const dataJson = JSON.stringify(data);
+      if (dataJson.length > 500000) {
+        return jsonResponse({ error: "农场数据过大，超过 500KB 限制" }, 400);
+      }
+      try {
+        await execTurso("CREATE TABLE IF NOT EXISTS farm_data (user_id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL)", []);
+      } catch (e) {}
+      await execTurso(
+        "INSERT INTO farm_data (user_id, data, updated_at) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET data=EXCLUDED.data, updated_at=EXCLUDED.updated_at",
+        [userId, dataJson, now]
+      );
+      logAudit("FARM_SAVE", userId, "farm_data", userId, "保存农场数据", "/farm-save", "", "ok");
+      return jsonResponse({ ok: true });
     }
 
     return jsonResponse({ error: "未知路径" }, 404);

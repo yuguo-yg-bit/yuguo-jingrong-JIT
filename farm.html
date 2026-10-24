@@ -233,7 +233,10 @@
     return;
   }
 
-  var STORAGE_KEY = "jit_farm_" + _currentUser;
+  var _farmData = getDefaultFarm();
+  var _farmLoaded = false;
+  var _farmDirty = false;
+  var _farmSaveTimer = null;
 
   var CROP_TYPES = {
     wheat:     { name:"小麦",   emoji:"🌾", growthHours:2,  waterHours:4,  wiltHours:6,  baseValue:30  },
@@ -271,26 +274,83 @@
   }
 
   function loadFarm() {
-    try {
-      var raw = localStorage.getItem(STORAGE_KEY);
-      var data = raw ? JSON.parse(raw) : null;
-      if (!data || !data.plots) data = getDefaultFarm();
-      while (data.plots.length < data.landSize) {
-        data.plots.push({ crop:null, plantedAt:null, growthHours:0, lastWatered:0, waterHours:0, wiltHours:0 });
-      }
-      data.plots = data.plots.slice(0, data.landSize);
-      if (!data.inventory) data.inventory = {};
-      if (!data.warehouse) data.warehouse = {};
-      if (!data.lastTick) data.lastTick = Date.now();
-      if (!data.autoWaterLast) data.autoWaterLast = 0;
-      return data;
-    } catch(e) {
-      return getDefaultFarm();
+    return _farmData;
+  }
+
+  function normalizeFarm(data) {
+    while (data.plots.length < data.landSize) {
+      data.plots.push({ crop:null, plantedAt:null, growthHours:0, lastWatered:0, waterHours:0, wiltHours:0 });
     }
+    data.plots = data.plots.slice(0, data.landSize);
+    if (!data.inventory) data.inventory = {};
+    if (!data.warehouse) data.warehouse = {};
+    if (!data.lastTick) data.lastTick = Date.now();
+    if (!data.autoWaterLast) data.autoWaterLast = 0;
+    return data;
   }
 
   function saveFarm(data) {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch(e) {}
+    _farmData = flattenFarmData(data);
+    _farmDirty = true;
+    scheduleDbSave();
+  }
+
+  function flattenFarmData(data) {
+    return {
+      plots: data.plots,
+      inventory: data.inventory,
+      warehouse: data.warehouse,
+      landSize: data.landSize,
+      lastTick: data.lastTick,
+      autoWaterLast: data.autoWaterLast,
+    };
+  }
+
+  function scheduleDbSave() {
+    if (_farmSaveTimer) return;
+    _farmSaveTimer = setTimeout(function() {
+      _farmSaveTimer = null;
+      if (!_farmDirty) return;
+      _farmDirty = false;
+      var payload = flattenFarmData(_farmData);
+      try {
+        JITApi.getTursoHelpers().saveFarmData(_currentUser, payload).catch(function() {
+          _farmDirty = true;
+        });
+      } catch(e) {
+        _farmDirty = true;
+      }
+    }, 2000);
+  }
+
+  function forceDbSaveNow() {
+    if (_farmSaveTimer) {
+      clearTimeout(_farmSaveTimer);
+      _farmSaveTimer = null;
+    }
+    if (!_farmDirty) return Promise.resolve();
+    _farmDirty = false;
+    var payload = flattenFarmData(_farmData);
+    return JITApi.getTursoHelpers().saveFarmData(_currentUser, payload).catch(function(e) {
+      _farmDirty = true;
+      throw e;
+    });
+  }
+
+  function initFarmFromDb() {
+    return JITApi.getTursoHelpers().loadFarmData(_currentUser).then(function(dbData) {
+      if (dbData && dbData.plots) {
+        _farmData = normalizeFarm(dbData);
+      } else {
+        _farmData = normalizeFarm(getDefaultFarm());
+      }
+      _farmLoaded = true;
+      return _farmData;
+    }).catch(function() {
+      _farmData = normalizeFarm(getDefaultFarm());
+      _farmLoaded = true;
+      return _farmData;
+    });
   }
 
   function getGrowthProgress(plot) {
@@ -920,6 +980,14 @@
     refreshPoints();
   }, 30000);
 
+  window.addEventListener("beforeunload", function() {
+    forceDbSaveNow();
+  });
+
+  document.addEventListener("visibilitychange", function() {
+    if (document.hidden) forceDbSaveNow();
+  });
+
   document.getElementById("btnOpenShop").addEventListener("click", openShop);
   document.getElementById("btnOpenMarket").addEventListener("click", openMarket);
 
@@ -933,9 +1001,11 @@
     sellAllCrop: sellAllCrop,
   };
 
-  tickFarm();
-  refreshPoints();
-  renderFarm();
+  initFarmFromDb().then(function() {
+    tickFarm();
+    refreshPoints();
+    renderFarm();
+  });
 })();
 </script>
 </body>
