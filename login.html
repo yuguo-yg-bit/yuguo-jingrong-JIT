@@ -569,7 +569,6 @@
     var username = document.getElementById("loginUsername").value.trim();
     var password = document.getElementById("loginPassword").value.trim();
     var errorEl = document.getElementById("loginError");
-    var users = JITConfig.getUsers();
 
     if (!username || !password) {
       errorEl.style.display = "block";
@@ -588,22 +587,16 @@
       return;
     }
 
-    // 先检查内置用户
-    if (users[username] && users[username] === password) {
-      localStorage.setItem("jit_current_user", username);
-      _showToast("登录成功，欢迎 " + username, "success");
-      setTimeout(function() { window.location.replace("/work"); }, 600);
-    } else {
-      errorEl.style.display = "none";
-      var btn = document.getElementById("btnLogin");
-      btn.disabled = true;
-      btn.textContent = "验证中...";
-      JITApi.login(username, password).then(function(res) {
-        if (res && res.ok) {
-          localStorage.setItem("jit_current_user", username);
-          _showToast("登录成功，欢迎 " + username, "success");
-          setTimeout(function() { window.location.replace("/work"); }, 600);
-        } else {
+    errorEl.style.display = "none";
+    var btn = document.getElementById("btnLogin");
+    btn.disabled = true;
+    btn.textContent = "验证中...";
+    JITApi.login(username, password).then(function(res) {
+      if (res && res.ok) {
+        localStorage.setItem("jit_current_user", username);
+        _showToast("登录成功，欢迎 " + username, "success");
+        setTimeout(function() { window.location.replace("/work"); }, 600);
+      } else {
           return JITApi.findPendingRegistration(username).then(function(pending) {
             if (pending) {
               errorEl.style.display = "block";
@@ -613,7 +606,6 @@
               errorEl.textContent = "用户名或密码错误";
             }
           });
-        }
       }).catch(function(err) {
         errorEl.style.display = "block";
         errorEl.textContent = "登录失败: " + err.message;
