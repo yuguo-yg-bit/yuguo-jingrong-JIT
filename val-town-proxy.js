@@ -245,23 +245,15 @@ export default async function (req) {
         if (rows.length > 0 && rows[0][1]?.value === passwordHash) valid = true;
         dbUser = { username: "admin", role: "admin" };
       } else {
-        // 注册用户：兼容明文→就地升级为哈希（sha256$ 前缀）
-        if (!password && !passwordHash) return jsonResponse({ error: "缺少密码" }, 400);
+        // 注册用户：密码哈希为唯一验证方式（不再兼容明文）
+        if (!passwordHash || String(passwordHash).indexOf("sha256$") !== 0) {
+          return jsonResponse({ error: "请使用安全密码登录" }, 400);
+        }
         const q = await execTurso("SELECT username, password_hash FROM registrations WHERE username=? AND review_status='approved' LIMIT 1", [username]);
         const rows = q.data?.results?.[0]?.response?.result?.rows || q.data?.results?.[0]?.response?.results?.rows || [];
         if (rows.length > 0) {
-          const stored = rows[0][1]?.value ?? "";
-          const s = String(stored);
-          if (String(passwordHash || "").indexOf("sha256$") === 0 && s === String(passwordHash)) {
-            valid = true;
-          } else if (password && s === String(password)) {
-            // 老数据明文：验证通过后就地升级为哈希
-            valid = true;
-            const hash = "sha256$" + String(passwordHash || "");
-            if (hash.length > 10) {
-              execTurso("UPDATE registrations SET password_hash=? WHERE username=? AND review_status='approved'", [hash, username]).catch(function() {});
-            }
-          }
+          const s = String(rows[0][1]?.value ?? "");
+          if (s === String(passwordHash)) valid = true;
           dbUser = { username: username, role: "user" };
         }
       }
