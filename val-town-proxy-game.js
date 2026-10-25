@@ -70,6 +70,103 @@ export default async function (req) {
       return { error:"会话无效" };
     }
 
+    // ========== 共享数据配置 ==========
+    const CROP_CFG = {
+      wheat:{name:"小麦",emoji:"🌾",growthHours:2,waterHours:4,wiltHours:6},
+      corn:{name:"玉米",emoji:"🌽",growthHours:4,waterHours:6,wiltHours:8},
+      strawberry:{name:"草莓",emoji:"🍓",growthHours:3,waterHours:5,wiltHours:7},
+      carrot:{name:"胡萝卜",emoji:"🥕",growthHours:5,waterHours:7,wiltHours:10},
+      tomato:{name:"番茄",emoji:"🍅",growthHours:6,waterHours:8,wiltHours:12},
+      sunflower:{name:"向日葵",emoji:"🌻",growthHours:8,waterHours:8,wiltHours:14}
+    };
+    const WHOLESALE = {
+      wheat:40,corn:80,strawberry:110,carrot:100,tomato:120,sunflower:160,
+      seeds_wheat:8,seeds_corn:16,seeds_strawberry:22,seeds_carrot:20,seeds_tomato:24,seeds_sunflower:32,
+      fertilizer_basic:12,fertilizer_premium:32,auto_waterer:120
+    };
+    const getCost = function(itemId) {
+      var c = WHOLESALE[itemId];
+      if (c !== undefined) return c;
+      if (CROP_CFG[itemId]) return CROP_CFG[itemId].growthHours * 5;
+      return 20;
+    };
+    const getItemName = function(itemId) {
+      if (CROP_CFG[itemId]) return CROP_CFG[itemId].name;
+      var base = itemId.replace(/^seeds_/,"");
+      if (CROP_CFG[base]) return CROP_CFG[base].name + "种子";
+      return itemId;
+    };
+
+    // ========== 共享数据读取（引擎状态、商店、农场） ==========
+    const getEngineState = async function(uid) {
+      var nw = new Date().toISOString();
+      var q = await execTurso("SELECT * FROM game_engine_state WHERE user_id=?",[uid]);
+      var ir = q.data.results?.[0]?.response?.result || q.data.results?.[0]?.response?.results || q.data;
+      if (ir && ir.rows && ir.rows.length > 0) {
+        var r = ir.rows[0];
+        return { userId:uid, lastTick:String(r[1]?.value ?? r[1] ?? nw), marketHeat:parseFloat(r[2]?.value ?? r[2] ?? 0.5), buyerFreq:parseInt(r[3]?.value ?? r[3] ?? 1800), autoRestock:parseInt(r[4]?.value ?? r[4] ?? 0), autoFarm:parseInt(r[5]?.value ?? r[5] ?? 0), robotLevel:parseInt(r[6]?.value ?? r[6] ?? 1), totalRevenue:parseInt(r[7]?.value ?? r[7] ?? 0), totalCost:parseInt(r[8]?.value ?? r[8] ?? 0) };
+      }
+      await execTurso("INSERT OR IGNORE INTO game_engine_state (user_id,last_tick,market_heat,buyer_freq,auto_restock,auto_farm,robot_level,total_revenue,total_cost,updated_at) VALUES (?,?,0.5,1800,0,0,1,0,0,?)",[uid,nw,nw]);
+      return { userId:uid, lastTick:nw, marketHeat:0.5, buyerFreq:1800, autoRestock:0, autoFarm:0, robotLevel:1, totalRevenue:0, totalCost:0 };
+    };
+    const logGameEvent = async function(uid, evType, itemId, qty, amt, detail) {
+      var nw = new Date().toISOString();
+      var lid = "glog_"+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+      await execTurso("INSERT INTO game_engine_log (id,user_id,event_type,item_id,quantity,amount,detail,created_at) VALUES (?,?,?,?,?,?,?,?)",[lid,uid,evType,itemId||"",qty||0,amt||0,detail||"",nw]).catch(function(){});
+    };
+    const getShopData = async function(uid) {
+      var sq = await execTurso("SELECT item_id,quantity FROM game_shop_stock WHERE user_id=?",[uid]);
+      var stock = {};
+      var sir = sq.data.results?.[0]?.response?.result || sq.data.results?.[0]?.response?.results || sq.data;
+      if (sir && sir.rows) {
+        for (var i=0;i<sir.rows.length;i++) {
+          stock[sir.rows[i][0]?.value??sir.rows[i][0]] = parseInt(sir.rows[i][1]?.value??sir.rows[i][1]??0);
+        }
+      }
+      var shq = await execTurso("SELECT * FROM game_shelves WHERE user_id=? ORDER BY created_at ASC",[uid]);
+      var shelves = [];
+      var shr = shq.data.results?.[0]?.response?.result || shq.data.results?.[0]?.response?.results || shq.data;
+      if (shr && shr.rows) {
+        for (var i=0;i<shr.rows.length;i++) {
+          var r = shr.rows[i];
+          shelves.push({ id:r[0]?.value??r[0], itemId:r[2]?.value??r[2], itemName:r[3]?.value??r[3], costPrice:parseInt(r[4]?.value??r[4]??0), profitPct:parseFloat(r[5]?.value??r[5]??0.3), sellPrice:parseInt(r[6]?.value??r[6]??0), quantity:parseInt(r[7]?.value??r[7]??0), createdAt:r[8]?.value??r[8], updatedAt:r[9]?.value??r[9] });
+        }
+      }
+      var logQ = await execTurso("SELECT * FROM game_engine_log WHERE user_id=? ORDER BY created_at DESC LIMIT 30",[uid]);
+      var logs = [];
+      var lr = logQ.data.results?.[0]?.response?.result || logQ.data.results?.[0]?.response?.results || logQ.data;
+      if (lr && lr.rows) {
+        for (var i=0;i<lr.rows.length;i++) {
+          var r = lr.rows[i];
+          logs.push({ id:r[0]?.value??r[0], eventType:r[2]?.value??r[2], itemId:r[3]?.value??r[3], quantity:parseInt(r[4]?.value??r[4]??0), amount:parseInt(r[5]?.value??r[5]??0), detail:r[6]?.value??r[6], createdAt:r[7]?.value??r[7] });
+        }
+      }
+      return { stock, shelves, logs };
+    };
+    const getFarmData = async function(uid, dls) {
+      var landSize = dls || 6;
+      var fq = await execTurso("SELECT * FROM game_farm_plots WHERE user_id=? ORDER BY plot_index ASC",[uid]);
+      var plots = [];
+      var fr = fq.data.results?.[0]?.response?.result || fq.data.results?.[0]?.response?.results || fq.data;
+      var existingMap = {};
+      if (fr && fr.rows) {
+        for (var i=0;i<fr.rows.length;i++) {
+          var r = fr.rows[i];
+          var pi = parseInt((r[1]?.value ?? r[1]) || 0);
+          existingMap[pi] = true;
+          plots.push({ plotIndex:pi, cropType:(r[2]?.value ?? r[2]) || null, plantedAt:(r[3]?.value ?? r[3]) || null, growthHours:parseFloat((r[4]?.value ?? r[4]) || 0), waterHours:parseFloat((r[5]?.value ?? r[5]) || 0), wiltHours:parseFloat((r[6]?.value ?? r[6]) || 0), lastWatered:(r[7]?.value ?? r[7]) || null, status:(r[8]?.value ?? r[8]) || "empty" });
+        }
+      }
+      for (var i=0;i<landSize;i++) {
+        if (!existingMap[i]) {
+          await execTurso("INSERT OR IGNORE INTO game_farm_plots (user_id,plot_index,crop_type,planted_at,growth_hours,water_hours,wilt_hours,last_watered,status) VALUES (?,?,NULL,NULL,0,0,0,NULL,'empty')",[uid,i]);
+          plots.push({ plotIndex:i, cropType:null, plantedAt:null, growthHours:0, waterHours:0, wiltHours:0, lastWatered:null, status:"empty" });
+        }
+      }
+      plots.sort(function(a,b){ return a.plotIndex - b.plotIndex; });
+      return plots;
+    };
+
     // ========== 游戏引擎 ==========
     if (path === "/game" && req.method === "POST") {
       const body = await req.json();
@@ -85,32 +182,6 @@ export default async function (req) {
 
       const now = new Date().toISOString();
       const nowMs = Date.now();
-
-      const CROP_CFG = {
-        wheat:{name:"小麦",emoji:"🌾",growthHours:2,waterHours:4,wiltHours:6},
-        corn:{name:"玉米",emoji:"🌽",growthHours:4,waterHours:6,wiltHours:8},
-        strawberry:{name:"草莓",emoji:"🍓",growthHours:3,waterHours:5,wiltHours:7},
-        carrot:{name:"胡萝卜",emoji:"🥕",growthHours:5,waterHours:7,wiltHours:10},
-        tomato:{name:"番茄",emoji:"🍅",growthHours:6,waterHours:8,wiltHours:12},
-        sunflower:{name:"向日葵",emoji:"🌻",growthHours:8,waterHours:8,wiltHours:14}
-      };
-      const WHOLESALE = {
-        wheat:8,corn:16,strawberry:22,carrot:20,tomato:24,sunflower:32,
-        seeds_wheat:8,seeds_corn:16,seeds_strawberry:22,seeds_carrot:20,seeds_tomato:24,seeds_sunflower:32,
-        fertilizer_basic:12,fertilizer_premium:32,auto_waterer:120
-      };
-      const getCost = function(itemId) {
-        var c = WHOLESALE[itemId];
-        if (c !== undefined) return c;
-        if (CROP_CFG[itemId]) return CROP_CFG[itemId].growthHours * 5;
-        return 20;
-      };
-      const getItemName = function(itemId) {
-        if (CROP_CFG[itemId]) return CROP_CFG[itemId].name;
-        var base = itemId.replace(/^seeds_/,"");
-        if (CROP_CFG[base]) return CROP_CFG[base].name + "种子";
-        return itemId;
-      };
 
       // 建表（懒初始化）
       const initTables = async function() {
@@ -145,79 +216,6 @@ export default async function (req) {
         var bal = null;
         try { bal = tData.results?.[2]?.response?.result?.rows?.[0]?.[0]?.value ?? tData.results?.[2]?.response?.result?.rows?.[0]?.[0]; } catch(e) {}
         return { ok:true, balance:bal };
-      };
-
-      // 引擎状态
-      const getEngineState = async function(uid) {
-        var q = await execTurso("SELECT * FROM game_engine_state WHERE user_id=?",[uid]);
-        var ir = q.data.results?.[0]?.response?.result || q.data.results?.[0]?.response?.results || q.data;
-        if (ir && ir.rows && ir.rows.length > 0) {
-          var r = ir.rows[0];
-          return { userId:uid, lastTick:String(r[1]?.value ?? r[1] ?? now), marketHeat:parseFloat(r[2]?.value ?? r[2] ?? 0.5), buyerFreq:parseInt(r[3]?.value ?? r[3] ?? 1800), autoRestock:parseInt(r[4]?.value ?? r[4] ?? 0), autoFarm:parseInt(r[5]?.value ?? r[5] ?? 0), robotLevel:parseInt(r[6]?.value ?? r[6] ?? 1), totalRevenue:parseInt(r[7]?.value ?? r[7] ?? 0), totalCost:parseInt(r[8]?.value ?? r[8] ?? 0) };
-        }
-        await execTurso("INSERT OR IGNORE INTO game_engine_state (user_id,last_tick,market_heat,buyer_freq,auto_restock,auto_farm,robot_level,total_revenue,total_cost,updated_at) VALUES (?,?,0.5,1800,0,0,1,0,0,?)",[uid,now,now]);
-        return { userId:uid, lastTick:now, marketHeat:0.5, buyerFreq:1800, autoRestock:0, autoFarm:0, robotLevel:1, totalRevenue:0, totalCost:0 };
-      };
-
-      const logGameEvent = async function(uid, evType, itemId, qty, amt, detail) {
-        var lid = "glog_"+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-        await execTurso("INSERT INTO game_engine_log (id,user_id,event_type,item_id,quantity,amount,detail,created_at) VALUES (?,?,?,?,?,?,?,?)",[lid,uid,evType,itemId||"",qty||0,amt||0,detail||"",now]).catch(function(){});
-      };
-
-      // 商店数据
-      const getShopData = async function(uid) {
-        var sq = await execTurso("SELECT item_id,quantity FROM game_shop_stock WHERE user_id=?",[uid]);
-        var stock = {};
-        var sir = sq.data.results?.[0]?.response?.result || sq.data.results?.[0]?.response?.results || sq.data;
-        if (sir && sir.rows) {
-          for (var i=0;i<sir.rows.length;i++) {
-            stock[sir.rows[i][0]?.value??sir.rows[i][0]] = parseInt(sir.rows[i][1]?.value??sir.rows[i][1]??0);
-          }
-        }
-        var shq = await execTurso("SELECT * FROM game_shelves WHERE user_id=? ORDER BY created_at ASC",[uid]);
-        var shelves = [];
-        var shr = shq.data.results?.[0]?.response?.result || shq.data.results?.[0]?.response?.results || shq.data;
-        if (shr && shr.rows) {
-          for (var i=0;i<shr.rows.length;i++) {
-            var r = shr.rows[i];
-            shelves.push({ id:r[0]?.value??r[0], itemId:r[2]?.value??r[2], itemName:r[3]?.value??r[3], costPrice:parseInt(r[4]?.value??r[4]??0), profitPct:parseFloat(r[5]?.value??r[5]??0.3), sellPrice:parseInt(r[6]?.value??r[6]??0), quantity:parseInt(r[7]?.value??r[7]??0), createdAt:r[8]?.value??r[8], updatedAt:r[9]?.value??r[9] });
-          }
-        }
-        var logQ = await execTurso("SELECT * FROM game_engine_log WHERE user_id=? ORDER BY created_at DESC LIMIT 30",[uid]);
-        var logs = [];
-        var lr = logQ.data.results?.[0]?.response?.result || logQ.data.results?.[0]?.response?.results || logQ.data;
-        if (lr && lr.rows) {
-          for (var i=0;i<lr.rows.length;i++) {
-            var r = lr.rows[i];
-            logs.push({ id:r[0]?.value??r[0], eventType:r[2]?.value??r[2], itemId:r[3]?.value??r[3], quantity:parseInt(r[4]?.value??r[4]??0), amount:parseInt(r[5]?.value??r[5]??0), detail:r[6]?.value??r[6], createdAt:r[7]?.value??r[7] });
-          }
-        }
-        return { stock, shelves, logs };
-      };
-
-      // 农场数据
-      const getFarmData = async function(uid, dls) {
-        var landSize = dls || 6;
-        var fq = await execTurso("SELECT * FROM game_farm_plots WHERE user_id=? ORDER BY plot_index ASC",[uid]);
-        var plots = [];
-        var fr = fq.data.results?.[0]?.response?.result || fq.data.results?.[0]?.response?.results || fq.data;
-        var existingMap = {};
-        if (fr && fr.rows) {
-          for (var i=0;i<fr.rows.length;i++) {
-            var r = fr.rows[i];
-            var pi = parseInt((r[1]?.value ?? r[1]) || 0);
-            existingMap[pi] = true;
-            plots.push({ plotIndex:pi, cropType:(r[2]?.value ?? r[2]) || null, plantedAt:(r[3]?.value ?? r[3]) || null, growthHours:parseFloat((r[4]?.value ?? r[4]) || 0), waterHours:parseFloat((r[5]?.value ?? r[5]) || 0), wiltHours:parseFloat((r[6]?.value ?? r[6]) || 0), lastWatered:(r[7]?.value ?? r[7]) || null, status:(r[8]?.value ?? r[8]) || "empty" });
-          }
-        }
-        for (var i=0;i<landSize;i++) {
-          if (!existingMap[i]) {
-            await execTurso("INSERT OR IGNORE INTO game_farm_plots (user_id,plot_index,crop_type,planted_at,growth_hours,water_hours,wilt_hours,last_watered,status) VALUES (?,?,NULL,NULL,0,0,0,NULL,'empty')",[uid,i]);
-            plots.push({ plotIndex:i, cropType:null, plantedAt:null, growthHours:0, waterHours:0, wiltHours:0, lastWatered:null, status:"empty" });
-          }
-        }
-        plots.sort(function(a,b){ return a.plotIndex - b.plotIndex; });
-        return plots;
       };
 
       // ====== TICK：离线结算 ======
@@ -498,8 +496,52 @@ export default async function (req) {
         await logGameEvent(userId, "toggle_robot", rt, 0, 0, (newVal?"开启":"关闭")+(rt==="auto_restock"?"自动进货":"自动农场"));
         return jsonResponse({ ok:true, state:st });
       }
+      if (action === "buy_from_user") {
+        var targetUserId = body.targetUserId;
+        var shelfId = body.shelfId;
+        if (!targetUserId || !shelfId) return jsonResponse({ error:"缺少参数" }, 400);
+        if (targetUserId === userId) return jsonResponse({ error:"不能买自己的商品" }, 400);
+        var sq = await execTurso("SELECT item_name,sell_price,quantity FROM game_shelves WHERE id=? AND user_id=? AND quantity>0",[shelfId,targetUserId]);
+        var sir = sq.data.results?.[0]?.response?.result || sq.data.results?.[0]?.response?.results || sq.data;
+        if (!sir || !sir.rows || sir.rows.length===0) return jsonResponse({ error:"商品已售罄或不存在" }, 400);
+        var itemName = String((sir.rows[0][0]?.value ?? sir.rows[0][0]) || "");
+        var sellPrice = parseInt(sir.rows[0][1]?.value??sir.rows[0][1]??0);
+        if (sellPrice <= 0) return jsonResponse({ error:"售价异常" }, 400);
+        var bn = "buy_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,6);
+        try {
+          await gamePointsChange(userId, -sellPrice, "购买用户["+targetUserId+"]的"+itemName, bn);
+        } catch(e) {
+          return jsonResponse({ error:"积分不足: "+e.message }, 400);
+        }
+        var bn2 = "sell_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,6);
+        try {
+          await gamePointsChange(targetUserId, sellPrice, "卖出了"+itemName+"给用户["+userId+"]", bn2);
+        } catch(e) {}
+        await execTurso("UPDATE game_shelves SET quantity=quantity-1 WHERE id=? AND quantity>0",[shelfId]);
+        var sq2 = await execTurso("SELECT quantity FROM game_shelves WHERE id=?",[shelfId]);
+        var qr = sq2.data.results?.[0]?.response?.result || sq2.data.results?.[0]?.response?.results || sq2.data;
+        var newQty = qr && qr.rows && qr.rows.length>0 ? parseInt(qr.rows[0][0]?.value??qr.rows[0][0]??0) : 0;
+        if (newQty <= 0) { await execTurso("DELETE FROM game_shelves WHERE id=?",[shelfId]); }
+        await logGameEvent(userId, "buy_from_user", "", 1, -sellPrice, "从["+targetUserId+"]购买了"+itemName);
+        await logGameEvent(targetUserId, "sold_to_user", "", 1, sellPrice, "卖出了"+itemName+"给["+userId+"]");
+        var myShop = await getShopData(userId);
+        return jsonResponse({ ok:true, shop:myShop, cost:sellPrice, itemName:itemName });
+      }
 
       return jsonResponse({ error:"未知游戏动作: "+(action||"空") }, 400);
+    }
+
+    // ========== 访客农场（无需登录，只读） ==========
+    if (path === "/visit" && req.method === "POST") {
+      var vbody = await req.json();
+      var vuid = vbody.targetUserId;
+      if (!vuid || typeof vuid !== "string" || vuid.length > 50) {
+        return jsonResponse({ error:"缺少合法 targetUserId" }, 400);
+      }
+      var vst = await getEngineState(vuid);
+      var vsh = await getShopData(vuid);
+      var vfm = await getFarmData(vuid, 6);
+      return jsonResponse({ ok:true, state:vst, shop:vsh, farm:vfm });
     }
 
     return jsonResponse({ error:"未知路径" }, 404);

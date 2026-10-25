@@ -37,6 +37,10 @@ var JITCommunity = (function() {
     if (!str) return "";
     return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   };
+  var _escapeAttr = function(str) {
+    if (!str) return "";
+    return String(str).replace(/&/g, "&amp;").replace(/'/g, "\\'").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  };
 
   // ===== Toast =====
   var _showToast = function(msg, type) {
@@ -396,9 +400,12 @@ var JITCommunity = (function() {
 
       var body = _buildStatusBody(s);
 
+      var isOtherUser = s.username !== _currentUser;
+      var avatarOnclick = isOtherUser ? ' onclick="JITCommunity.openVisitFarm(\'' + _escapeAttr(s.username) + '\')" style="cursor:pointer;"' : '';
+
       html +=
         '<div class="feed-card">' +
-          '<div class="feed-card-avatar" style="background:' + avatarColor + ';">' + avatarHtml + '</div>' +
+          '<div class="feed-card-avatar"' + avatarOnclick + ' style="background:' + avatarColor + ';">' + avatarHtml + '</div>' +
           '<div class="feed-card-body">' +
             '<div class="feed-card-head">' +
               '<span class="feed-card-name">' + _escapeHtml(s.username) + "</span>" + levelChip +
@@ -830,6 +837,14 @@ var JITCommunity = (function() {
 
     // 装扮选择器事件
     _initOutfitEvents();
+
+    // 访客农场弹窗：点击遮罩层关闭
+    var visitOverlay = document.getElementById("visitFarmOverlay");
+    if (visitOverlay) {
+      visitOverlay.addEventListener("click", function(e) {
+        if (e.target === visitOverlay) closeVisitFarm();
+      });
+    }
   };
 
   var _setPostType = function(type) {
@@ -1345,7 +1360,94 @@ var JITCommunity = (function() {
     document.getElementById("versionWatermark").textContent = "v3.3.7";
   };
 
-  return { init: init };
+  // ===== 访客农场 =====
+  var _visitTargetUser = null;
+  var _visitCropCfg = { wheat:{name:"小麦",emoji:"🌾"}, corn:{name:"玉米",emoji:"🌽"}, strawberry:{name:"草莓",emoji:"🍓"}, carrot:{name:"胡萝卜",emoji:"🥕"}, tomato:{name:"番茄",emoji:"🍅"}, sunflower:{name:"向日葵",emoji:"🌻"} };
+
+  var openVisitFarm = function(targetUsername) {
+    _visitTargetUser = targetUsername;
+    var overlay = document.getElementById("visitFarmOverlay");
+    if (!overlay) return;
+    var avatarEl = document.getElementById("visitFarmAvatar");
+    var nameEl = document.getElementById("visitFarmName");
+    var bodyEl = document.getElementById("visitFarmBody");
+    if (!avatarEl || !nameEl || !bodyEl) return;
+    var avatarSaved = localStorage.getItem("jit_avatar_" + targetUsername);
+    if (avatarSaved) { avatarEl.innerHTML = '<img src="' + avatarSaved + '" alt="">'; avatarEl.style.background = "none"; }
+    else { avatarEl.innerHTML = _getInitial(targetUsername); avatarEl.style.background = _getAvatarColor(targetUsername); }
+    nameEl.textContent = targetUsername;
+    bodyEl.innerHTML = '<div class="feed-loading">加载中...</div>';
+    overlay.classList.add("active");
+    JITApi.getTursoHelpers().visitFarm(targetUsername).then(function(data) {
+      _renderVisitFarm(data);
+    }).catch(function(e) {
+      bodyEl.innerHTML = '<div class="visit-farm-empty">加载失败: ' + _escapeHtml(e.message) + '</div>';
+    });
+  };
+
+  var closeVisitFarm = function() {
+    var overlay = document.getElementById("visitFarmOverlay");
+    if (overlay) overlay.classList.remove("active");
+    _visitTargetUser = null;
+  };
+
+  var _renderVisitFarm = function(data) {
+    var bodyEl = document.getElementById("visitFarmBody");
+    if (!bodyEl) return;
+    var shop = data.shop || { shelves: [], stock: {} };
+    var farm = data.farm || [];
+    var html = "";
+
+    html += '<div class="visit-farm-section-title">🌾 农田</div>';
+    if (farm.length === 0) { html += '<div class="visit-farm-empty">还未开垦农田</div>'; }
+    else {
+      html += '<div class="visit-farm-plots">';
+      farm.forEach(function(plot) {
+        var cfg = _visitCropCfg[plot.cropType] || { name: (plot.cropType || "空"), emoji: "🌱" };
+        var statusLabel = "";
+        if (plot.status === "empty") { cfg = { name: "空地", emoji: "🟫" }; statusLabel = ""; }
+        else if (plot.status === "growing") statusLabel = "生长中";
+        else if (plot.status === "mature") statusLabel = "已成熟";
+        else if (plot.status === "withered") statusLabel = "枯死";
+        html += '<div class="visit-plot-card"><span class="visit-plot-emoji">' + cfg.emoji + '</span>' + cfg.name + '<span class="visit-plot-label">' + statusLabel + '</span></div>';
+      });
+      html += '</div>';
+    }
+
+    html += '<div class="visit-farm-section-title">🏷️ 货架商品</div>';
+    var shelves = shop.shelves || [];
+    if (shelves.length === 0) { html += '<div class="visit-farm-empty">货架空空</div>'; }
+    else {
+      html += '<div class="visit-shelf-grid">';
+      shelves.forEach(function(sh) {
+        html += '<div class="visit-shelf-item">' +
+          '<div class="visit-shelf-info"><div class="visit-shelf-item-name">' + _escapeHtml(sh.itemName || sh.itemId) + '</div><div class="visit-shelf-item-price">💰 ' + sh.sellPrice + ' 分/个（库存: ' + (sh.quantity || 0) + '）</div></div>' +
+          '<button class="visit-shelf-buy-btn" onclick="JITCommunity.buyFromShelf(\'' + sh.id + '\')" ' + ((sh.quantity || 0) <= 0 ? 'disabled' : '') + '>🛒 购买</button>' +
+        '</div>';
+      });
+      html += '</div>';
+    }
+
+    bodyEl.innerHTML = html;
+  };
+
+  var buyFromShelf = function(shelfId) {
+    if (!_visitTargetUser) { _showToast("请先进入访客农场", "error"); return; }
+    var btns = document.querySelectorAll(".visit-shelf-buy-btn");
+    btns.forEach(function(b) { b.disabled = true; });
+    JITApi.getTursoHelpers().gameAction(_currentUser, "buy_from_user", { targetUserId: _visitTargetUser, shelfId: shelfId }).then(function(r) {
+      _showToast("🎉 成功购买了" + (r.itemName || "商品") + "！花费 " + (r.cost || 0) + " 分", "success");
+      _refreshLocalPoints();
+      JITApi.getTursoHelpers().visitFarm(_visitTargetUser).then(function(data) {
+        _renderVisitFarm(data);
+      }).catch(function(e) { _showToast("刷新失败: " + e.message, "error"); });
+    }).catch(function(e) {
+      _showToast("购买失败: " + (e.message || "未知错误"), "error");
+      btns.forEach(function(b) { b.disabled = false; });
+    });
+  };
+
+  return { init: init, openVisitFarm: openVisitFarm, closeVisitFarm: closeVisitFarm, buyFromShelf: buyFromShelf };
 })();
 
 document.addEventListener("DOMContentLoaded", function() {

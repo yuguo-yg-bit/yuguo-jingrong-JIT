@@ -156,6 +156,24 @@ var JITApi = (function() {
         return data;
       });
     };
+    fn.visitFarm = function(targetUserId) {
+      return fetch(_gameProxy + "/visit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId: targetUserId })
+      }).then(function(resp) {
+        if (!resp.ok) {
+          return resp.text().then(function(txt) {
+            try { var e = JSON.parse(txt); throw new Error(e.error || "访客错误 HTTP "+resp.status); }
+            catch(p) { if (p.message.indexOf("访客错误 HTTP")===0) throw p; throw new Error("访客错误 HTTP "+resp.status); }
+          });
+        }
+        return resp.json();
+      }).then(function(data) {
+        if (data.error) throw new Error(data.error);
+        return data;
+      });
+    };
     return fn;
   };
 

@@ -238,6 +238,23 @@
   </div>
 </div>
 
+<!-- 访客农场弹窗 -->
+<div class="modal-overlay" id="visitFarmOverlay" style="z-index:2100;">
+  <div class="visit-farm-modal">
+    <div class="visit-farm-header">
+      <div class="visit-farm-avatar" id="visitFarmAvatar"></div>
+      <div class="visit-farm-user-info">
+        <span class="visit-farm-name" id="visitFarmName">--</span>
+        <span class="visit-farm-label">的农场商店</span>
+      </div>
+      <button class="visit-farm-close" onclick="JITCommunity.closeVisitFarm()">✕</button>
+    </div>
+    <div class="visit-farm-body" id="visitFarmBody">
+      <div class="feed-loading">加载中...</div>
+    </div>
+  </div>
+</div>
+
 <!-- Toast 容器 -->
 <div class="toast-container" id="toastContainer"></div>
 

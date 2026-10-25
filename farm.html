@@ -249,15 +249,27 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
         <label>商品</label>
         <select id="restockItem" onchange="FARM.onRestockItemChange()">
           <option value="">请选择商品</option>
-          <option value="seeds_wheat">🌾 小麦种子 - 8分/个</option>
-          <option value="seeds_corn">🌽 玉米种子 - 16分/个</option>
-          <option value="seeds_strawberry">🍓 草莓种子 - 22分/个</option>
-          <option value="seeds_carrot">🥕 胡萝卜种子 - 20分/个</option>
-          <option value="seeds_tomato">🍅 番茄种子 - 24分/个</option>
-          <option value="seeds_sunflower">🌻 向日葵种子 - 32分/个</option>
-          <option value="fertilizer_basic">💩 普通肥料 - 12分</option>
-          <option value="fertilizer_premium">✨ 高级肥料 - 32分</option>
-          <option value="auto_waterer">💧 自动浇灌器 - 120分</option>
+          <optgroup label="🌱 种子（需要自己种）">
+            <option value="seeds_wheat">🌾 小麦种子 - 8分/个</option>
+            <option value="seeds_corn">🌽 玉米种子 - 16分/个</option>
+            <option value="seeds_strawberry">🍓 草莓种子 - 22分/个</option>
+            <option value="seeds_carrot">🥕 胡萝卜种子 - 20分/个</option>
+            <option value="seeds_tomato">🍅 番茄种子 - 24分/个</option>
+            <option value="seeds_sunflower">🌻 向日葵种子 - 32分/个</option>
+          </optgroup>
+          <optgroup label="🥕 成熟作物（直接上架卖，不用种）">
+            <option value="wheat">🌾 小麦 - 40分/个</option>
+            <option value="corn">🌽 玉米 - 80分/个</option>
+            <option value="strawberry">🍓 草莓 - 110分/个</option>
+            <option value="carrot">🥕 胡萝卜 - 100分/个</option>
+            <option value="tomato">🍅 番茄 - 120分/个</option>
+            <option value="sunflower">🌻 向日葵 - 160分/个</option>
+          </optgroup>
+          <optgroup label="🔧 工具">
+            <option value="fertilizer_basic">💩 普通肥料 - 12分</option>
+            <option value="fertilizer_premium">✨ 高级肥料 - 32分</option>
+            <option value="auto_waterer">💧 自动浇灌器 - 120分</option>
+          </optgroup>
         </select>
       </div>
       <div class="input-group">
@@ -334,7 +346,7 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
   var _shop = null;
   var _farm = null;
   var _tab = "shop";
-  var _restockPrices = { seeds_wheat:8, seeds_corn:16, seeds_strawberry:22, seeds_carrot:20, seeds_tomato:24, seeds_sunflower:32, fertilizer_basic:12, fertilizer_premium:32, auto_waterer:120 };
+  var _restockPrices = { seeds_wheat:8, seeds_corn:16, seeds_strawberry:22, seeds_carrot:20, seeds_tomato:24, seeds_sunflower:32, fertilizer_basic:12, fertilizer_premium:32, auto_waterer:120, wheat:40, corn:80, strawberry:110, carrot:100, tomato:120, sunflower:160 };
   var _cropCfg = { wheat:{name:"小麦",emoji:"🌾",gh:2,wh:4,wih:6}, corn:{name:"玉米",emoji:"🌽",gh:4,wh:6,wih:8}, strawberry:{name:"草莓",emoji:"🍓",gh:3,wh:5,wih:7}, carrot:{name:"胡萝卜",emoji:"🥕",gh:5,wh:7,wih:10}, tomato:{name:"番茄",emoji:"🍅",gh:6,wh:8,wih:12}, sunflower:{name:"向日葵",emoji:"🌻",gh:8,wh:8,wih:14} };
   var _seedMap = { seeds_wheat:"wheat", seeds_corn:"corn", seeds_strawberry:"strawberry", seeds_carrot:"carrot", seeds_tomato:"tomato", seeds_sunflower:"sunflower" };
   var _musicPlaying = false;
@@ -641,16 +653,22 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
 
   // ====== 收获 ======
   function doHarvest(idx) {
+    var plot = _farm[idx];
+    var ct = plot.cropType;
+    var cfg = _cropCfg[ct] || {};
     game("harvest", { plotIndex: idx }).then(function(r) {
       _farm = r.farm.slice(0,6); _shop = r.shop;
-      render(); showToast("🌾 收获了！已存入商店库存", "success");
+      refreshPoints(); render(); showToast("🌾 收获了"+(cfg.name||ct)+"！已存入库存", "success");
+      if (confirm("收获的"+cfg.emoji+" "+cfg.name+" 已入库，要直接上架到货架卖吗？")) {
+        openShelfModal(ct);
+      }
     }).catch(function(e){ showToast("收获失败: "+(e.message||""), "error"); });
   }
 
   // ====== 浇水 ======
   function doWater(idx) {
     game("water", { plotIndex: idx }).then(function(r) {
-      _farm = r.farm.slice(0,6); closeModal("actionModal"); render(); showToast("💧 浇了水！", "success");
+      _farm = r.farm.slice(0,6); closeModal("actionModal"); refreshPoints(); render(); showToast("💧 浇了水！", "success");
     }).catch(function(e){ showToast("浇水失败: "+(e.message||""), "error"); });
   }
 
@@ -693,11 +711,17 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
     var itemId = document.getElementById("restockItem").value;
     var qty = parseInt(document.getElementById("restockQty").value)||1;
     if (!itemId) { showToast("请选择商品", "error"); return; }
-    if (_currentPoints < (_restockPrices[itemId]||0)*qty) { showToast("积分不足！", "error"); return; }
+    var totalCost = (_restockPrices[itemId]||0)*qty;
+    if (_currentPoints < totalCost) { showToast("积分不足！需要"+totalCost+"分，你只有"+_currentPoints+"分", "error"); return; }
+    var btn = document.querySelector("#restockModal .btn-primary");
+    if (btn) { btn.disabled = true; btn.textContent = "进货中..."; }
     game("restock", { itemId: itemId, quantity: qty }).then(function(r) {
       _shop = r.shop; closeModal("restockModal"); refreshPoints(); render();
       showToast("进货成功！", "success");
-    }).catch(function(e){ showToast("进货失败: "+(e.message||""), "error"); });
+    }).catch(function(e){ showToast("进货失败: "+(e.message||""), "error"); })
+    .finally(function(){
+      if (btn) { btn.disabled = false; btn.textContent = "确认进货"; }
+    });
   }
 
   // ====== 上架 ======
