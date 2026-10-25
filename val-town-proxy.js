@@ -1232,13 +1232,13 @@ export default async function (req) {
         if (fr && fr.rows) {
           for (let i=0;i<fr.rows.length;i++) {
             const r = fr.rows[i];
-            const pi = parseInt(r[1]?.value??r[1]??0);
+            const pi = parseInt((r[1]?.value ?? r[1]) || 0);
             existingMap[pi] = true;
             plots.push({
-              plotIndex: pi, cropType: r[2]?.value??r[2]||null,
-              plantedAt: r[3]?.value??r[3]||null, growthHours: parseFloat(r[4]?.value??r[4]??0),
-              waterHours: parseFloat(r[5]?.value??r[5]??0), wiltHours: parseFloat(r[6]?.value??r[6]??0),
-              lastWatered: r[7]?.value??r[7]||null, status: r[8]?.value??r[8]||"empty"
+              plotIndex: pi, cropType: (r[2]?.value ?? r[2]) || null,
+              plantedAt: (r[3]?.value ?? r[3]) || null, growthHours: parseFloat((r[4]?.value ?? r[4]) || 0),
+              waterHours: parseFloat((r[5]?.value ?? r[5]) || 0), wiltHours: parseFloat((r[6]?.value ?? r[6]) || 0),
+              lastWatered: (r[7]?.value ?? r[7]) || null, status: (r[8]?.value ?? r[8]) || "empty"
             });
           }
         }
