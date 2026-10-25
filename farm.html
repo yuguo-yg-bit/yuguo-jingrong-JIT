@@ -6,217 +6,322 @@
 <title>我的农场 - 玉国金融</title>
 <link rel="stylesheet" href="css/style.css">
 <style>
-  body { background: var(--bg-primary); color: var(--text-primary); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
-  .farm-container { max-width: 1000px; margin: 0 auto; padding: 20px 16px 60px; }
-  .farm-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
-  .farm-title { font-size: 24px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
-  .farm-title .icon { font-size: 30px; }
-  .farm-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-  .btn-farm { padding: 8px 16px; border: 1px solid var(--ice-blue-border); border-radius: var(--radius-sm); background: var(--ice-blue-dim); color: var(--ice-blue); font-size: 13px; font-weight: 600; cursor: pointer; transition: var(--transition-fast); display: flex; align-items: center; gap: 4px; white-space: nowrap; }
-  .btn-farm:hover { background: rgba(66,165,245,0.25); }
-  .btn-farm.active { background: var(--ice-blue); color: #fff; border-color: var(--ice-blue); }
-  .btn-shop { background: rgba(255,193,7,0.15); border-color: rgba(255,193,7,0.4); color: #ffc107; }
-  .btn-shop:hover { background: rgba(255,193,7,0.25); }
-  .btn-market { background: rgba(255,87,34,0.15); border-color: rgba(255,87,34,0.4); color: #ff5722; }
-  .btn-market:hover { background: rgba(255,87,34,0.25); }
-  .btn-back { background: transparent; border: 1px solid var(--border-dim); color: var(--text-secondary); }
-  .btn-back:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
-  .btn-water { background: rgba(100,181,246,0.15); border-color: rgba(100,181,246,0.4); color: #64b5f6; padding: 4px 10px; font-size: 12px; border-radius: var(--radius-sm); cursor: pointer; border: 1px solid; }
-  .btn-water:hover { background: rgba(100,181,246,0.3); }
-  .btn-danger { background: rgba(239,83,80,0.15); border-color: rgba(239,83,80,0.4); color: #ef5350; }
-  .btn-danger:hover { background: rgba(239,83,80,0.3); }
-  .farm-info-bar { display: flex; align-items: center; gap: 16px; padding: 12px 16px; background: var(--bg-card); border-radius: var(--radius-md); border: 1px solid var(--border-dim); margin-bottom: 20px; flex-wrap: wrap; }
-  .farm-info-item { display: flex; align-items: center; gap: 6px; font-size: 14px; }
-  .farm-info-item .label { color: var(--text-secondary); }
-  .farm-info-item .value { font-weight: 700; }
-  .farm-info-item .value.gold { color: #ffd700; }
-  .farm-info-item .value.warning { color: #ff9800; }
-  .farm-info-item .value.danger { color: #ef5350; }
-  .farm-instructions { font-size: 11px; color: var(--text-dim); padding: 8px 12px; background: rgba(255,255,255,0.02); border-radius: var(--radius-sm); border: 1px solid var(--border-dim); margin-bottom: 16px; line-height: 1.5; }
-  .farm-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
-  @media (max-width: 600px) { .farm-grid { grid-template-columns: repeat(2, 1fr); } }
-  .farm-plot { aspect-ratio: 1; border-radius: var(--radius-md); border: 2px dashed var(--border-dim); background: var(--bg-tertiary); display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all 0.3s ease; position: relative; overflow: hidden; user-select: none; }
-  .farm-plot:hover { border-color: var(--ice-blue-border); background: rgba(66,165,245,0.05); transform: translateY(-2px); }
-  .farm-plot.locked { opacity: 0.3; cursor: not-allowed; }
-  .farm-plot.locked:hover { border-color: var(--border-dim); background: var(--bg-tertiary); transform: none; }
-  .farm-plot.planted { border-color: #4caf50; border-style: solid; background: linear-gradient(135deg, rgba(76,175,80,0.08), rgba(139,195,74,0.05)); }
-  .farm-plot.mature { border-color: #ffd700; border-style: solid; background: linear-gradient(135deg, rgba(255,215,0,0.12), rgba(255,193,7,0.06)); box-shadow: 0 0 20px rgba(255,215,0,0.2); }
-  .farm-plot.withered { border-color: #795548; border-style: solid; background: rgba(121,85,72,0.15); }
-  .farm-plot.thirsty { border-color: #ff9800; border-style: solid; animation: thirstPulse 2s ease-in-out infinite; }
-  @keyframes thirstPulse { 0%,100% { box-shadow: 0 0 8px rgba(255,152,0,0.3); } 50% { box-shadow: 0 0 20px rgba(255,152,0,0.6); } }
-  .farm-plot .plot-emoji { font-size: 48px; line-height: 1; transition: transform 0.3s; }
-  .farm-plot:hover .plot-emoji { transform: scale(1.1); }
-  .farm-plot .plot-name { font-size: 13px; font-weight: 700; margin-top: 2px; color: var(--text-primary); }
-  .farm-plot .plot-sub { font-size: 10px; color: var(--text-secondary); margin-top: 2px; text-align: center; max-width: 90%; }
-  .farm-plot .plot-growth { position: absolute; bottom: 0; left: 0; right: 0; height: 4px; background: rgba(255,255,255,0.06); }
-  .farm-plot .plot-growth-fill { height: 100%; background: #4caf50; transition: width 1s linear; }
-  .farm-plot .plot-water-bar { position: absolute; bottom: 4px; left: 6px; right: 6px; height: 3px; background: rgba(255,255,255,0.06); border-radius: 1px; }
-  .farm-plot .plot-water-fill { height: 100%; background: #42a5f5; border-radius: 1px; transition: width 1s linear; }
-  .farm-plot .harvest-glow { position: absolute; inset: 0; background: radial-gradient(circle, rgba(255,215,0,0.35) 0%, transparent 65%); animation: harvestPulse 1.5s ease-in-out infinite; pointer-events: none; }
-  @keyframes harvestPulse { 0%,100% { opacity: 0.3; } 50% { opacity: 0.7; } }
-  .farm-plot .withered-glow { position: absolute; inset: 0; background: rgba(121,85,72,0.3); pointer-events: none; }
-  .farm-plot .plot-status-icon { position: absolute; top: 6px; right: 8px; font-size: 14px; }
-  .plot-action-bar { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
-  .warehouse-panel { background: var(--bg-card); border-radius: var(--radius-md); border: 1px solid var(--border-dim); padding: 16px; margin-top: 20px; }
-  .warehouse-panel h4 { font-size: 15px; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
-  .warehouse-grid { display: flex; gap: 10px; flex-wrap: wrap; }
-  .warehouse-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--bg-tertiary); border: 1px solid var(--border-dim); font-size: 13px; position: relative; }
-  .warehouse-item .wh-emoji { font-size: 24px; }
-  .warehouse-item .wh-name { font-weight: 600; }
-  .warehouse-item .wh-count { font-weight: 700; color: #ffd700; }
-  .warehouse-item .wh-price { font-size: 11px; color: var(--text-secondary); }
-  .warehouse-item .btn-sell { padding: 4px 10px; border-radius: var(--radius-sm); border: 1px solid #ff5722; background: rgba(255,87,34,0.15); color: #ff5722; font-size: 12px; cursor: pointer; margin-left: 4px; }
-  .warehouse-item .btn-sell:hover { background: rgba(255,87,34,0.3); }
-  .warehouse-empty { color: var(--text-dim); font-size: 13px; }
-  .market-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; }
-  .market-modal-overlay.hidden { display: none; }
-  .market-modal { background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--ice-blue-border); width: 100%; max-width: 440px; max-height: 80vh; overflow-y: auto; padding: 20px; }
-  .market-modal h3 { font-size: 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
-  .market-item { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-dim); margin-bottom: 8px; }
-  .market-item .mk-emoji { font-size: 36px; flex-shrink: 0; }
-  .market-item .mk-info { flex: 1; }
-  .market-item .mk-name { font-weight: 700; font-size: 14px; }
-  .market-item .mk-desc { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
-  .market-item .mk-count { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
-  .market-item .mk-price-range { font-size: 12px; color: #ffd700; margin-top: 2px; }
-  .market-item .btn-sell-now { padding: 6px 14px; border-radius: var(--radius-sm); border: none; background: #ff5722; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: var(--transition-fast); }
-  .market-item .btn-sell-now:hover { background: #e64a19; }
-  .market-item .btn-sell-now:disabled { opacity: 0.4; cursor: not-allowed; }
-  .shop-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; }
-  .shop-modal-overlay.hidden { display: none; }
-  .shop-modal { background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--ice-blue-border); width: 100%; max-width: 520px; max-height: 80vh; overflow-y: auto; padding: 20px; }
-  .shop-modal h3 { font-size: 20px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
-  .shop-item { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-dim); margin-bottom: 8px; transition: var(--transition-fast); }
-  .shop-item:hover { background: rgba(255,255,255,0.03); }
-  .shop-item .item-emoji { font-size: 36px; flex-shrink: 0; }
-  .shop-item .item-info { flex: 1; min-width: 0; }
-  .shop-item .item-name { font-weight: 700; font-size: 14px; }
-  .shop-item .item-desc { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
-  .shop-item .item-price { font-size: 13px; font-weight: 600; color: #ffd700; margin-top: 4px; }
-  .shop-item .btn-buy { padding: 6px 14px; border-radius: var(--radius-sm); border: none; background: #4caf50; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: var(--transition-fast); }
-  .shop-item .btn-buy:hover { background: #2e7d32; }
-  .shop-item .btn-buy:disabled { opacity: 0.4; cursor: not-allowed; }
-  .shop-item .qty-owned { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
-  .inventory-panel { background: var(--bg-card); border-radius: var(--radius-md); border: 1px solid var(--border-dim); padding: 16px; margin-bottom: 14px; }
-  .inventory-panel h4 { font-size: 14px; margin-bottom: 8px; color: var(--text-secondary); }
-  .inventory-grid { display: flex; gap: 8px; flex-wrap: wrap; }
-  .inventory-slot { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: var(--radius-sm); background: var(--bg-tertiary); border: 1px solid var(--border-dim); font-size: 12px; }
-  .inventory-slot .inv-emoji { font-size: 18px; }
-  .inventory-slot .inv-count { font-weight: 700; color: var(--text-primary); }
-  .inventory-slot.empty { color: var(--text-dim); border-style: dashed; }
-  .action-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; }
-  .action-modal-overlay.hidden { display: none; }
-  .action-modal { background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--ice-blue-border); width: 100%; max-width: 360px; padding: 20px; }
-  .action-modal h4 { font-size: 18px; margin-bottom: 12px; }
-  .action-btn-group { display: flex; flex-direction: column; gap: 8px; }
-  .action-btn { display: flex; align-items: center; gap: 8px; padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-dim); background: var(--bg-tertiary); color: var(--text-primary); font-size: 14px; cursor: pointer; transition: var(--transition-fast); width: 100%; text-align: left; }
-  .action-btn:hover { background: rgba(255,255,255,0.05); }
-  .action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-  .action-btn .act-emoji { font-size: 24px; }
-  .action-btn .act-info { flex: 1; }
-  .action-btn .act-name { font-weight: 600; }
-  .action-btn .act-desc { font-size: 11px; color: var(--text-secondary); }
-  .action-btn .act-cost { font-size: 12px; color: #ffd700; }
-  .plant-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; }
-  .plant-modal-overlay.hidden { display: none; }
-  .plant-modal { background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--ice-blue-border); width: 100%; max-width: 400px; padding: 20px; }
-  .plant-modal h4 { font-size: 18px; margin-bottom: 12px; }
-  .plant-seed-list { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
-  .plant-seed-item { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-dim); cursor: pointer; transition: var(--transition-fast); }
-  .plant-seed-item:hover { background: rgba(255,255,255,0.03); border-color: #4caf50; }
-  .plant-seed-item.no-seed { opacity: 0.4; cursor: not-allowed; }
-  .plant-seed-item .seed-emoji { font-size: 28px; }
-  .plant-seed-item .seed-info { flex: 1; }
-  .plant-seed-item .seed-name { font-weight: 600; font-size: 14px; }
-  .plant-seed-item .seed-detail { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
-  .plant-seed-item .seed-count { font-weight: 700; color: #4caf50; font-size: 14px; }
-  .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 3000; padding: 10px 24px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600; pointer-events: none; opacity: 0; transition: opacity 0.3s; }
-  .toast.show { opacity: 1; }
-  .toast.success { background: #4caf50; color: #fff; }
-  .toast.error { background: #ef5350; color: #fff; }
-  .toast.info { background: #42a5f5; color: #fff; }
-  .toast.warning { background: #ff9800; color: #fff; }
-  .sell-price { font-weight: 800; font-size: 16px; color: #ffd700; animation: pricePop 0.5s ease-out; }
-  @keyframes pricePop { 0% { transform: scale(1.5); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+:root {
+  --bg: #0f0f1a;
+  --bg-card: #1a1a2e;
+  --bg-card2: #16213e;
+  --bg-hover: #1e2a3a;
+  --text: #e0e0e0;
+  --text-dim: #888;
+  --gold: #ffd700;
+  --green: #4caf50;
+  --red: #ef5350;
+  --orange: #ff9800;
+  --blue: #42a5f5;
+  --pink: #ec407a;
+  --border: #2a2a4a;
+  --radius: 12px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+.farm-container { max-width: 1100px; margin: 0 auto; padding: 16px 16px 80px; }
+
+.top-bar {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  background: var(--bg-card); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 16px;
+  border: 1px solid var(--border);
+}
+.top-title { font-size: 20px; font-weight: 700; color: var(--gold); }
+.top-points { font-size: 16px; font-weight: 700; color: var(--green); }
+.top-points .pts-val { font-size: 22px; }
+.top-info { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.top-badge { font-size: 12px; padding: 4px 10px; border-radius: 20px; background: var(--bg-card2); }
+.badge-auto { color: var(--green); border: 1px solid var(--green); }
+.badge-manual { color: var(--orange); border: 1px solid var(--orange); }
+.btn-icon {
+  width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--border);
+  background: var(--bg-card2); cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.btn-icon:hover { background: var(--bg-hover); }
+.btn-icon.active { background: var(--green); border-color: var(--green); color: #fff; }
+
+.tab-nav { display: flex; gap: 4px; margin-bottom: 16px; }
+.tab-btn {
+  flex: 1; padding: 12px; border: 1px solid var(--border); background: var(--bg-card);
+  color: var(--text-dim); border-radius: var(--radius); cursor: pointer; font-size: 15px; font-weight: 600;
+  transition: all 0.15s; text-align: center;
+}
+.tab-btn:hover { background: var(--bg-hover); color: var(--text); }
+.tab-btn.active { background: linear-gradient(135deg, #2a4a2a, #1a3a1a); border-color: var(--green); color: var(--green); }
+
+.panel { display: none; flex-direction: column; gap: 14px; }
+.panel.active { display: flex; }
+
+.section-title { font-size: 14px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+
+.card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+.card-grid { display: grid; gap: 12px; }
+
+.stock-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+.stock-item {
+  background: var(--bg-card2); border-radius: 10px; padding: 10px; text-align: center;
+  border: 1px solid transparent; cursor: pointer; transition: all 0.15s;
+}
+.stock-item:hover { border-color: var(--blue); }
+.stock-item.empty { opacity: 0.4; cursor: default; }
+.stock-item.empty:hover { border-color: transparent; }
+.stock-emoji { font-size: 32px; margin-bottom: 4px; }
+.stock-name { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+.stock-count { font-size: 12px; color: var(--text-dim); }
+.stock-price { font-size: 11px; color: var(--orange); margin-top: 4px; }
+.stock-profit { font-size: 11px; color: var(--green); }
+.stock-actions { display: flex; gap: 4px; margin-top: 6px; justify-content: center; }
+
+.shelf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.shelf-item {
+  background: var(--bg-card2); border-radius: 10px; padding: 12px;
+  border: 1px solid transparent; transition: all 0.15s;
+}
+.shelf-item:hover { border-color: var(--gold); }
+.shelf-top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.shelf-emoji { font-size: 28px; }
+.shelf-name { font-size: 14px; font-weight: 600; flex: 1; }
+.shelf-qty { font-size: 12px; color: var(--text-dim); background: var(--bg); padding: 2px 8px; border-radius: 10px; }
+.shelf-row { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; color: var(--text-dim); }
+.shelf-row .val { color: var(--text); font-weight: 600; }
+.shelf-sell { font-size: 14px; font-weight: 700; color: var(--gold); text-align: right; margin-top: 4px; }
+.shelf-actions { display: flex; gap: 6px; margin-top: 8px; }
+
+.btn { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.15s; background: var(--bg-card2); color: var(--text); }
+.btn:hover { opacity: 0.85; }
+.btn-primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+.btn-success { background: var(--green); border-color: var(--green); color: #fff; }
+.btn-danger { background: var(--red); border-color: var(--red); color: #fff; }
+.btn-sm { padding: 4px 10px; font-size: 11px; border-radius: 6px; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.plot-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+@media(min-width:600px) { .plot-grid { grid-template-columns: repeat(3, 1fr); } }
+.plot {
+  background: var(--bg-card2); border-radius: var(--radius); padding: 16px 10px; text-align: center;
+  border: 2px solid var(--border); cursor: pointer; transition: all 0.2s; min-height: 140px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+}
+.plot:hover { transform: translateY(-2px); border-color: var(--blue); }
+.plot.empty { opacity: 0.5; }
+.plot.empty:hover { border-color: var(--green); opacity: 0.8; }
+.plot.growing { border-color: var(--blue); }
+.plot.growing.thirsty { border-color: var(--orange); animation: pulse-warn 1.5s infinite; }
+.plot.mature { border-color: var(--gold); box-shadow: 0 0 20px rgba(255,215,0,0.4); animation: pulse-gold 0.8s infinite; }
+.plot.withered { border-color: var(--red); opacity: 0.6; background: #1a1010; }
+.plot-emoji { font-size: 42px; }
+.plot-name { font-size: 14px; font-weight: 700; }
+.plot-sub { font-size: 11px; color: var(--text-dim); }
+.plot-bar { width: 80%; height: 6px; background: #333; border-radius: 3px; overflow: hidden; }
+.plot-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
+.plot-bar-fill.growth { background: linear-gradient(90deg, var(--blue), var(--green)); }
+.plot-bar-fill.water { background: linear-gradient(90deg, #1a5276, var(--blue)); }
+.plot-bar-fill.low { background: linear-gradient(90deg, var(--red), var(--orange)); }
+.badge-mature { background: var(--gold); color: #000; font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 700; }
+.badge-dead { background: var(--red); color: #fff; font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 700; }
+
+.robot-row { display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg); border-radius: 8px; }
+.robot-toggle { width: 48px; height: 26px; border-radius: 13px; border: none; cursor: pointer; position: relative; transition: background 0.2s; }
+.robot-toggle.on { background: var(--green); }
+.robot-toggle.off { background: #555; }
+.robot-toggle::after { content: ''; position: absolute; width: 20px; height: 20px; border-radius: 50%; background: #fff; top: 3px; left: 3px; transition: left 0.2s; }
+.robot-toggle.on::after { left: 25px; }
+
+.log-list { max-height: 200px; overflow-y: auto; font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
+.log-item { display: flex; justify-content: space-between; padding: 6px 8px; background: var(--bg); border-radius: 6px; }
+.log-time { color: var(--text-dim); font-size: 10px; white-space: nowrap; }
+.log-detail { flex: 1; margin: 0 8px; }
+.log-amt { font-weight: 700; }
+.log-amt.positive { color: var(--green); }
+.log-amt.negative { color: var(--red); }
+
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; display: flex; align-items: center; justify-content: center; }
+.modal-overlay.hidden { display: none; }
+.modal-box { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; width: 90%; max-width: 480px; max-height: 80vh; overflow-y: auto; }
+.modal-title { font-size: 18px; font-weight: 700; margin-bottom: 14px; }
+.modal-close { float: right; background: none; border: none; color: var(--text-dim); font-size: 22px; cursor: pointer; }
+
+.input-group { margin-bottom: 12px; }
+.input-group label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 4px; }
+.input-group input, .input-group select { width: 100%; padding: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; }
+
+.toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); padding: 12px 24px; border-radius: 10px; font-weight: 600; z-index: 200; opacity: 0; pointer-events: none; transition: opacity 0.3s; max-width: 90%; text-align: center; }
+.toast.show { opacity: 1; }
+.toast.success { background: #1b5e20; color: #a5d6a7; border: 1px solid var(--green); }
+.toast.error { background: #b71c1c; color: #ef9a9a; border: 1px solid var(--red); }
+.toast.info { background: #0d47a1; color: #90caf9; border: 1px solid var(--blue); }
+
+.market-heat-bar { width: 100%; height: 8px; background: #333; border-radius: 4px; overflow: hidden; margin-top: 6px; }
+.market-heat-fill { height: 100%; border-radius: 4px; transition: width 0.5s; background: linear-gradient(90deg, #2196f3, #4caf50, #ff9800, #f44336); }
+
+@keyframes pulse-warn {
+  0%, 100% { border-color: var(--orange); }
+  50% { border-color: #ff5722; box-shadow: 0 0 8px rgba(255,152,0,0.3); }
+}
+@keyframes pulse-gold {
+  0%, 100% { box-shadow: 0 0 15px rgba(255,215,0,0.4); }
+  50% { box-shadow: 0 0 30px rgba(255,215,0,0.8); }
+}
 </style>
 </head>
 <body>
-
-<div class="farm-container">
-  <div class="farm-header">
-    <div class="farm-title">
-      <span class="icon">🌾</span>
-      <span>我的农场</span>
-    </div>
-    <div class="farm-actions">
-      <button class="btn-farm btn-back" onclick="window.location.href='/work'">← 返回工作台</button>
-      <button class="btn-farm" id="btnOpenMarket">🏪 社区市场</button>
-      <button class="btn-farm btn-shop" id="btnOpenShop">🛒 农场商店</button>
+<div class="farm-container" id="app">
+  <div class="top-bar">
+    <span class="top-title">🌾 我的农场</span>
+    <div class="top-info">
+      <span class="top-points">⭐ <span class="pts-val" id="ptsDisplay">---</span></span>
+      <span class="top-badge" id="marketBadge">市场热度: --</span>
+      <span class="top-badge" id="revenueBadge">营收: --</span>
+      <span class="top-badge" id="costBadge">成本: --</span>
+      <button class="btn-icon" id="btnMusic" title="背景音乐" onclick="FARM.toggleMusic()">🔇</button>
     </div>
   </div>
 
-  <div class="farm-info-bar">
-    <div class="farm-info-item"><span>👤</span><span class="value" id="farmUsername">---</span></div>
-    <div class="farm-info-item"><span>⭐</span><span class="label">积分：</span><span class="value gold" id="farmPoints">0</span></div>
-    <div class="farm-info-item"><span>🌱</span><span class="label">土地：</span><span class="value" id="farmLandCount">0/6</span></div>
-    <div class="farm-info-item" id="autoWaterStatus"><span>💧</span><span class="label">浇灌：</span><span class="value" id="waterStatusText" style="color:#ff9800;">手动</span></div>
-    <div class="farm-info-item"><span>📦</span><span class="label">仓库：</span><span class="value gold" id="warehouseCount">0 种</span></div>
+  <div class="tab-nav">
+    <button class="tab-btn active" data-tab="shop" onclick="FARM.switchTab('shop')">🏪 商店</button>
+    <button class="tab-btn" data-tab="farm" onclick="FARM.switchTab('farm')">🌾 农田</button>
   </div>
 
-  <div class="farm-instructions">
-    💡 <b>玩法</b>：空地点击种地 → 作物需要定时浇水💧（不浇水会渴死💀）→ 成熟后收获进仓库 → 去🏪社区市场卖出赚积分<br>
-    🛒 <b>商店</b>买种子/肥料/自动浇灌器，💧自动浇灌器每30分钟自动浇一次水，再也不怕作物枯死！
+  <div class="panel active" id="panelShop">
+    <div class="card">
+      <div class="section-title">📦 库存</div>
+      <div class="stock-grid" id="stockGrid"></div>
+      <div style="margin-top:10px;display:flex;gap:8px;">
+        <button class="btn btn-primary" onclick="FARM.openRestockModal()">🛒 进货</button>
+        <button class="btn btn-success" onclick="FARM.openShelfModal()">📤 上架</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">🏷️ 货架商品</div>
+      <div class="shelf-grid" id="shelfGrid"></div>
+      <div id="shelfEmpty" style="text-align:center;color:var(--text-dim);padding:20px;display:none;">货架空空，进货后上架吧</div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">🤖 机器人</div>
+      <div class="robot-row">
+        <span style="flex:1;">🛒 自动进货机器人</span>
+        <button class="robot-toggle off" id="toggleRestock" onclick="FARM.toggleRobot('auto_restock')"></button>
+        <span id="restockStatus" style="font-size:12px;color:var(--text-dim);">已关闭</span>
+      </div>
+      <div class="robot-row" style="margin-top:6px;">
+        <span style="flex:1;">🌱 自动农场机器人</span>
+        <button class="robot-toggle off" id="toggleFarm" onclick="FARM.toggleRobot('auto_farm')"></button>
+        <span id="farmStatus" style="font-size:12px;color:var(--text-dim);">已关闭</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">📋 交易日志</div>
+      <div class="log-list" id="logList"></div>
+    </div>
   </div>
 
-  <div class="inventory-panel" id="inventoryPanel">
-    <h4>🎒 道具背包</h4>
-    <div class="inventory-grid" id="inventoryGrid"></div>
+  <div class="panel" id="panelFarm">
+    <div class="card">
+      <div class="section-title">🌱 农田 (6块地)</div>
+      <div class="plot-grid" id="plotGrid"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">🤖 农田机器人</div>
+      <div class="robot-row">
+        <span style="flex:1;">🌱 自动浇灌+自动种植机器人</span>
+        <button class="robot-toggle off" id="toggleFarm2" onclick="FARM.toggleRobot('auto_farm')"></button>
+        <span id="farmStatus2" style="font-size:12px;color:var(--text-dim);">已关闭</span>
+      </div>
+    </div>
   </div>
 
-  <div class="farm-grid" id="farmGrid"></div>
+  <!-- 进货 Modal -->
+  <div class="modal-overlay hidden" id="restockModal">
+    <div class="modal-box">
+      <button class="modal-close" onclick="FARM.closeModal('restockModal')">&times;</button>
+      <div class="modal-title">🛒 批发进货</div>
+      <div class="input-group">
+        <label>商品</label>
+        <select id="restockItem" onchange="FARM.onRestockItemChange()">
+          <option value="">请选择商品</option>
+          <option value="seeds_wheat">🌾 小麦种子 - 8分/个</option>
+          <option value="seeds_corn">🌽 玉米种子 - 16分/个</option>
+          <option value="seeds_strawberry">🍓 草莓种子 - 22分/个</option>
+          <option value="seeds_carrot">🥕 胡萝卜种子 - 20分/个</option>
+          <option value="seeds_tomato">🍅 番茄种子 - 24分/个</option>
+          <option value="seeds_sunflower">🌻 向日葵种子 - 32分/个</option>
+          <option value="fertilizer_basic">💩 普通肥料 - 12分</option>
+          <option value="fertilizer_premium">✨ 高级肥料 - 32分</option>
+          <option value="auto_waterer">💧 自动浇灌器 - 120分</option>
+        </select>
+      </div>
+      <div class="input-group">
+        <label>数量</label>
+        <input type="number" id="restockQty" value="1" min="1" max="99" onchange="FARM.onRestockQtyChange()">
+      </div>
+      <div class="input-group">
+        <label>总价：<b id="restockTotal" style="color:var(--orange);">-- 分</b></label>
+      </div>
+      <button class="btn btn-primary" style="width:100%;" onclick="FARM.doRestock()">确认进货</button>
+    </div>
+  </div>
 
-  <div class="warehouse-panel" id="warehousePanel">
-    <h4>📦 作物仓库 <span style="font-size:12px;color:var(--text-dim);font-weight:400;">（收获的作物在这里，去市场卖出赚积分）</span></h4>
-    <div class="warehouse-grid" id="warehouseGrid"></div>
-    <div class="warehouse-empty" id="warehouseEmpty" style="display:none;">仓库空空如也~ 去种地收获吧！</div>
+  <!-- 上架 Modal -->
+  <div class="modal-overlay hidden" id="shelfModal">
+    <div class="modal-box">
+      <button class="modal-close" onclick="FARM.closeModal('shelfModal')">&times;</button>
+      <div class="modal-title">📤 上架到货架</div>
+      <div class="input-group">
+        <label>库存中的商品</label>
+        <select id="shelfItem"></select>
+      </div>
+      <div class="input-group">
+        <label>利润率（如 0.3 = 30%加价）</label>
+        <input type="number" id="shelfProfit" value="0.3" min="0.01" max="5.0" step="0.01" onchange="FARM.onShelfProfitChange()">
+      </div>
+      <div class="input-group">
+        <label>对外售价：<b id="shelfPrice" style="color:var(--gold);">-- 分</b></label>
+      </div>
+      <button class="btn btn-success" style="width:100%;" onclick="FARM.doShelfAdd()">确认上架</button>
+    </div>
+  </div>
+
+  <!-- 种植 Modal -->
+  <div class="modal-overlay hidden" id="plantModal">
+    <div class="modal-box">
+      <button class="modal-close" onclick="FARM.closeModal('plantModal')">&times;</button>
+      <div class="modal-title">🌱 种植作物</div>
+      <div class="input-group">
+        <label>选择地块</label>
+        <select id="plantPlot">
+          <option value="-1">选择空地</option>
+        </select>
+      </div>
+      <div class="input-group">
+        <label>选择种子（库存中的）</label>
+        <select id="plantSeed" onchange="FARM.onPlantSeedChange()"></select>
+      </div>
+      <div id="plantInfo" style="font-size:12px;color:var(--text-dim);margin-top:8px;"></div>
+      <button class="btn btn-success" style="width:100%;margin-top:12px;" onclick="FARM.doPlant()">确认种植</button>
+    </div>
+  </div>
+
+  <!-- 地块操作 Modal -->
+  <div class="modal-overlay hidden" id="actionModal">
+    <div class="modal-box">
+      <button class="modal-close" onclick="FARM.closeModal('actionModal')">&times;</button>
+      <div class="modal-title" id="actionTitle">操作</div>
+      <div style="display:flex;flex-direction:column;gap:8px;" id="actionBtns"></div>
+    </div>
   </div>
 </div>
 
-<!-- 商店 -->
-<div class="shop-modal-overlay hidden" id="shopOverlay">
-  <div class="shop-modal">
-    <h3>🛒 农场商店 <button class="btn-farm btn-back" style="float:right;font-size:12px;" onclick="closeShop()">关闭</button></h3>
-    <div id="shopItems"></div>
-  </div>
-</div>
-
-<!-- 社区市场 -->
-<div class="market-modal-overlay hidden" id="marketOverlay">
-  <div class="market-modal">
-    <h3>🏪 社区市场 <button class="btn-farm btn-back" style="float:right;font-size:12px;" onclick="closeMarket()">关闭</button></h3>
-    <div id="marketItems"></div>
-  </div>
-</div>
-
-<!-- 种植选种子 -->
-<div class="plant-modal-overlay hidden" id="plantOverlay">
-  <div class="plant-modal">
-    <h4>🌱 选择种子种植</h4>
-    <div class="plant-seed-list" id="plantSeedList"></div>
-    <button class="btn-farm btn-back" style="margin-top:12px;width:100%;" onclick="closePlantModal()">取消</button>
-  </div>
-</div>
-
-<!-- 作物操作 -->
-<div class="action-modal-overlay hidden" id="actionOverlay">
-  <div class="action-modal">
-    <h4 id="actionTitle">作物操作</h4>
-    <div class="action-btn-group" id="actionBtnGroup"></div>
-    <button class="btn-farm btn-back" style="margin-top:12px;width:100%;" onclick="closeActionModal()">关闭</button>
-  </div>
-</div>
-
-<div class="toast" id="farmToast"></div>
+<div class="toast" id="toast"></div>
 
 <script src="js/config.js"></script>
 <script src="js/api.js"></script>
@@ -225,787 +330,490 @@
 (function() {
   var _currentUser = localStorage.getItem("jit_current_user") || "";
   var _currentPoints = 0;
-  var _selectedPlotIndex = -1;
-
-  if (!_currentUser) {
-    alert("请先登录后再进入农场");
-    window.location.href = "/login";
-    return;
-  }
-
-  var _farmData = getDefaultFarm();
-  var _farmLoaded = false;
-  var _farmDirty = false;
-  var _farmSaveTimer = null;
-
-  var CROP_TYPES = {
-    wheat:     { name:"小麦",   emoji:"🌾", growthHours:2,  waterHours:4,  wiltHours:6,  baseValue:30  },
-    corn:      { name:"玉米",   emoji:"🌽", growthHours:4,  waterHours:6,  wiltHours:8,  baseValue:55  },
-    strawberry:{ name:"草莓",   emoji:"🍓", growthHours:3,  waterHours:5,  wiltHours:7,  baseValue:70  },
-    carrot:    { name:"胡萝卜", emoji:"🥕", growthHours:5,  waterHours:7,  wiltHours:10, baseValue:65  },
-    tomato:    { name:"番茄",   emoji:"🍅", growthHours:6,  waterHours:8,  wiltHours:12, baseValue:85  },
-    sunflower: { name:"向日葵", emoji:"🌻", growthHours:8,  waterHours:8,  wiltHours:14, baseValue:110 },
-  };
-
-  var SHOP_ITEMS = [
-    { id:"seeds_wheat",      name:"小麦种子",    emoji:"🌾", desc:"2h成熟 · 需每4h浇水 · 市场价30-50",          price:20,  category:"seed",  cropType:"wheat" },
-    { id:"seeds_corn",       name:"玉米种子",    emoji:"🌽", desc:"4h成熟 · 需每6h浇水 · 市场价50-80",          price:40,  category:"seed",  cropType:"corn" },
-    { id:"seeds_strawberry", name:"草莓种子",    emoji:"🍓", desc:"3h成熟 · 需每5h浇水 · 市场价70-100",         price:55,  category:"seed",  cropType:"strawberry" },
-    { id:"seeds_carrot",     name:"胡萝卜种子",  emoji:"🥕", desc:"5h成熟 · 需每7h浇水 · 市场价60-90",          price:50,  category:"seed",  cropType:"carrot" },
-    { id:"seeds_tomato",     name:"番茄种子",    emoji:"🍅", desc:"6h成熟 · 需每8h浇水 · 市场价80-120",         price:60,  category:"seed",  cropType:"tomato" },
-    { id:"seeds_sunflower",  name:"向日葵种子",  emoji:"🌻", desc:"8h成熟 · 需每8h浇水 · 市场价100-150",        price:80,  category:"seed",  cropType:"sunflower" },
-    { id:"fertilizer_basic", name:"普通肥料",    emoji:"💩", desc:"减少1小时生长时间",                            price:30,  category:"tool" },
-    { id:"fertilizer_premium",name:"高级肥料",   emoji:"✨", desc:"立即成熟！跳过剩余生长时间",                  price:80,  category:"tool" },
-    { id:"auto_waterer",     name:"自动浇灌器",  emoji:"💧", desc:"每30分钟自动给所有作物浇一次水",               price:300, category:"tool" },
-    { id:"land_expand",      name:"土地扩展卡",  emoji:"🏞️", desc:"永久增加 1 块种植土地（最多 12 块）",         price:200, category:"tool" },
-  ];
-
-  var GROWTH_STAGES = ["🌰","🌱","🌿","🌳"];
-
-  function getDefaultFarm() {
-    return {
-      plots: [],
-      inventory: {},
-      warehouse: {},
-      landSize: 6,
-      lastTick: Date.now(),
-      autoWaterLast: 0,
-    };
-  }
-
-  function loadFarm() {
-    return _farmData;
-  }
-
-  function normalizeFarm(data) {
-    while (data.plots.length < data.landSize) {
-      data.plots.push({ crop:null, plantedAt:null, growthHours:0, lastWatered:0, waterHours:0, wiltHours:0 });
-    }
-    data.plots = data.plots.slice(0, data.landSize);
-    if (!data.inventory) data.inventory = {};
-    if (!data.warehouse) data.warehouse = {};
-    if (!data.lastTick) data.lastTick = Date.now();
-    if (!data.autoWaterLast) data.autoWaterLast = 0;
-    return data;
-  }
-
-  function saveFarm(data) {
-    _farmData = flattenFarmData(data);
-    _farmDirty = true;
-    scheduleDbSave();
-  }
-
-  function flattenFarmData(data) {
-    return {
-      plots: data.plots,
-      inventory: data.inventory,
-      warehouse: data.warehouse,
-      landSize: data.landSize,
-      lastTick: data.lastTick,
-      autoWaterLast: data.autoWaterLast,
-    };
-  }
-
-  function scheduleDbSave() {
-    if (_farmSaveTimer) return;
-    _farmSaveTimer = setTimeout(function() {
-      _farmSaveTimer = null;
-      if (!_farmDirty) return;
-      _farmDirty = false;
-      var payload = flattenFarmData(_farmData);
-      try {
-        JITApi.getTursoHelpers().saveFarmData(_currentUser, payload).catch(function() {
-          _farmDirty = true;
-        });
-      } catch(e) {
-        _farmDirty = true;
-      }
-    }, 2000);
-  }
-
-  function forceDbSaveNow() {
-    if (_farmSaveTimer) {
-      clearTimeout(_farmSaveTimer);
-      _farmSaveTimer = null;
-    }
-    if (!_farmDirty) return Promise.resolve();
-    _farmDirty = false;
-    var payload = flattenFarmData(_farmData);
-    return JITApi.getTursoHelpers().saveFarmData(_currentUser, payload).catch(function(e) {
-      _farmDirty = true;
-      throw e;
-    });
-  }
-
-  function initFarmFromDb() {
-    return JITApi.getTursoHelpers().loadFarmData(_currentUser).then(function(dbData) {
-      if (dbData && dbData.plots) {
-        _farmData = normalizeFarm(dbData);
-      } else {
-        _farmData = normalizeFarm(getDefaultFarm());
-      }
-      _farmLoaded = true;
-      return _farmData;
-    }).catch(function() {
-      _farmData = normalizeFarm(getDefaultFarm());
-      _farmLoaded = true;
-      return _farmData;
-    });
-  }
-
-  function getGrowthProgress(plot) {
-    if (!plot.crop || !plot.plantedAt) return 0;
-    var elapsed = (Date.now() - plot.plantedAt) / (1000 * 60 * 60);
-    return Math.min(1, elapsed / plot.growthHours);
-  }
-
-  function getGrowthStage(progress) {
-    if (progress >= 1) return 4;
-    if (progress >= 0.7) return 3;
-    if (progress >= 0.35) return 2;
-    if (progress >= 0.1) return 1;
-    return 0;
-  }
-
-  function getWaterProgress(plot) {
-    if (!plot.crop || !plot.lastWatered || !plot.waterHours) return 1;
-    var elapsed = (Date.now() - plot.lastWatered) / (1000 * 60 * 60);
-    return Math.max(0, 1 - elapsed / plot.waterHours);
-  }
-
-  function getWiltProgress(plot) {
-    if (!plot.crop || !plot.lastWatered || !plot.wiltHours) return 0;
-    var elapsed = (Date.now() - plot.lastWatered) / (1000 * 60 * 60);
-    return Math.min(1, elapsed / plot.wiltHours);
-  }
-
-  function isWilted(plot) {
-    return getWiltProgress(plot) >= 1;
-  }
-
-  function isThirsty(plot) {
-    var wp = getWaterProgress(plot);
-    return wp < 0.5 && wp > 0;
-  }
-
-  function formatTimeLeft(plot) {
-    if (!plot.crop || !plot.plantedAt) return "";
-    var elapsed = (Date.now() - plot.plantedAt) / (1000 * 60 * 60);
-    var remaining = Math.max(0, plot.growthHours - elapsed);
-    if (remaining <= 0) return "可收获！";
-    if (remaining < 1) return Math.ceil(remaining * 60) + "分";
-    return Math.ceil(remaining) + "小时";
-  }
-
-  function formatWaterTime(plot) {
-    if (!plot.crop || !plot.lastWatered || !plot.waterHours) return "";
-    var elapsed = (Date.now() - plot.lastWatered) / (1000 * 60 * 60);
-    var remaining = Math.max(0, plot.waterHours - elapsed);
-    if (remaining < 1) return Math.ceil(remaining * 60) + "分";
-    return Math.ceil(remaining) + "h";
-  }
-
-  function getMarketPrice(cropType) {
-    var ct = CROP_TYPES[cropType];
-    if (!ct) return { min:0, max:0, price:0 };
-    var base = ct.baseValue;
-    var variation = 0.6 + Math.random() * 0.8;
-    var price = Math.round(base * variation);
-    return { min: Math.round(base * 0.6), max: Math.round(base * 1.4), price: price };
-  }
-
-  function tickFarm() {
-    var data = loadFarm();
-    var now = Date.now();
-
-    var hasAutoWaterer = (data.inventory && data.inventory.auto_waterer > 0);
-    var autoWaterMin = hasAutoWaterer ? 30 : 999999;
-
-    if (hasAutoWaterer) {
-      var sinceLastAuto = (now - (data.autoWaterLast || 0)) / (1000 * 60);
-      if (sinceLastAuto >= autoWaterMin) {
-        var wateredCount = 0;
-        for (var i = 0; i < data.plots.length; i++) {
-          var p = data.plots[i];
-          if (p.crop && !isWilted(p)) {
-            p.lastWatered = now;
-            wateredCount++;
-          }
-        }
-        data.autoWaterLast = now;
-        if (wateredCount > 0) {
-          showToast("💧 自动浇灌器浇了 " + wateredCount + " 块地！", "info");
-        }
-        saveFarm(data);
-      }
-    }
-
-    var anyDied = false;
-    for (var j = 0; j < data.plots.length; j++) {
-      var plot = data.plots[j];
-      if (plot.crop && isWilted(plot) && !plot._diedNotified) {
-        anyDied = true;
-        plot._diedNotified = true;
-      }
-    }
-    if (anyDied) {
-      saveFarm(data);
-      showToast("💀 有作物渴死了！记得浇水或用自动浇灌器！", "error");
-    }
-
-    data.lastTick = now;
-    saveFarm(data);
-  }
-
-  function renderFarm() {
-    var data = loadFarm();
-    var grid = document.getElementById("farmGrid");
-    var totalLand = data.landSize;
-
-    document.getElementById("farmUsername").textContent = _currentUser;
-    var plantedCount = 0;
-    for (var i = 0; i < data.plots.length; i++) {
-      if (data.plots[i].crop) plantedCount++;
-    }
-    document.getElementById("farmLandCount").textContent = plantedCount + "/" + totalLand;
-
-    var hasAuto = data.inventory && data.inventory.auto_waterer > 0;
-    var wsText = document.getElementById("waterStatusText");
-    if (hasAuto) {
-      wsText.textContent = "自动";
-      wsText.className = "value";
-      wsText.style.color = "#4caf50";
-    } else {
-      wsText.textContent = "手动";
-      wsText.className = "value warning";
-      wsText.style.color = "#ff9800";
-    }
-
-    var whKeys = Object.keys(data.warehouse || {});
-    var whTotal = 0;
-    for (var k = 0; k < whKeys.length; k++) {
-      whTotal += (data.warehouse[whKeys[k]] || 0);
-    }
-    document.getElementById("warehouseCount").textContent = whKeys.length + " 种";
-
-    var html = "";
-    for (var i = 0; i < totalLand; i++) {
-      var plot = data.plots[i] || { crop:null, plantedAt:null, growthHours:0, lastWatered:0, waterHours:0, wiltHours:0 };
-      var progress = getGrowthProgress(plot);
-      var stage = getGrowthStage(progress);
-      var isMature = progress >= 1;
-      var wilted = isWilted(plot);
-      var waterPct = getWaterProgress(plot);
-      var wiltPct = getWiltProgress(plot);
-
-      var plotClass = "farm-plot";
-      if (wilted) {
-        plotClass += " withered";
-      } else if (isMature) {
-        plotClass += " mature";
-      } else if (plot.crop && isThirsty(plot)) {
-        plotClass += " thirsty";
-      } else if (plot.crop) {
-        plotClass += " planted";
-      }
-
-      html += '<div class="' + plotClass + '" data-plot="' + i + '" onclick="FARM.onPlotClick(' + i + ')">';
-
-      if (plot.crop) {
-        if (wilted) {
-          html += '<div class="plot-emoji" style="filter:grayscale(0.8) brightness(0.5);">💀</div>';
-          html += '<div class="withered-glow"></div>';
-          html += '<div class="plot-name" style="color:#8d6e63;">' + (CROP_TYPES[plot.crop] ? CROP_TYPES[plot.crop].name : plot.crop) + '</div>';
-          html += '<div class="plot-sub" style="color:#ef5350;">已枯死·点击清除</div>';
-        } else if (isMature) {
-          html += '<div class="harvest-glow"></div>';
-          html += '<div class="plot-emoji" style="font-size:56px;">' + (CROP_TYPES[plot.crop] ? CROP_TYPES[plot.crop].emoji : "🌾") + '</div>';
-          html += '<div class="plot-name" style="color:#ffd700;">' + (CROP_TYPES[plot.crop] ? CROP_TYPES[plot.crop].name : plot.crop) + '</div>';
-          html += '<div class="plot-sub" style="color:#ffc107;font-weight:700;">✨ 点击收获！</div>';
-          html += '<div class="plot-status-icon">✅</div>';
-        } else {
-          html += '<div class="plot-emoji">' + GROWTH_STAGES[stage] + '</div>';
-          html += '<div class="plot-name">' + (CROP_TYPES[plot.crop] ? CROP_TYPES[plot.crop].name : plot.crop) + '</div>';
-          html += '<div class="plot-sub">⏳ ' + formatTimeLeft(plot) + ' · 💧' + formatWaterTime(plot) + '</div>';
-
-          html += '<div class="plot-growth"><div class="plot-growth-fill" style="width:' + Math.round(progress * 100) + '%"></div></div>';
-          html += '<div class="plot-water-bar" style="bottom:8px;"><div class="plot-water-fill" style="width:' + Math.round(waterPct * 100) + '%"></div></div>';
-
-          if (isThirsty(plot)) {
-            html += '<div class="plot-status-icon">⚠️</div>';
-          }
-        }
-      } else {
-        html += '<div class="plot-emoji" style="opacity:0.25;">🌱</div>';
-        html += '<div class="plot-name" style="color:var(--text-dim);">空地</div>';
-        html += '<div class="plot-sub" style="color:var(--text-dim)">点击种植</div>';
-      }
-      html += '</div>';
-    }
-    grid.innerHTML = html;
-
-    renderInventory();
-    renderWarehouse();
-  }
-
-  function renderInventory() {
-    var data = loadFarm();
-    var inv = data.inventory || {};
-    var container = document.getElementById("inventoryGrid");
-    var items = [
-      { id:"fertilizer_basic",  emoji:"💩", name:"普通肥料" },
-      { id:"fertilizer_premium",emoji:"✨", name:"高级肥料" },
-      { id:"auto_waterer",      emoji:"💧", name:"自动浇灌器" },
-      { id:"land_expand",       emoji:"🏞️", name:"土地扩展卡" },
-    ];
-    var html = "";
-    for (var i = 0; i < items.length; i++) {
-      var count = inv[items[i].id] || 0;
-      if (count > 0 || items[i].id === "auto_waterer") {
-        html += '<div class="inventory-slot' + (count <= 0 ? " empty" : "") + '">';
-        html += '<span class="inv-emoji">' + items[i].emoji + '</span>';
-        html += '<span>' + items[i].name + '</span>';
-        html += '<span class="inv-count">x' + count + '</span>';
-        html += '</div>';
-      }
-    }
-    if (!html) html = '<div class="inventory-slot empty">背包空空，去商店买点东西吧</div>';
-    container.innerHTML = html;
-  }
-
-  function renderWarehouse() {
-    var data = loadFarm();
-    var wh = data.warehouse || {};
-    var container = document.getElementById("warehouseGrid");
-    var emptyEl = document.getElementById("warehouseEmpty");
-    var keys = Object.keys(wh);
-    if (keys.length === 0) {
-      container.innerHTML = "";
-      emptyEl.style.display = "block";
-      return;
-    }
-    emptyEl.style.display = "none";
-    var html = "";
-    for (var i = 0; i < keys.length; i++) {
-      var ct = CROP_TYPES[keys[i]];
-      var count = wh[keys[i]];
-      var mp = getMarketPrice(keys[i]);
-      html += '<div class="warehouse-item">';
-      html += '<span class="wh-emoji">' + (ct ? ct.emoji : "📦") + '</span>';
-      html += '<span class="wh-name">' + (ct ? ct.name : keys[i]) + '</span>';
-      html += '<span class="wh-count">x' + count + '</span>';
-      html += '<span class="wh-price">市场价 ~' + mp.price + '分/个</span>';
-      html += '<button class="btn-sell" onclick="FARM.sellOneCrop(\'' + keys[i] + '\')">卖出1个</button>';
-      html += '<button class="btn-sell" onclick="FARM.sellAllCrop(\'' + keys[i] + '\')">全部卖出</button>';
-      html += '</div>';
-    }
-    container.innerHTML = html;
-  }
-
-  function renderShop() {
-    var data = loadFarm();
-    var inv = data.inventory || {};
-    var container = document.getElementById("shopItems");
-    var html = "";
-
-    html += '<h5 style="margin-bottom:8px;color:var(--text-secondary);">🌱 种子</h5>';
-    SHOP_ITEMS.forEach(function(item) {
-      if (item.category !== "seed") return;
-      var owned = inv[item.id] || 0;
-      html += '<div class="shop-item">';
-      html += '<div class="item-emoji">' + item.emoji + '</div>';
-      html += '<div class="item-info">';
-      html += '<div class="item-name">' + item.name + '</div>';
-      html += '<div class="item-desc">' + item.desc + '</div>';
-      html += '<div class="item-price">⭐ ' + item.price + ' 积分</div>';
-      html += '<div class="qty-owned">已拥有：' + owned + ' 个</div>';
-      html += '</div>';
-      html += '<button class="btn-buy" onclick="FARM.buyItem(\'' + item.id + '\',' + item.price + ')" ' + (_currentPoints < item.price ? "disabled" : "") + '>购买</button>';
-      html += '</div>';
-    });
-
-    html += '<h5 style="margin:16px 0 8px;color:var(--text-secondary);">🔧 工具</h5>';
-    SHOP_ITEMS.forEach(function(item) {
-      if (item.category !== "tool") return;
-      var owned = inv[item.id] || 0;
-      html += '<div class="shop-item">';
-      html += '<div class="item-emoji">' + item.emoji + '</div>';
-      html += '<div class="item-info">';
-      html += '<div class="item-name">' + item.name + '</div>';
-      html += '<div class="item-desc">' + item.desc + '</div>';
-      html += '<div class="item-price">⭐ ' + item.price + ' 积分</div>';
-      html += '<div class="qty-owned">已拥有：' + owned + ' 个</div>';
-      html += '</div>';
-      html += '<button class="btn-buy" onclick="FARM.buyItem(\'' + item.id + '\',' + item.price + ')" ' + (_currentPoints < item.price ? "disabled" : "") + '>购买</button>';
-      html += '</div>';
-    });
-    container.innerHTML = html;
-  }
-
-  function openShop() {
-    renderShop();
-    document.getElementById("shopOverlay").classList.remove("hidden");
-  }
-  window.closeShop = function() {
-    document.getElementById("shopOverlay").classList.add("hidden");
-  };
-
-  function buyItem(itemId, price) {
-    if (_currentPoints < price) {
-      showToast("积分不足！", "error");
-      return;
-    }
-    var shopItem = null;
-    for (var i = 0; i < SHOP_ITEMS.length; i++) {
-      if (SHOP_ITEMS[i].id === itemId) { shopItem = SHOP_ITEMS[i]; break; }
-    }
-    if (!shopItem) return;
-
-    JITPoints.changePoints(_currentUser, -price, "农场购买: " + shopItem.name).then(function() {
-      var data = loadFarm();
-      if (!data.inventory) data.inventory = {};
-
-      if (shopItem.id === "land_expand") {
-        data.landSize = Math.min(data.landSize + 1, 12);
-        while (data.plots.length < data.landSize) {
-          data.plots.push({ crop:null, plantedAt:null, growthHours:0, lastWatered:0, waterHours:0, wiltHours:0 });
-        }
-        showToast("土地扩展成功！现在有 " + data.landSize + " 块地", "success");
-      } else {
-        data.inventory[shopItem.id] = (data.inventory[shopItem.id] || 0) + 1;
-        showToast("购买了 " + shopItem.name + " x1", "success");
-      }
-      saveFarm(data);
-      refreshPoints();
-      renderFarm();
-      renderShop();
-    }).catch(function(err) {
-      showToast("购买失败: " + (err.message || "服务器错误"), "error");
-    });
-  }
-
-  function showPlantModal(plotIndex) {
-    _selectedPlotIndex = plotIndex;
-    var data = loadFarm();
-    var inv = data.inventory || {};
-    var container = document.getElementById("plantSeedList");
-    var html = "";
-    var hasAnySeed = false;
-    SHOP_ITEMS.forEach(function(item) {
-      if (item.category !== "seed") return;
-      var count = inv[item.id] || 0;
-      if (count > 0) hasAnySeed = true;
-      var ct = CROP_TYPES[item.cropType];
-      html += '<div class="plant-seed-item' + (count <= 0 ? " no-seed" : "") + '"' + (count > 0 ? ' onclick="FARM.plantSeed(' + plotIndex + ',\'' + item.id + '\',\'' + item.cropType + '\')"' : '') + '>';
-      html += '<div class="seed-emoji">' + item.emoji + '</div>';
-      html += '<div class="seed-info">';
-      html += '<div class="seed-name">' + item.name + '</div>';
-      html += '<div class="seed-detail">⏳' + ct.growthHours + 'h成熟 · 💧每' + ct.waterHours + 'h浇水 · 💀' + ct.wiltHours + 'h枯死 · ⭐' + ct.baseValue + '~' + Math.round(ct.baseValue*1.4) + '分</div>';
-      html += '</div>';
-      html += '<div class="seed-count">x' + count + '</div>';
-      html += '</div>';
-    });
-    if (!hasAnySeed) {
-      html += '<div style="text-align:center;color:var(--text-secondary);padding:20px;">还没有种子！去🛒商店购买吧</div>';
-    }
-    container.innerHTML = html;
-    document.getElementById("plantOverlay").classList.remove("hidden");
-  }
-  window.closePlantModal = function() {
-    document.getElementById("plantOverlay").classList.add("hidden");
-  };
-
-  function plantSeed(plotIndex, itemId, cropType) {
-    var data = loadFarm();
-    var inv = data.inventory || {};
-    var count = inv[itemId] || 0;
-    if (count <= 0) return;
-    var plot = data.plots[plotIndex];
-    if (plot.crop) { showToast("这块地已经种了东西！", "error"); return; }
-
-    inv[itemId] = count - 1;
-    var ct = CROP_TYPES[cropType];
-    var now = Date.now();
-    plot.crop = cropType;
-    plot.plantedAt = now;
-    plot.growthHours = ct.growthHours;
-    plot.waterHours = ct.waterHours;
-    plot.wiltHours = ct.wiltHours;
-    plot.lastWatered = now;
-    delete plot._diedNotified;
-
-    saveFarm(data);
-    closePlantModal();
-    renderFarm();
-    showToast("种下了 " + ct.name + "！记得浇水💧", "success");
-  }
-
-  function harvestPlot(plotIndex) {
-    var data = loadFarm();
-    var plot = data.plots[plotIndex];
-    if (!plot.crop) return;
-    var progress = getGrowthProgress(plot);
-    if (progress < 1) {
-      showToast("还没成熟！还需要 " + formatTimeLeft(plot), "info");
-      return;
-    }
-    if (isWilted(plot)) {
-      showToast("这棵作物已经枯死了！", "error");
-      return;
-    }
-
-    var cropType = plot.crop;
-    var cropName = CROP_TYPES[cropType] ? CROP_TYPES[cropType].name : cropType;
-
-    if (!data.warehouse) data.warehouse = {};
-    data.warehouse[cropType] = (data.warehouse[cropType] || 0) + 1;
-
-    plot.crop = null;
-    plot.plantedAt = null;
-    plot.growthHours = 0;
-    plot.lastWatered = 0;
-    plot.waterHours = 0;
-    plot.wiltHours = 0;
-    delete plot._diedNotified;
-    saveFarm(data);
-    showToast("🌾 收获了 " + cropName + "！已放入仓库 → 去市场卖出赚积分", "success");
-    renderFarm();
-  }
-
-  function waterPlot(plotIndex) {
-    var data = loadFarm();
-    var plot = data.plots[plotIndex];
-    if (!plot.crop) { showToast("空地不需要浇水", "info"); return; }
-    if (getGrowthProgress(plot) >= 1) { showToast("已经成熟了，请收获！", "info"); return; }
-    if (isWilted(plot)) { showToast("已经枯死了，浇水也没用了！", "error"); return; }
-
-    plot.lastWatered = Date.now();
-    delete plot._diedNotified;
-    saveFarm(data);
-    showToast("💧 浇了水！水分已补满", "success");
-    renderFarm();
-  }
-
-  function useFertilizer(plotIndex, isPremium) {
-    var data = loadFarm();
-    var inv = data.inventory || {};
-    var plot = data.plots[plotIndex];
-    if (!plot.crop) { showToast("空地不需要施肥", "info"); return; }
-    if (getGrowthProgress(plot) >= 1) { showToast("已经成熟了，请收获！", "info"); return; }
-    if (isWilted(plot)) { showToast("枯死的作物施肥也没用", "error"); return; }
-
-    var invKey = isPremium ? "fertilizer_premium" : "fertilizer_basic";
-    if ((inv[invKey] || 0) <= 0) {
-      showToast("没有" + (isPremium ? "高级" : "普通") + "肥料了！去商店买吧", "info");
-      return;
-    }
-
-    inv[invKey]--;
-    if (isPremium) {
-      plot.plantedAt = 0;
-    } else {
-      plot.plantedAt -= 3600 * 1000;
-      if (plot.plantedAt < 0) plot.plantedAt = 0;
-    }
-    saveFarm(data);
-    closeActionModal();
-    showToast((isPremium ? "✨ 高级肥料！作物立即成熟！" : "💩 普通肥料！减少1小时生长时间"), "success");
-    renderFarm();
-  }
-
-  function clearDeadPlot(plotIndex) {
-    var data = loadFarm();
-    var plot = data.plots[plotIndex];
-    plot.crop = null;
-    plot.plantedAt = null;
-    plot.growthHours = 0;
-    plot.lastWatered = 0;
-    plot.waterHours = 0;
-    plot.wiltHours = 0;
-    delete plot._diedNotified;
-    saveFarm(data);
-    showToast("清除了枯死的作物", "info");
-    renderFarm();
-  }
-
-  function showActionModal(plotIndex) {
-    var data = loadFarm();
-    var plot = data.plots[plotIndex];
-    var inv = data.inventory || {};
-    _selectedPlotIndex = plotIndex;
-
-    document.getElementById("actionTitle").textContent = "🌱 " + (CROP_TYPES[plot.crop] ? CROP_TYPES[plot.crop].name : plot.crop) + " 操作";
-
-    var html = "";
-    html += '<button class="action-btn" onclick="FARM.waterPlot(' + plotIndex + ')"><span class="act-emoji">💧</span><span class="act-info"><span class="act-name">浇水</span><span class="act-desc">补满水分，避免枯死</span></span></button>';
-
-    var hasBasic = (inv.fertilizer_basic || 0) > 0;
-    var hasPremium = (inv.fertilizer_premium || 0) > 0;
-    html += '<button class="action-btn" onclick="FARM.useFertilizer(' + plotIndex + ',false)"' + (!hasBasic ? " disabled" : "") + '><span class="act-emoji">💩</span><span class="act-info"><span class="act-name">普通肥料</span><span class="act-desc">减少1小时生长时间</span></span><span class="act-cost">x' + (inv.fertilizer_basic || 0) + '</span></button>';
-    html += '<button class="action-btn" onclick="FARM.useFertilizer(' + plotIndex + ',true)"' + (!hasPremium ? " disabled" : "") + '><span class="act-emoji">✨</span><span class="act-info"><span class="act-name">高级肥料</span><span class="act-desc">立即成熟！</span></span><span class="act-cost">x' + (inv.fertilizer_premium || 0) + '</span></button>';
-
-    document.getElementById("actionBtnGroup").innerHTML = html;
-    document.getElementById("actionOverlay").classList.remove("hidden");
-  }
-  window.closeActionModal = function() {
-    document.getElementById("actionOverlay").classList.add("hidden");
-  };
-
-  function onPlotClick(plotIndex) {
-    var data = loadFarm();
-    var plot = data.plots[plotIndex];
-    var progress = getGrowthProgress(plot);
-
-    if (plot.crop && isWilted(plot)) {
-      clearDeadPlot(plotIndex);
-    } else if (plot.crop && progress >= 1) {
-      harvestPlot(plotIndex);
-    } else if (plot.crop) {
-      showActionModal(plotIndex);
-    } else {
-      showPlantModal(plotIndex);
-    }
-  }
-
-  function sellOneCrop(cropType) {
-    var data = loadFarm();
-    var count = (data.warehouse && data.warehouse[cropType]) || 0;
-    if (count <= 0) return;
-
-    var mp = getMarketPrice(cropType);
-    var cropName = CROP_TYPES[cropType] ? CROP_TYPES[cropType].name : cropType;
-
-    data.warehouse[cropType] = count - 1;
-    if (data.warehouse[cropType] <= 0) delete data.warehouse[cropType];
-    saveFarm(data);
-
-    JITPoints.changePoints(_currentUser, mp.price, "农场卖出: " + cropName).then(function() {
-      showToast("🏪 卖出 " + cropName + " x1，获得 <b class=\"sell-price\">+" + mp.price + "</b> 积分！", "success");
-      refreshPoints();
-      renderFarm();
-    }).catch(function(err) {
-      showToast("卖出失败: " + (err.message || ""), "error");
-      data.warehouse[cropType] = (data.warehouse[cropType] || 0) + 1;
-      saveFarm(data);
-      renderFarm();
-    });
-  }
-
-  function sellAllCrop(cropType) {
-    var data = loadFarm();
-    var count = (data.warehouse && data.warehouse[cropType]) || 0;
-    if (count <= 0) return;
-
-    var totalPoints = 0;
-    var cropName = CROP_TYPES[cropType] ? CROP_TYPES[cropType].name : cropType;
-
-    for (var i = 0; i < count; i++) {
-      var mp = getMarketPrice(cropType);
-      totalPoints += mp.price;
-    }
-
-    data.warehouse[cropType] = 0;
-    delete data.warehouse[cropType];
-    saveFarm(data);
-
-    JITPoints.changePoints(_currentUser, totalPoints, "农场批量卖出: " + cropName + " x" + count).then(function() {
-      showToast("🏪 卖出 " + cropName + " x" + count + "，获得 <b class=\"sell-price\">+" + totalPoints + "</b> 积分！", "success");
-      refreshPoints();
-      renderFarm();
-    }).catch(function(err) {
-      showToast("卖出失败: " + (err.message || ""), "error");
-      data.warehouse[cropType] = (data.warehouse[cropType] || 0) + count;
-      saveFarm(data);
-      renderFarm();
-    });
-  }
-
-  function openMarket() {
-    var data = loadFarm();
-    var wh = data.warehouse || {};
-    var container = document.getElementById("marketItems");
-    var html = "";
-
-    var cropKeys = Object.keys(CROP_TYPES);
-    for (var i = 0; i < cropKeys.length; i++) {
-      var ct = CROP_TYPES[cropKeys[i]];
-      var count = wh[cropKeys[i]] || 0;
-      var mp = getMarketPrice(cropKeys[i]);
-      html += '<div class="market-item">';
-      html += '<div class="mk-emoji">' + ct.emoji + '</div>';
-      html += '<div class="mk-info">';
-      html += '<div class="mk-name">' + ct.name + '</div>';
-      html += '<div class="mk-desc">生长' + ct.growthHours + 'h · 市场收购价</div>';
-      html += '<div class="mk-count" style="' + (count > 0 ? 'color:#4caf50;font-weight:700;' : '') + '">库存：' + count + ' 个</div>';
-      html += '<div class="mk-price-range">💰 ' + mp.min + ' ~ ' + mp.max + ' 积分/个</div>';
-      html += '</div>';
-      html += '<button class="btn-sell-now" onclick="FARM.sellOneCrop(\'' + cropKeys[i] + '\')" ' + (count <= 0 ? "disabled" : "") + '>卖出 1 个</button>';
-      html += '</div>';
-    }
-    container.innerHTML = html;
-    document.getElementById("marketOverlay").classList.remove("hidden");
-  }
-  window.closeMarket = function() {
-    document.getElementById("marketOverlay").classList.add("hidden");
-  };
+  var _state = null;
+  var _shop = null;
+  var _farm = null;
+  var _tab = "shop";
+  var _restockPrices = { seeds_wheat:8, seeds_corn:16, seeds_strawberry:22, seeds_carrot:20, seeds_tomato:24, seeds_sunflower:32, fertilizer_basic:12, fertilizer_premium:32, auto_waterer:120 };
+  var _cropCfg = { wheat:{name:"小麦",emoji:"🌾",gh:2,wh:4,wih:6}, corn:{name:"玉米",emoji:"🌽",gh:4,wh:6,wih:8}, strawberry:{name:"草莓",emoji:"🍓",gh:3,wh:5,wih:7}, carrot:{name:"胡萝卜",emoji:"🥕",gh:5,wh:7,wih:10}, tomato:{name:"番茄",emoji:"🍅",gh:6,wh:8,wih:12}, sunflower:{name:"向日葵",emoji:"🌻",gh:8,wh:8,wih:14} };
+  var _seedMap = { seeds_wheat:"wheat", seeds_corn:"corn", seeds_strawberry:"strawberry", seeds_carrot:"carrot", seeds_tomato:"tomato", seeds_sunflower:"sunflower" };
+  var _musicPlaying = false;
+  var _audioCtx = null;
+  var _musicGain = null;
+
+  if (!_currentUser) { alert("请先登录后再进入农场"); window.location.href = "/login"; return; }
+
+  function game(action, params) { return JITApi.getTursoHelpers().gameAction(_currentUser, action, params); }
 
   function refreshPoints() {
-    var ptsPromise;
-    if (typeof JITPoints !== "undefined" && JITPoints.getUserPoints) {
-      ptsPromise = JITPoints.getUserPoints(_currentUser, true);
-    } else {
-      ptsPromise = Promise.resolve({ points: 0 });
-    }
-    ptsPromise.then(function(result) {
-      _currentPoints = result.points || 0;
-      document.getElementById("farmPoints").textContent = _currentPoints;
-    }).catch(function() {
-      document.getElementById("farmPoints").textContent = "---";
+    var p;
+    if (typeof JITPoints !== "undefined" && JITPoints.getUserPoints) { p = JITPoints.getUserPoints(_currentUser, true); }
+    else { p = Promise.resolve({ points: 0 }); }
+    p.then(function(r) { _currentPoints = r.points || 0; document.getElementById("ptsDisplay").textContent = _currentPoints; }).catch(function(){ document.getElementById("ptsDisplay").textContent = "---"; });
+  }
+
+  function showToast(msg, type) {
+    var el = document.getElementById("toast");
+    el.innerHTML = msg; el.className = "toast " + (type||"info") + " show";
+    clearTimeout(el._timer);
+    el._timer = setTimeout(function(){ el.classList.remove("show"); }, 2500);
+  }
+
+  // ====== 背景音乐（Web Audio 环境音） ======
+  function initMusic() {
+    try {
+      _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      _musicGain = _audioCtx.createGain();
+      _musicGain.gain.value = 0.08;
+      _musicGain.connect(_audioCtx.destination);
+      var osc1 = _audioCtx.createOscillator();
+      osc1.type = "sine"; osc1.frequency.value = 220;
+      var osc2 = _audioCtx.createOscillator();
+      osc2.type = "sine"; osc2.frequency.value = 330;
+      var osc3 = _audioCtx.createOscillator();
+      osc3.type = "triangle"; osc3.frequency.value = 440;
+      var lfo = _audioCtx.createOscillator();
+      lfo.type = "sine"; lfo.frequency.value = 0.3;
+      var lfoGain = _audioCtx.createGain();
+      lfoGain.gain.value = 1;
+      lfo.connect(lfoGain);
+      lfoGain.connect(osc1.detune);
+      lfoGain.connect(osc2.detune);
+      osc1.connect(_musicGain);
+      osc2.connect(_musicGain);
+      osc3.connect(_musicGain);
+      osc1.detune.value = -10;
+      osc2.detune.value = 5;
+      _musicGain.gain.value = 0.06;
+      osc1.start(); osc2.start(); osc3.start(); lfo.start();
+      _musicPlaying = true;
+      document.getElementById("btnMusic").textContent = "🔊";
+      document.getElementById("btnMusic").classList.add("active");
+    } catch(e) { console.log("音乐初始化失败:", e); }
+  }
+
+  function toggleMusic() {
+    if (!_audioCtx) { initMusic(); return; }
+    if (_audioCtx.state === "suspended") { _audioCtx.resume(); }
+    _musicPlaying = !_musicPlaying;
+    _musicGain.gain.value = _musicPlaying ? 0.06 : 0;
+    document.getElementById("btnMusic").textContent = _musicPlaying ? "🔊" : "🔇";
+    if (_musicPlaying) { document.getElementById("btnMusic").classList.add("active"); }
+    else { document.getElementById("btnMusic").classList.remove("active"); }
+  }
+
+  // ====== 数据加载 ======
+  function loadState() {
+    return game("tick").then(function(r) {
+      _state = r.state; _shop = r.shop; _farm = (r.farm || []).slice(0,6);
+      if (r.pointsChange && r.pointsChange !== 0) { refreshPoints(); }
+      return r;
     });
   }
 
-  var _toastTimer = null;
-  function showToast(msg, type) {
-    var el = document.getElementById("farmToast");
-    el.innerHTML = msg;
-    el.className = "toast " + (type || "info") + " show";
-    clearTimeout(_toastTimer);
-    _toastTimer = setTimeout(function() { el.classList.remove("show"); }, 2500);
+  // ====== Tab 切换 ======
+  function switchTab(tab) {
+    _tab = tab;
+    document.querySelectorAll(".tab-btn").forEach(function(b){ b.classList.toggle("active", b.dataset.tab === tab); });
+    document.getElementById("panelShop").classList.toggle("active", tab === "shop");
+    document.getElementById("panelFarm").classList.toggle("active", tab === "farm");
+    render();
   }
 
-  // Periodic tick: auto-waterer check, withered check, refresh
-  setInterval(function() {
-    tickFarm();
-    renderFarm();
-    refreshPoints();
-  }, 30000);
+  // ====== 渲染 ======
+  function render() {
+    if (_state) {
+      var mh = (_state.marketHeat * 100).toFixed(0);
+      document.getElementById("marketBadge").textContent = "市场热度: " + mh + "%";
+      document.getElementById("revenueBadge").textContent = "营收: " + (_state.totalRevenue||0) + "分";
+      document.getElementById("costBadge").textContent = "成本: " + (_state.totalCost||0) + "分";
+      var restockOn = !!_state.autoRestock;
+      var farmOn = !!_state.autoFarm;
+      ["toggleRestock","toggleFarm","toggleFarm2"].forEach(function(id){
+        var el = document.getElementById(id); if(!el) return;
+        el.classList.toggle("on", id.indexOf("Restock")>-1 ? restockOn : farmOn);
+        el.classList.toggle("off", id.indexOf("Restock")>-1 ? !restockOn : !farmOn);
+      });
+      document.getElementById("restockStatus").textContent = restockOn ? "运行中" : "已关闭";
+      document.getElementById("farmStatus").textContent = farmOn ? "运行中" : "已关闭";
+      var fs2 = document.getElementById("farmStatus2"); if(fs2) fs2.textContent = farmOn ? "运行中" : "已关闭";
+    }
+    if (_tab === "shop") renderShop();
+    else renderFarm();
+  }
 
-  window.addEventListener("beforeunload", function() {
-    forceDbSaveNow();
-  });
+  // ====== 商店渲染 ======
+  function renderShop() {
+    var stock = _shop ? _shop.stock : {};
+    var shelves = _shop ? _shop.shelves : [];
+    var logs = _shop ? _shop.logs : [];
 
-  document.addEventListener("visibilitychange", function() {
-    if (document.hidden) forceDbSaveNow();
-  });
+    var stockHtml = "";
+    var allSeedTypes = Object.keys(_seedMap);
+    for (var i=0;i<allSeedTypes.length;i++) {
+      var sid = allSeedTypes[i], ct = _seedMap[sid];
+      var qty = stock[sid]||0;
+      var cfg = _cropCfg[ct];
+      var cost = _restockPrices[sid]||0;
+      stockHtml += '<div class="stock-item'+(qty<=0?" empty":"")+'" onclick="'+(qty>0?"FARM.openShelfModal('"+sid+"')":"")+'">';
+      stockHtml += '<div class="stock-emoji">'+(cfg?cfg.emoji:"📦")+'</div>';
+      stockHtml += '<div class="stock-name">'+(cfg?cfg.name:ct)+' 种子</div>';
+      stockHtml += '<div class="stock-count">x'+qty+'</div>';
+      stockHtml += '<div class="stock-price">进价 '+cost+'分</div>';
+      stockHtml += '</div>';
+    }
+    // 工具类库存
+    var toolTypes = ["fertilizer_basic","fertilizer_premium","auto_waterer"];
+    var toolNames = { fertilizer_basic:"💩 普通肥料", fertilizer_premium:"✨ 高级肥料", auto_waterer:"💧 自动浇灌器" };
+    var toolEmojis = { fertilizer_basic:"💩", fertilizer_premium:"✨", auto_waterer:"💧" };
+    for (var j=0;j<toolTypes.length;j++) {
+      var tid = toolTypes[j], tqty = stock[tid]||0, tcost = _restockPrices[tid]||0;
+      stockHtml += '<div class="stock-item'+(tqty<=0?" empty":"")+'">';
+      stockHtml += '<div class="stock-emoji">'+(toolEmojis[tid]||"📦")+'</div>';
+      stockHtml += '<div class="stock-name">'+(toolNames[tid]||tid).slice(2)+'</div>';
+      stockHtml += '<div class="stock-count">x'+tqty+'</div>';
+      stockHtml += '<div class="stock-price">进价 '+tcost+'分</div>';
+      stockHtml += '</div>';
+    }
+    // 作物库存
+    var cropKeys = Object.keys(_cropCfg);
+    for (var k=0;k<cropKeys.length;k++) {
+      var ck = cropKeys[k], cqty = stock[ck]||0;
+      if (cqty<=0 && !stock.hasOwnProperty(ck)) continue;
+      var cc = _cropCfg[ck];
+      var shelfCost = cc.gh * 5;
+      stockHtml += '<div class="stock-item'+(cqty<=0?" empty":"")+'" onclick="'+(cqty>0?"FARM.openShelfModal('"+ck+"')":"")+'">';
+      stockHtml += '<div class="stock-emoji">'+(cc?cc.emoji:"📦")+'</div>';
+      stockHtml += '<div class="stock-name">'+(cc?cc.name:ck)+'</div>';
+      stockHtml += '<div class="stock-count">x'+cqty+'</div>';
+      stockHtml += '<div class="stock-price">成本 ~'+shelfCost+'分</div>';
+      stockHtml += '</div>';
+    }
+    document.getElementById("stockGrid").innerHTML = stockHtml || '<div style="color:var(--text-dim);grid-column:1/-1;text-align:center;">库存为空，先进货吧</div>';
 
-  document.getElementById("btnOpenShop").addEventListener("click", openShop);
-  document.getElementById("btnOpenMarket").addEventListener("click", openMarket);
+    var shelfHtml = "";
+    for (var s=0;s<shelves.length;s++) {
+      var sh = shelves[s];
+      var shEmoji = "📦";
+      var itemCfg = _cropCfg[sh.itemId] || _cropCfg[String(sh.itemId).replace(/^seeds_/,"")];
+      if (itemCfg) shEmoji = itemCfg.emoji;
+      else if (sh.itemId === "fertilizer_basic") shEmoji = "💩";
+      else if (sh.itemId === "fertilizer_premium") shEmoji = "✨";
+      else if (sh.itemId === "auto_waterer") shEmoji = "💧";
+      shelfHtml += '<div class="shelf-item">';
+      shelfHtml += '<div class="shelf-top"><span class="shelf-emoji">'+shEmoji+'</span><span class="shelf-name">'+sh.itemName+'</span><span class="shelf-qty">x'+sh.quantity+'</span></div>';
+      shelfHtml += '<div class="shelf-row"><span>成本</span><span class="val">'+sh.costPrice+'分</span></div>';
+      shelfHtml += '<div class="shelf-row"><span>利润率</span><span class="val">'+(sh.profitPct*100).toFixed(0)+'%</span></div>';
+      shelfHtml += '<div class="shelf-sell">💰 '+sh.sellPrice+' 分</div>';
+      shelfHtml += '<div class="shelf-actions">';
+      shelfHtml += '<button class="btn btn-sm" onclick="FARM.openShelfUpdateModal(\''+sh.id+'\','+sh.profitPct+')">调价</button>';
+      shelfHtml += '<button class="btn btn-sm btn-danger" onclick="FARM.doShelfRemove(\''+sh.id+'\')">下架</button>';
+      shelfHtml += '</div></div>';
+    }
+    document.getElementById("shelfGrid").innerHTML = shelfHtml;
+    document.getElementById("shelfEmpty").style.display = shelves.length === 0 ? "block" : "none";
 
+    var logHtml = "";
+    for (var l=0;l<logs.length;l++) {
+      var lg = logs[l];
+      var amtClass = lg.amount > 0 ? "positive" : (lg.amount < 0 ? "negative" : "");
+      logHtml += '<div class="log-item">';
+      logHtml += '<span class="log-time">'+(lg.createdAt||"").slice(11,19)+'</span>';
+      logHtml += '<span class="log-detail">'+lg.detail+'</span>';
+      logHtml += '<span class="log-amt '+amtClass+'">'+(lg.amount>0?"+":"")+lg.amount+'分</span>';
+      logHtml += '</div>';
+    }
+    document.getElementById("logList").innerHTML = logHtml || '<div style="color:var(--text-dim);text-align:center;">暂无交易记录</div>';
+  }
+
+  // ====== 农田渲染 ======
+  function renderFarm() {
+    var html = "";
+    for (var i=0;i<6;i++) {
+      var plot = _farm[i] || { plotIndex:i, cropType:null, status:"empty", plantedAt:null, growthHours:0, waterHours:0, wiltHours:0, lastWatered:null };
+      var cls = "plot";
+      var emoji = "🌱";
+      var name = "空地";
+      var sub = "点击种植";
+      var extra = "";
+      var growthPct = 0, waterPct = 100;
+      var nowMs = Date.now();
+
+      if (plot.status === "growing" && plot.cropType) {
+        cls += " growing";
+        var cfg = _cropCfg[plot.cropType] || {};
+        var plantedMs = plot.plantedAt ? new Date(plot.plantedAt).getTime() : nowMs;
+        var elapsedH = (nowMs - plantedMs) / 3600000;
+        growthPct = Math.min(1, elapsedH / (plot.growthHours||1));
+        var stage = growthPct >= 1 ? 4 : (growthPct >= 0.7 ? 3 : (growthPct >= 0.35 ? 2 : (growthPct >= 0.1 ? 1 : 0)));
+        var stages = ["🌰","🌱","🌿","🌳"];
+        emoji = stages[stage] || stages[3];
+        name = cfg.name || plot.cropType;
+
+        var lastWaterMs = plot.lastWatered ? new Date(plot.lastWatered).getTime() : plantedMs;
+        var waterElapsedH = (nowMs - lastWaterMs) / 3600000;
+        waterPct = Math.max(0, Math.round(100 - (waterElapsedH / (plot.waterHours||1)) * 100));
+        if (waterPct < 50) cls += " thirsty";
+        sub = "⏳" + (growthPct>=1?"可收获！":Math.ceil((plot.growthHours||1)*(1-growthPct))+"h") + " · 💧" + waterPct + "%";
+      } else if (plot.status === "mature" && plot.cropType) {
+        cls += " mature";
+        var cfg2 = _cropCfg[plot.cropType] || {};
+        emoji = cfg2.emoji || "🌾";
+        name = cfg2.name || plot.cropType;
+        growthPct = 1; waterPct = 100;
+        sub = "✨ 可收获！"; extra = '<div class="badge-mature">成熟</div>';
+      } else if (plot.status === "withered" && plot.cropType) {
+        cls += " withered";
+        var cfg3 = _cropCfg[plot.cropType] || {};
+        emoji = "💀"; name = cfg3.name || plot.cropType;
+        sub = "已枯死"; extra = '<div class="badge-dead">清除</div>';
+      } else { cls += " empty"; }
+
+      html += '<div class="'+cls+'" onclick="FARM.onPlotClick('+i+')">';
+      html += '<div class="plot-emoji" style="'+(plot.status==="mature"?"font-size:52px;":"")+'">'+emoji+'</div>';
+      html += '<div class="plot-name">'+name+'</div>';
+      html += '<div class="plot-sub">'+sub+'</div>';
+      if (plot.status === "growing") {
+        html += '<div class="plot-bar"><div class="plot-bar-fill growth" style="width:'+Math.round(growthPct*100)+'%"></div></div>';
+        html += '<div class="plot-bar"><div class="plot-bar-fill '+(waterPct<50?'low':'water')+'" style="width:'+waterPct+'%"></div></div>';
+      }
+      html += extra;
+      html += '</div>';
+    }
+    document.getElementById("plotGrid").innerHTML = html;
+  }
+
+  // ====== 地块点击 ======
+  function onPlotClick(idx) {
+    var plot = _farm[idx];
+    if (!plot) return;
+    if (plot.status === "empty") { openPlantModal(idx); }
+    else if (plot.status === "mature") { doHarvest(idx); }
+    else if (plot.status === "withered") { doClearDead(idx); }
+    else if (plot.status === "growing") { openActionModal(idx); }
+  }
+
+  // ====== 种植 ======
+  function openPlantModal(presetIdx) {
+    var sel = document.getElementById("plantPlot");
+    sel.innerHTML = "";
+    for (var i=0;i<6;i++) {
+      var p = _farm[i];
+      if (p && p.status === "empty") {
+        sel.innerHTML += '<option value="'+i+'"'+(i===presetIdx?" selected":"")+'>地块 #'+(i+1)+'</option>';
+      }
+    }
+    if (!sel.options.length) { showToast("没有空地了！先收获或清除枯死的作物吧", "info"); return; }
+
+    var stock = _shop ? _shop.stock : {};
+    var seedSel = document.getElementById("plantSeed");
+    seedSel.innerHTML = '<option value="">选择种子</option>';
+    var seedKeys = Object.keys(_seedMap);
+    for (var j=0;j<seedKeys.length;j++) {
+      var sid = seedKeys[j], ct = _seedMap[sid];
+      var qty = stock[sid]||0;
+      if (qty > 0) {
+        var cfg = _cropCfg[ct];
+        seedSel.innerHTML += '<option value="'+ct+'">'+cfg.emoji+' '+cfg.name+' (库存:'+qty+')</option>';
+      }
+    }
+    document.getElementById("plantInfo").textContent = "";
+    document.getElementById("plantModal").classList.remove("hidden");
+  }
+
+  function onPlantSeedChange() {
+    var ct = document.getElementById("plantSeed").value;
+    var cfg = _cropCfg[ct];
+    if (cfg) {
+      document.getElementById("plantInfo").innerHTML = "⏳生长期:"+cfg.gh+"h · 💧需每"+cfg.wh+"h浇水 · 💀"+cfg.wih+"h枯死";
+    } else { document.getElementById("plantInfo").textContent = ""; }
+  }
+
+  function doPlant() {
+    var pi = parseInt(document.getElementById("plantPlot").value);
+    var ct = document.getElementById("plantSeed").value;
+    if (pi < 0 || !ct) { showToast("请选择地块和种子", "error"); return; }
+    game("plant", { plotIndex: pi, cropType: ct }).then(function(r) {
+      _farm = r.farm.slice(0,6); _shop = r.shop || _shop;
+      closeModal("plantModal"); render(); showToast("种下了！", "success");
+    }).catch(function(e){ showToast("种植失败: "+(e.message||""), "error"); });
+  }
+
+  // ====== 收获 ======
+  function doHarvest(idx) {
+    game("harvest", { plotIndex: idx }).then(function(r) {
+      _farm = r.farm.slice(0,6); _shop = r.shop;
+      render(); showToast("🌾 收获了！已存入商店库存", "success");
+    }).catch(function(e){ showToast("收获失败: "+(e.message||""), "error"); });
+  }
+
+  // ====== 浇水 ======
+  function doWater(idx) {
+    game("water", { plotIndex: idx }).then(function(r) {
+      _farm = r.farm.slice(0,6); closeModal("actionModal"); render(); showToast("💧 浇了水！", "success");
+    }).catch(function(e){ showToast("浇水失败: "+(e.message||""), "error"); });
+  }
+
+  // ====== 清除枯死 ======
+  function doClearDead(idx) {
+    game("clear_dead", { plotIndex: idx }).then(function(r) {
+      _farm = r.farm.slice(0,6); render(); showToast("清除了枯死作物", "info");
+    }).catch(function(e){ showToast("清除失败: "+(e.message||""), "error"); });
+  }
+
+  // ====== 地块操作 ======
+  function openActionModal(idx) {
+    var plot = _farm[idx];
+    var cfg = _cropCfg[plot.cropType] || {};
+    document.getElementById("actionTitle").textContent = (cfg.emoji||"") + " " + (cfg.name||plot.cropType) + " 操作";
+    document.getElementById("actionBtns").innerHTML =
+      '<button class="btn btn-primary" onclick="FARM.doWater('+idx+')">💧 浇水</button>' +
+      '<button class="btn btn-success" onclick="FARM.doHarvest('+idx+')">🌾 收获（如果成熟了）</button>';
+    document.getElementById("actionModal").classList.remove("hidden");
+  }
+
+  // ====== 进货 ======
+  function openRestockModal() {
+    document.getElementById("restockItem").value = "";
+    document.getElementById("restockQty").value = "1";
+    document.getElementById("restockTotal").textContent = "-- 分";
+    document.getElementById("restockModal").classList.remove("hidden");
+  }
+
+  function onRestockItemChange() {
+    var itemId = document.getElementById("restockItem").value;
+    var qty = parseInt(document.getElementById("restockQty").value)||1;
+    var cost = _restockPrices[itemId]||0;
+    document.getElementById("restockTotal").textContent = (cost * qty) + " 分";
+  }
+
+  function onRestockQtyChange() { onRestockItemChange(); }
+
+  function doRestock() {
+    var itemId = document.getElementById("restockItem").value;
+    var qty = parseInt(document.getElementById("restockQty").value)||1;
+    if (!itemId) { showToast("请选择商品", "error"); return; }
+    if (_currentPoints < (_restockPrices[itemId]||0)*qty) { showToast("积分不足！", "error"); return; }
+    game("restock", { itemId: itemId, quantity: qty }).then(function(r) {
+      _shop = r.shop; closeModal("restockModal"); refreshPoints(); render();
+      showToast("进货成功！", "success");
+    }).catch(function(e){ showToast("进货失败: "+(e.message||""), "error"); });
+  }
+
+  // ====== 上架 ======
+  function openShelfModal(presetItem) {
+    var stock = _shop ? _shop.stock : {};
+    var sel = document.getElementById("shelfItem");
+    sel.innerHTML = '<option value="">选择商品</option>';
+    var keys = Object.keys(stock);
+    for (var i=0;i<keys.length;i++) {
+      if (stock[keys[i]] > 0) {
+        var isCrop = _cropCfg[keys[i]];
+        var displayName = isCrop ? (isCrop.emoji+" "+isCrop.name) : keys[i];
+        sel.innerHTML += '<option value="'+keys[i]+'"'+(keys[i]===presetItem?" selected":"")+'>'+displayName+' (库存:'+stock[keys[i]]+')</option>';
+      }
+    }
+    document.getElementById("shelfProfit").value = "0.3";
+    document.getElementById("shelfPrice").textContent = "-- 分";
+    document.getElementById("shelfModal").classList.remove("hidden");
+  }
+
+  function onShelfProfitChange() {
+    var itemId = document.getElementById("shelfItem").value;
+    var pct = parseFloat(document.getElementById("shelfProfit").value)||0.3;
+    var cost = _restockPrices[itemId];
+    if (!cost) {
+      var base = String(itemId).replace(/^seeds_/, "");
+      if (_cropCfg[base]) cost = _cropCfg[base].gh * 5;
+    }
+    if (!cost) cost = 20;
+    var price = Math.round(cost * (1 + pct));
+    document.getElementById("shelfPrice").textContent = price + " 分";
+  }
+
+  function doShelfAdd() {
+    var itemId = document.getElementById("shelfItem").value;
+    var pct = parseFloat(document.getElementById("shelfProfit").value)||0.3;
+    if (!itemId) { showToast("请选择商品", "error"); return; }
+    game("shelf_add", { itemId: itemId, profitPct: pct }).then(function(r) {
+      _shop = r.shop; closeModal("shelfModal"); render();
+      showToast("上架成功！", "success");
+    }).catch(function(e){ showToast("上架失败: "+(e.message||""), "error"); });
+  }
+
+  function openShelfUpdateModal(shelfId, curPct) {
+    document.getElementById("shelfProfit").value = curPct;
+    document.getElementById("shelfItem").value = "";
+    document.getElementById("shelfPrice").textContent = "-- 分";
+    document.getElementById("shelfModal").classList.remove("hidden");
+    var oldBtn = document.querySelector("#shelfModal .btn-success");
+    if (oldBtn) oldBtn.outerHTML = '<button class="btn btn-primary" style="width:100%;" onclick="FARM.doShelfUpdate(\''+shelfId+'\')">确认调价</button>';
+  }
+
+  function doShelfUpdate(shelfId) {
+    var pct = parseFloat(document.getElementById("shelfProfit").value)||0.3;
+    game("shelf_update", { shelfId: shelfId, profitPct: pct }).then(function(r) {
+      _shop = r.shop; closeModal("shelfModal");
+      var oldBtn = document.querySelector("#shelfModal .btn-primary");
+      if (oldBtn) oldBtn.outerHTML = '<button class="btn btn-success" style="width:100%;" onclick="FARM.doShelfAdd()">确认上架</button>';
+      render(); showToast("价格已更新！", "success");
+    }).catch(function(e){ showToast("调价失败: "+(e.message||""), "error"); });
+  }
+
+  function doShelfRemove(shelfId) {
+    if (!confirm("确定下架这个商品吗？库存会退回")) return;
+    game("shelf_remove", { shelfId: shelfId }).then(function(r) {
+      _shop = r.shop; render(); showToast("已下架", "info");
+    }).catch(function(e){ showToast("下架失败: "+(e.message||""), "error"); });
+  }
+
+  // ====== 机器人 ======
+  function toggleRobot(type) {
+    game("toggle_robot", { robotType: type }).then(function(r) {
+      _state = r.state; render();
+      showToast((type==="auto_restock"?"进货机器人":"农场机器人") + (r.state[type==="auto_restock"?"autoRestock":"autoFarm"]?" 已开启":" 已关闭"), "success");
+    }).catch(function(e){ showToast("操作失败: "+(e.message||""), "error"); });
+  }
+
+  // ====== Modal ======
+  function closeModal(id) {
+    document.getElementById(id).classList.add("hidden");
+    if (id === "shelfModal") {
+      var oldBtn = document.querySelector("#shelfModal .btn-primary");
+      if (oldBtn) oldBtn.outerHTML = '<button class="btn btn-success" style="width:100%;" onclick="FARM.doShelfAdd()">确认上架</button>';
+    }
+  }
+
+  // ====== 定时 TICK（引擎同步） ======
+  function doTick() {
+    loadState().then(function(r) {
+      render(); refreshPoints();
+      if (r.tickElapsed > 60) { showToast("引擎结算了 "+Math.round(r.tickElapsed/60)+" 分钟的离线数据", "info"); }
+    }).catch(function(e){ console.log("tick error:", e); });
+  }
+
+  // ====== 初始化 ======
+  function init() {
+    loadState().then(function() { render(); refreshPoints(); }).catch(function(e) {
+      showToast("加载失败，请刷新页面重试", "error"); console.error(e);
+    });
+    setInterval(function() { doTick(); }, 30000);
+  }
+
+  // 全局暴露
   window.FARM = {
-    onPlotClick: onPlotClick,
-    buyItem: buyItem,
-    plantSeed: plantSeed,
-    waterPlot: waterPlot,
-    useFertilizer: useFertilizer,
-    sellOneCrop: sellOneCrop,
-    sellAllCrop: sellAllCrop,
+    switchTab: switchTab, toggleMusic: toggleMusic, toggleRobot: toggleRobot,
+    onPlotClick: onPlotClick, onPlantSeedChange: onPlantSeedChange, doPlant: doPlant,
+    doWater: doWater, doHarvest: doHarvest, doClearDead: doClearDead,
+    openRestockModal: openRestockModal, onRestockItemChange: onRestockItemChange,
+    onRestockQtyChange: onRestockQtyChange, doRestock: doRestock,
+    openShelfModal: openShelfModal, onShelfProfitChange: onShelfProfitChange,
+    doShelfAdd: doShelfAdd, openShelfUpdateModal: openShelfUpdateModal,
+    doShelfUpdate: doShelfUpdate, doShelfRemove: doShelfRemove,
+    closeModal: closeModal
   };
 
-  initFarmFromDb().then(function() {
-    tickFarm();
-    refreshPoints();
-    renderFarm();
-  });
+  init();
 })();
 </script>
 </body>

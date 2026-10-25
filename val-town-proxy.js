@@ -61,7 +61,8 @@ export default async function (req) {
       "notifications","notification_replies","blacklist","urgent_blacklist","registrations",
       "whitelist","sys_config","test_ping","test_users","oauth_tokens","task_rewards",
       "user_levels","lottery_tickets","lottery_records","win_wall","risk_control",
-      "user_monthly_rewards","user_outfits","community_statuses","community_bans","sqlite_sequence","ledger","audit_logs","sessions","farm_data"
+      "user_monthly_rewards","user_outfits","community_statuses","community_bans","sqlite_sequence","ledger","audit_logs","sessions","farm_data",
+      "game_shop_stock","game_shelves","game_farm_plots","game_engine_state","game_engine_log"
     ];
     const DANGER_KEYWORDS = ["DROP","ATTACH","DETACH","VACUUM","REINDEX","TRIGGER","TRUNCATE","PRAGMA"];
 
@@ -1059,6 +1060,569 @@ export default async function (req) {
       );
       logAudit("FARM_SAVE", userId, "farm_data", userId, "保存农场数据", "/farm-save", "", "ok");
       return jsonResponse({ ok: true });
+    }
+
+    // ========== 游戏引擎（商店+农场+离线结算） ==========
+    if (path === "/game" && req.method === "POST") {
+      const body = await req.json();
+      const { action, userId } = body;
+      if (!userId || typeof userId !== "string" || userId.length > 50) {
+        return jsonResponse({ error: "缺少合法 userId" }, 400);
+      }
+      const sess = await requireSession();
+      if (sess.error) return jsonResponse({ error: sess.error }, 403);
+      if (sess.role !== "admin" && sess.username !== userId) {
+        return jsonResponse({ error: "禁止操作他人游戏数据" }, 403);
+      }
+
+      // 建表（懒初始化）
+      const initTables = async function() {
+        const tables = [
+          "CREATE TABLE IF NOT EXISTS game_shop_stock (user_id TEXT, item_id TEXT, quantity INTEGER DEFAULT 0, PRIMARY KEY(user_id,item_id))",
+          "CREATE TABLE IF NOT EXISTS game_shelves (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, item_id TEXT NOT NULL, item_name TEXT NOT NULL, cost_price INTEGER NOT NULL, profit_pct REAL DEFAULT 0.3, sell_price INTEGER NOT NULL, quantity INTEGER DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
+          "CREATE TABLE IF NOT EXISTS game_farm_plots (user_id TEXT, plot_index INTEGER, crop_type TEXT, planted_at TEXT, growth_hours REAL DEFAULT 0, water_hours REAL DEFAULT 0, wilt_hours REAL DEFAULT 0, last_watered TEXT, status TEXT DEFAULT 'empty', PRIMARY KEY(user_id,plot_index))",
+          "CREATE TABLE IF NOT EXISTS game_engine_state (user_id TEXT PRIMARY KEY, last_tick TEXT, market_heat REAL DEFAULT 0.5, buyer_freq INTEGER DEFAULT 1800, auto_restock INTEGER DEFAULT 0, auto_farm INTEGER DEFAULT 0, robot_level INTEGER DEFAULT 1, total_revenue INTEGER DEFAULT 0, total_cost INTEGER DEFAULT 0, updated_at TEXT NOT NULL)",
+          "CREATE TABLE IF NOT EXISTS game_engine_log (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, event_type TEXT NOT NULL, item_id TEXT, quantity INTEGER, amount INTEGER NOT NULL, detail TEXT, created_at TEXT NOT NULL)"
+        ];
+        for (let i = 0; i < tables.length; i++) {
+          try { await execTurso(tables[i], []); } catch(e) {}
+        }
+      };
+
+      await initTables();
+
+      const now = new Date().toISOString();
+      const nowMs = Date.now();
+
+      // 批发价格表（进货成本）
+      const WHOLESALE = {
+        wheat:8, corn:16, strawberry:22, carrot:20, tomato:24, sunflower:32,
+        seeds_wheat:8, seeds_corn:16, seeds_strawberry:22, seeds_carrot:20, seeds_tomato:24, seeds_sunflower:32,
+        fertilizer_basic:12, fertilizer_premium:32, auto_waterer:120
+      };
+
+      const getCost = function(itemId) {
+        var cost = WHOLESALE[itemId];
+        if (cost !== undefined) return cost;
+        // 作物收获品的成本基于生长期
+        if (CROP_CFG[itemId]) return CROP_CFG[itemId].growthHours * 5;
+        return 20;
+      };
+
+      const getItemName = function(itemId) {
+        if (CROP_CFG[itemId]) return CROP_CFG[itemId].name;
+        var base = itemId.replace(/^seeds_/, "");
+        if (CROP_CFG[base]) return CROP_CFG[base].name + "种子";
+        return itemId;
+      };
+
+      // 作物配置
+      const CROP_CFG = {
+        wheat:{name:"小麦",emoji:"🌾",growthHours:2,waterHours:4,wiltHours:6},
+        corn:{name:"玉米",emoji:"🌽",growthHours:4,waterHours:6,wiltHours:8},
+        strawberry:{name:"草莓",emoji:"🍓",growthHours:3,waterHours:5,wiltHours:7},
+        carrot:{name:"胡萝卜",emoji:"🥕",growthHours:5,waterHours:7,wiltHours:10},
+        tomato:{name:"番茄",emoji:"🍅",growthHours:6,waterHours:8,wiltHours:12},
+        sunflower:{name:"向日葵",emoji:"🌻",growthHours:8,waterHours:8,wiltHours:14}
+      };
+
+      // ====== 获取/初始化引擎状态 ======
+      const getEngineState = async function(uid) {
+        const q = await execTurso("SELECT * FROM game_engine_state WHERE user_id=?",[uid]);
+        const ir = q.data.results?.[0]?.response?.result || q.data.results?.[0]?.response?.results || q.data;
+        if (ir && ir.rows && ir.rows.length > 0) {
+          const r = ir.rows[0];
+          return {
+            userId: uid,
+            lastTick: String(r[1]?.value ?? r[1] ?? now),
+            marketHeat: parseFloat(r[2]?.value ?? r[2] ?? 0.5),
+            buyerFreq: parseInt(r[3]?.value ?? r[3] ?? 1800),
+            autoRestock: parseInt(r[4]?.value ?? r[4] ?? 0),
+            autoFarm: parseInt(r[5]?.value ?? r[5] ?? 0),
+            robotLevel: parseInt(r[6]?.value ?? r[6] ?? 1),
+            totalRevenue: parseInt(r[7]?.value ?? r[7] ?? 0),
+            totalCost: parseInt(r[8]?.value ?? r[8] ?? 0)
+          };
+        }
+        // 初始化
+        await execTurso(
+          "INSERT OR IGNORE INTO game_engine_state (user_id,last_tick,market_heat,buyer_freq,auto_restock,auto_farm,robot_level,total_revenue,total_cost,updated_at) VALUES (?,?,0.5,1800,0,0,1,0,0,?)",
+          [uid, now, now]
+        );
+        return { userId:uid, lastTick:now, marketHeat:0.5, buyerFreq:1800, autoRestock:0, autoFarm:0, robotLevel:1, totalRevenue:0, totalCost:0 };
+      };
+
+      const logGameEvent = async function(uid, eventType, itemId, qty, amt, detail) {
+        const lid = "glog_" + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+        await execTurso(
+          "INSERT INTO game_engine_log (id,user_id,event_type,item_id,quantity,amount,detail,created_at) VALUES (?,?,?,?,?,?,?,?)",
+          [lid, uid, eventType, itemId||"", qty||0, amt||0, detail||"", now]
+        ).catch(function(){});
+      };
+
+      // ====== 积分操作（通过账务入账） ======
+      const gamePointsChange = async function(uid, delta, reason, bizNo) {
+        const bn = bizNo || ("gpts_"+Date.now().toString(36)+Math.random().toString(36).slice(2,7));
+        const mkArg = function(v) { return { type:"text", value:String(v) }; };
+        const lid = "ld_"+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+        const tursoReq = {
+          requests: [
+            { type:"execute", stmt:{ sql:"INSERT INTO ledger (id,biz_no,user_id,amount,balance_after,reason,ref_id,operator,created_at) SELECT ?,?,?,?,(SELECT COALESCE(points,0) FROM users WHERE id=?)+?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)", args:[lid,bn,uid,delta,uid,delta,reason||"","","engine",now,bn].map(mkArg) } },
+            { type:"execute", stmt:{ sql:"UPDATE users SET points=(SELECT COALESCE(SUM(amount),0) FROM ledger WHERE user_id=?), updated_at=? WHERE id=? AND EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)", args:[uid,now,uid,bn].map(mkArg) } },
+            { type:"execute", stmt:{ sql:"SELECT COALESCE(points,0) AS p FROM users WHERE id=?", args:[uid].map(mkArg) } }
+          ]
+        };
+        const tursoRes = await fetch(TURSO_API, { method:"POST", headers:{ Authorization:`Bearer ${TURSO_TOKEN}`, "Content-Type":"application/json" }, body:JSON.stringify(tursoReq) });
+        const pData = await tursoRes.json();
+        if (!tursoRes.ok) throw new Error("积分操作失败");
+        let bal = null;
+        try { bal = pData.results?.[2]?.response?.result?.rows?.[0]?.[0]?.value ?? pData.results?.[2]?.response?.result?.rows?.[0]?.[0]; } catch(e){}
+        return { ok:true, balance:bal };
+      };
+
+      // ====== 获取商店数据 ======
+      const getShopData = async function(uid) {
+        const sq = await execTurso("SELECT item_id,quantity FROM game_shop_stock WHERE user_id=?",[uid]);
+        const stock = {};
+        const sir = sq.data.results?.[0]?.response?.result || sq.data.results?.[0]?.response?.results || sq.data;
+        if (sir && sir.rows) {
+          for (let i=0;i<sir.rows.length;i++) {
+            const rid = sir.rows[i][0]?.value??sir.rows[i][0];
+            const rqty = parseInt(sir.rows[i][1]?.value??sir.rows[i][1]??0);
+            stock[rid] = rqty;
+          }
+        }
+        const shq = await execTurso("SELECT * FROM game_shelves WHERE user_id=? ORDER BY created_at ASC",[uid]);
+        const shelves = [];
+        const shr = shq.data.results?.[0]?.response?.result || shq.data.results?.[0]?.response?.results || shq.data;
+        if (shr && shr.rows) {
+          for (let i=0;i<shr.rows.length;i++) {
+            const r = shr.rows[i];
+            shelves.push({
+              id: r[0]?.value??r[0], itemId: r[2]?.value??r[2], itemName: r[3]?.value??r[3],
+              costPrice: parseInt(r[4]?.value??r[4]??0), profitPct: parseFloat(r[5]?.value??r[5]??0.3),
+              sellPrice: parseInt(r[6]?.value??r[6]??0), quantity: parseInt(r[7]?.value??r[7]??0),
+              createdAt: r[8]?.value??r[8], updatedAt: r[9]?.value??r[9]
+            });
+          }
+        }
+        const logQ = await execTurso("SELECT * FROM game_engine_log WHERE user_id=? ORDER BY created_at DESC LIMIT 30",[uid]);
+        const logs = [];
+        const lr = logQ.data.results?.[0]?.response?.result || logQ.data.results?.[0]?.response?.results || logQ.data;
+        if (lr && lr.rows) {
+          for (let i=0;i<lr.rows.length;i++) {
+            const r = lr.rows[i];
+            logs.push({
+              id: r[0]?.value??r[0], eventType: r[2]?.value??r[2], itemId: r[3]?.value??r[3],
+              quantity: parseInt(r[4]?.value??r[4]??0), amount: parseInt(r[5]?.value??r[5]??0),
+              detail: r[6]?.value??r[6], createdAt: r[7]?.value??r[7]
+            });
+          }
+        }
+        return { stock, shelves, logs };
+      };
+
+      // ====== 获取农场数据 ======
+      const getFarmData = async function(uid, defaultLandSize) {
+        const landSize = defaultLandSize || 6;
+        const fq = await execTurso("SELECT * FROM game_farm_plots WHERE user_id=? ORDER BY plot_index ASC",[uid]);
+        const plots = [];
+        const fr = fq.data.results?.[0]?.response?.result || fq.data.results?.[0]?.response?.results || fq.data;
+        const existingMap = {};
+        if (fr && fr.rows) {
+          for (let i=0;i<fr.rows.length;i++) {
+            const r = fr.rows[i];
+            const pi = parseInt(r[1]?.value??r[1]??0);
+            existingMap[pi] = true;
+            plots.push({
+              plotIndex: pi, cropType: r[2]?.value??r[2]||null,
+              plantedAt: r[3]?.value??r[3]||null, growthHours: parseFloat(r[4]?.value??r[4]??0),
+              waterHours: parseFloat(r[5]?.value??r[5]??0), wiltHours: parseFloat(r[6]?.value??r[6]??0),
+              lastWatered: r[7]?.value??r[7]||null, status: r[8]?.value??r[8]||"empty"
+            });
+          }
+        }
+        // 补齐空地
+        for (let i=0;i<landSize;i++) {
+          if (!existingMap[i]) {
+            await execTurso(
+              "INSERT OR IGNORE INTO game_farm_plots (user_id,plot_index,crop_type,planted_at,growth_hours,water_hours,wilt_hours,last_watered,status) VALUES (?,?,NULL,NULL,0,0,0,NULL,'empty')",
+              [uid,i]
+            );
+            plots.push({ plotIndex:i, cropType:null, plantedAt:null, growthHours:0, waterHours:0, wiltHours:0, lastWatered:null, status:"empty" });
+          }
+        }
+        plots.sort(function(a,b){ return a.plotIndex - b.plotIndex; });
+        return plots;
+      };
+
+      // ====== 引擎 TICK：离线结算核心 ======
+      const engineTick = async function(uid) {
+        const state = await getEngineState(uid);
+        const lastMs = new Date(state.lastTick).getTime();
+        const elapsedSec = Math.max(0, (nowMs - lastMs) / 1000);
+        if (elapsedSec < 1) {
+          const shopData = await getShopData(uid);
+          const farmPlots = await getFarmData(uid, 6);
+          return { state, shop: shopData, farm: farmPlots, tickElapsed:0 };
+        }
+
+        let totalPointsChange = 0;
+        const hoursElapsed = elapsedSec / 3600;
+
+        // --- 农场离线结算 ---
+        const farmPlots = await getFarmData(uid, 6);
+        for (let i=0;i<farmPlots.length;i++) {
+          const plot = farmPlots[i];
+          if (plot.status !== "growing" || !plot.cropType) continue;
+
+          const cfg = CROP_CFG[plot.cropType];
+          if (!cfg) continue;
+
+          const plantedMs = new Date(plot.plantedAt).getTime();
+          const growthNeededMs = plot.growthHours * 3600 * 1000;
+          const matureMs = plantedMs + growthNeededMs;
+          const lastWaterMs = plot.lastWatered ? new Date(plot.lastWatered).getTime() : plantedMs;
+          const wiltMs = lastWaterMs + (plot.wiltHours * 3600 * 1000);
+
+          if (state.autoFarm === 1) {
+            // 自动浇灌：如果水分低于 50% 且未枯死
+            const waterIntervalMs = plot.waterHours * 3600 * 1000;
+            const waterThresholdMs = lastWaterMs + waterIntervalMs * 0.5;
+            if (nowMs >= waterThresholdMs && nowMs < wiltMs) {
+              plot.lastWatered = new Date().toISOString();
+              await execTurso(
+                "UPDATE game_farm_plots SET last_watered=? WHERE user_id=? AND plot_index=?",
+                [now, uid, plot.plotIndex]
+              );
+              await logGameEvent(uid, "auto_water", plot.cropType, 0, 0, "自动浇灌机器人浇了水");
+            }
+          }
+
+          // 检查枯死
+          if (nowMs >= wiltMs && nowMs < matureMs) {
+            plot.status = "withered";
+            await execTurso(
+              "UPDATE game_farm_plots SET status='withered' WHERE user_id=? AND plot_index=?",
+              [uid, plot.plotIndex]
+            );
+            await logGameEvent(uid, "crop_withered", plot.cropType, 0, 0, cfg.name+"枯死了！");
+            continue;
+          }
+
+          // 检查成熟
+          if (nowMs >= matureMs && nowMs < wiltMs) {
+            plot.status = "mature";
+            await execTurso(
+              "UPDATE game_farm_plots SET status='mature' WHERE user_id=? AND plot_index=?",
+              [uid, plot.plotIndex]
+            );
+            await logGameEvent(uid, "crop_mature", plot.cropType, 0, 0, cfg.name+"成熟了！可收获");
+          }
+        }
+
+        // --- 自动种植（机器人） ---
+        if (state.autoFarm === 1) {
+          const stockQ = await execTurso("SELECT item_id,quantity FROM game_shop_stock WHERE user_id=?",[uid]);
+          const stock = {};
+          const sr = stockQ.data.results?.[0]?.response?.result || stockQ.data.results?.[0]?.response?.results || stockQ.data;
+          if (sr && sr.rows) {
+            for (let i=0;i<sr.rows.length;i++) {
+              stock[sr.rows[i][0]?.value??sr.rows[i][0]] = parseInt(sr.rows[i][1]?.value??sr.rows[i][1]??0);
+            }
+          }
+          for (let i=0;i<farmPlots.length;i++) {
+            if (farmPlots[i].status !== "empty") continue;
+            const seedTypes = Object.keys(CROP_CFG);
+            for (let j=0;j<seedTypes.length;j++) {
+              const seedId = "seeds_"+seedTypes[j];
+              if ((stock[seedId]||0) > 0) {
+                stock[seedId]--;
+                const ct = CROP_CFG[seedTypes[j]];
+                await execTurso(
+                  "UPDATE game_farm_plots SET crop_type=?,planted_at=?,growth_hours=?,water_hours=?,wilt_hours=?,last_watered=?,status='growing' WHERE user_id=? AND plot_index=?",
+                  [seedTypes[j], now, ct.growthHours, ct.waterHours, ct.wiltHours, now, uid, i]
+                );
+                await execTurso(
+                  "UPDATE game_shop_stock SET quantity=? WHERE user_id=? AND item_id=?",
+                  [stock[seedId], uid, seedId]
+                );
+                await logGameEvent(uid, "auto_plant", seedTypes[j], 1, 0, "自动种植机器人种了"+ct.name);
+                farmPlots[i].status = "growing";
+                farmPlots[i].cropType = seedTypes[j];
+                break;
+              }
+            }
+          }
+        }
+
+        // --- 自动进货（机器人） ---
+        if (state.autoRestock === 1) {
+          const restocksPerHour = 1.0 * state.robotLevel;
+          const expectedRestocks = Math.floor(restocksPerHour * hoursElapsed);
+          if (expectedRestocks > 0) {
+            const wholesaleKeys = Object.keys(WHOLESALE).filter(function(k){ return k.indexOf("seeds_")===0 || k.indexOf("fertilizer_")===0 || k==="auto_waterer"; });
+            for (let r=0;r<Math.min(expectedRestocks,10);r++) {
+              const pick = wholesaleKeys[Math.floor(Math.random() * wholesaleKeys.length)];
+              const cost = WHOLESALE[pick];
+              if (Math.random() < 0.7) {
+                try {
+                  const bn = "auto_restock_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,6);
+                  await gamePointsChange(uid, -cost, "自动进货机器人补货: "+pick, bn);
+                  await execTurso(
+                    "INSERT INTO game_shop_stock (user_id,item_id,quantity) VALUES (?,?,1) ON CONFLICT(user_id,item_id) DO UPDATE SET quantity=quantity+1",
+                    [uid, pick]
+                  );
+                  totalPointsChange -= cost;
+                  await logGameEvent(uid, "auto_restock", pick, 1, -cost, "机器人自动进货");
+                  state.totalCost = (state.totalCost||0) + cost;
+                } catch(e) {}
+              }
+            }
+          }
+        }
+
+        // --- 买家模拟（商店销售） ---
+        const shopData = await getShopData(uid);
+        const purchasesPerHour = state.marketHeat * 3.0;
+        const expectedPurchases = purchasesPerHour * hoursElapsed;
+        const actualPurchases = Math.floor(expectedPurchases) + (Math.random() < (expectedPurchases % 1) ? 1 : 0);
+
+        for (let p=0;p<Math.min(actualPurchases,20);p++) {
+          const available = shopData.shelves.filter(function(s){ return s.quantity > 0; });
+          if (available.length === 0) break;
+          const shelf = available[Math.floor(Math.random() * available.length)];
+          const revenue = shelf.sellPrice;
+          shelf.quantity--;
+          try {
+            const bn = "buyer_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,6);
+            await gamePointsChange(uid, revenue, "买家购买: "+shelf.itemName, bn);
+            totalPointsChange += revenue;
+            state.totalRevenue = (state.totalRevenue||0) + revenue;
+            await logGameEvent(uid, "buyer_purchase", shelf.itemId, 1, revenue, "买家购买了1个"+shelf.itemName+"，收入"+revenue+"分");
+          } catch(e) {}
+          if (shelf.quantity <= 0) {
+            await execTurso("DELETE FROM game_shelves WHERE id=?",[shelf.id]);
+          } else {
+            await execTurso("UPDATE game_shelves SET quantity=? WHERE id=?",[shelf.quantity, shelf.id]);
+          }
+        }
+
+        // 更新引擎状态
+        state.marketHeat = Math.max(0.1, Math.min(1.0, state.marketHeat + (Math.random() - 0.5) * 0.1));
+        const newTotalRevenue = (state.totalRevenue||0);
+        const newTotalCost = (state.totalCost||0);
+        await execTurso(
+          "UPDATE game_engine_state SET last_tick=?,market_heat=?,total_revenue=?,total_cost=?,updated_at=? WHERE user_id=?",
+          [now, state.marketHeat, newTotalRevenue, newTotalCost, now, uid]
+        );
+        state.lastTick = now;
+
+        const finalShop = await getShopData(uid);
+        const finalFarm = await getFarmData(uid, 6);
+        await logGameEvent(uid, "engine_tick", "", 0, totalPointsChange, "引擎TICK完成，积分变动"+totalPointsChange+"，耗时"+Math.round(elapsedSec)+"秒");
+        return { state, shop: finalShop, farm: finalFarm, tickElapsed: Math.round(elapsedSec), pointsChange: totalPointsChange };
+      };
+
+      // ====== 动作路由 ======
+      if (action === "tick") {
+        const result = await engineTick(userId);
+        return jsonResponse({ ok:true, ...result });
+      }
+
+      if (action === "getState") {
+        const state = await getEngineState(userId);
+        const shop = await getShopData(userId);
+        const farm = await getFarmData(userId, 6);
+        return jsonResponse({ ok:true, state, shop, farm });
+      }
+
+      // 进货：消耗积分为商品库存
+      if (action === "restock") {
+        const { itemId, quantity } = body;
+        const qty = Math.min(Math.max(parseInt(quantity)||1, 1), 99);
+        const cost = getCost(itemId);
+        if (!cost) return jsonResponse({ error:"未知商品: "+itemId }, 400);
+        const totalCost = cost * qty;
+        const bn = "restock_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,6);
+        try {
+          await gamePointsChange(userId, -totalCost, "进货: "+itemId+" x"+qty, bn);
+        } catch(e) {
+          return jsonResponse({ error:"积分不足或操作失败: "+e.message }, 400);
+        }
+        await execTurso(
+          "INSERT INTO game_shop_stock (user_id,item_id,quantity) VALUES (?,?,?) ON CONFLICT(user_id,item_id) DO UPDATE SET quantity=quantity+?",
+          [userId, itemId, qty, qty]
+        );
+        const state = await getEngineState(userId);
+        state.totalCost = (state.totalCost||0) + totalCost;
+        await execTurso("UPDATE game_engine_state SET total_cost=? WHERE user_id=?",[state.totalCost, userId]);
+        await logGameEvent(userId, "restock", itemId, qty, -totalCost, "进货"+itemId+" x"+qty+"，花费"+totalCost+"分");
+        const shop = await getShopData(userId);
+        return jsonResponse({ ok:true, shop });
+      }
+
+      // 上架：从库存放到货架
+      if (action === "shelf_add") {
+        const { itemId, profitPct } = body;
+        const pPct = Math.max(0.01, Math.min(5.0, parseFloat(profitPct)||0.3));
+        const cost = getCost(itemId);
+        const sellPrice = Math.round(cost * (1 + pPct));
+        const itemName = getItemName(itemId);
+
+        const sq = await execTurso("SELECT quantity FROM game_shop_stock WHERE user_id=? AND item_id=?",[userId, itemId]);
+        const sir = sq.data.results?.[0]?.response?.result || sq.data.results?.[0]?.response?.results || sq.data;
+        const stockQty = sir && sir.rows && sir.rows.length>0 ? parseInt(sir.rows[0][0]?.value??sir.rows[0][0]??0) : 0;
+        if (stockQty <= 0) return jsonResponse({ error:"库存不足" }, 400);
+
+        await execTurso("UPDATE game_shop_stock SET quantity=quantity-1 WHERE user_id=? AND item_id=?",[userId, itemId]);
+        const shelfId = "shf_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+        await execTurso(
+          "INSERT INTO game_shelves (id,user_id,item_id,item_name,cost_price,profit_pct,sell_price,quantity,created_at,updated_at) VALUES (?,?,?,?,?,?,?,1,?,?)",
+          [shelfId, userId, itemId, itemName, cost, pPct, sellPrice, now, now]
+        );
+        await logGameEvent(userId, "shelf_add", itemId, 1, 0, "上架"+itemName+"，售价"+sellPrice+"分");
+        const shop = await getShopData(userId);
+        return jsonResponse({ ok:true, shop });
+      }
+
+      // 下架
+      if (action === "shelf_remove") {
+        const { shelfId } = body;
+        const sq = await execTurso("SELECT item_id,quantity FROM game_shelves WHERE id=? AND user_id=?",[shelfId, userId]);
+        const sir = sq.data.results?.[0]?.response?.result || sq.data.results?.[0]?.response?.results || sq.data;
+        if (!sir || !sir.rows || sir.rows.length===0) return jsonResponse({ error:"货架商品不存在" }, 400);
+        const itemId = sir.rows[0][0]?.value??sir.rows[0][0];
+        const qty = parseInt(sir.rows[0][1]?.value??sir.rows[0][1]??0);
+        await execTurso("DELETE FROM game_shelves WHERE id=?",[shelfId]);
+        if (qty > 0) {
+          await execTurso(
+            "INSERT INTO game_shop_stock (user_id,item_id,quantity) VALUES (?,?,?) ON CONFLICT(user_id,item_id) DO UPDATE SET quantity=quantity+?",
+            [userId, itemId, qty, qty]
+          );
+        }
+        await logGameEvent(userId, "shelf_remove", itemId, qty, 0, "下架"+itemId+" x"+qty);
+        const shop = await getShopData(userId);
+        return jsonResponse({ ok:true, shop });
+      }
+
+      // 更新利润比例
+      if (action === "shelf_update") {
+        const { shelfId, profitPct } = body;
+        const pPct = Math.max(0.01, Math.min(5.0, parseFloat(profitPct)||0.3));
+        const sq = await execTurso("SELECT cost_price FROM game_shelves WHERE id=? AND user_id=?",[shelfId, userId]);
+        const sir = sq.data.results?.[0]?.response?.result || sq.data.results?.[0]?.response?.results || sq.data;
+        if (!sir || !sir.rows || sir.rows.length===0) return jsonResponse({ error:"货架商品不存在" }, 400);
+        const cost = parseInt(sir.rows[0][0]?.value??sir.rows[0][0]??0);
+        const sellPrice = Math.round(cost * (1 + pPct));
+        await execTurso(
+          "UPDATE game_shelves SET profit_pct=?,sell_price=?,updated_at=? WHERE id=?",
+          [pPct, sellPrice, now, shelfId]
+        );
+        await logGameEvent(userId, "shelf_update_price", "", 0, 0, "调整利润率至"+(pPct*100).toFixed(0)+"%");
+        const shop = await getShopData(userId);
+        return jsonResponse({ ok:true, shop });
+      }
+
+      // 种植
+      if (action === "plant") {
+        const { plotIndex, cropType } = body;
+        const cfg = CROP_CFG[cropType];
+        if (!cfg) return jsonResponse({ error:"未知作物: "+cropType }, 400);
+        const seedId = "seeds_"+cropType;
+        const sq = await execTurso("SELECT quantity FROM game_shop_stock WHERE user_id=? AND item_id=?",[userId, seedId]);
+        const sir = sq.data.results?.[0]?.response?.result || sq.data.results?.[0]?.response?.results || sq.data;
+        const seedQty = sir && sir.rows && sir.rows.length>0 ? parseInt(sir.rows[0][0]?.value??sir.rows[0][0]??0) : 0;
+        if (seedQty <= 0) return jsonResponse({ error:"没有"+cfg.name+"种子！请先进货" }, 400);
+
+        const pq = await execTurso("SELECT status FROM game_farm_plots WHERE user_id=? AND plot_index=?",[userId, plotIndex]);
+        const pir = pq.data.results?.[0]?.response?.result || pq.data.results?.[0]?.response?.results || pq.data;
+        const curStatus = pir && pir.rows && pir.rows.length>0 ? (pir.rows[0][0]?.value??pir.rows[0][0]) : "empty";
+        if (curStatus !== "empty") return jsonResponse({ error:"这块地已经种了东西" }, 400);
+
+        await execTurso("UPDATE game_shop_stock SET quantity=quantity-1 WHERE user_id=? AND item_id=?",[userId, seedId]);
+        await execTurso(
+          "UPDATE game_farm_plots SET crop_type=?,planted_at=?,growth_hours=?,water_hours=?,wilt_hours=?,last_watered=?,status='growing' WHERE user_id=? AND plot_index=?",
+          [cropType, now, cfg.growthHours, cfg.waterHours, cfg.wiltHours, now, userId, plotIndex]
+        );
+        await logGameEvent(userId, "plant", cropType, 1, 0, "种下了"+cfg.name);
+        const farm = await getFarmData(userId, 6);
+        return jsonResponse({ ok:true, farm });
+      }
+
+      // 收获
+      if (action === "harvest") {
+        const { plotIndex } = body;
+        const pq = await execTurso("SELECT crop_type,status FROM game_farm_plots WHERE user_id=? AND plot_index=?",[userId, plotIndex]);
+        const pir = pq.data.results?.[0]?.response?.result || pq.data.results?.[0]?.response?.results || pq.data;
+        if (!pir || !pir.rows || pir.rows.length===0) return jsonResponse({ error:"地块不存在" }, 400);
+        const cropType = pir.rows[0][0]?.value??pir.rows[0][0];
+        const curStatus = pir.rows[0][1]?.value??pir.rows[0][1];
+        if (curStatus === "empty" || !cropType) return jsonResponse({ error:"空地没东西可收" }, 400);
+        if (curStatus === "withered") return jsonResponse({ error:"已经枯死了" }, 400);
+        if (curStatus !== "mature") return jsonResponse({ error:"还没成熟" }, 400);
+
+        await execTurso(
+          "UPDATE game_farm_plots SET crop_type=NULL,planted_at=NULL,growth_hours=0,water_hours=0,wilt_hours=0,last_watered=NULL,status='empty' WHERE user_id=? AND plot_index=?",
+          [userId, plotIndex]
+        );
+        await execTurso(
+          "INSERT INTO game_shop_stock (user_id,item_id,quantity) VALUES (?,?,1) ON CONFLICT(user_id,item_id) DO UPDATE SET quantity=quantity+1",
+          [userId, cropType]
+        );
+        const cfg = CROP_CFG[cropType];
+        await logGameEvent(userId, "harvest", cropType, 1, 0, "收获了"+(cfg?cfg.name:cropType)+"，已存入商店库存");
+        const farm = await getFarmData(userId, 6);
+        const shop = await getShopData(userId);
+        return jsonResponse({ ok:true, farm, shop });
+      }
+
+      // 浇水
+      if (action === "water") {
+        const { plotIndex } = body;
+        const pq = await execTurso("SELECT status FROM game_farm_plots WHERE user_id=? AND plot_index=?",[userId, plotIndex]);
+        const pir = pq.data.results?.[0]?.response?.result || pq.data.results?.[0]?.response?.results || pq.data;
+        const curStatus = pir && pir.rows && pir.rows.length>0 ? (pir.rows[0][0]?.value??pir.rows[0][0]) : "empty";
+        if (curStatus === "empty") return jsonResponse({ error:"空地不需要浇水" }, 400);
+        if (curStatus === "withered") return jsonResponse({ error:"已经枯死了" }, 400);
+        if (curStatus === "mature") return jsonResponse({ error:"已成熟，请收获" }, 400);
+
+        await execTurso(
+          "UPDATE game_farm_plots SET last_watered=? WHERE user_id=? AND plot_index=?",
+          [now, userId, plotIndex]
+        );
+        await logGameEvent(userId, "water", "", 0, 0, "浇水了地块"+plotIndex);
+        const farm = await getFarmData(userId, 6);
+        return jsonResponse({ ok:true, farm });
+      }
+
+      // 清除枯死
+      if (action === "clear_dead") {
+        const { plotIndex } = body;
+        await execTurso(
+          "UPDATE game_farm_plots SET crop_type=NULL,planted_at=NULL,growth_hours=0,water_hours=0,wilt_hours=0,last_watered=NULL,status='empty' WHERE user_id=? AND plot_index=? AND status='withered'",
+          [userId, plotIndex]
+        );
+        await logGameEvent(userId, "clear_dead", "", 0, 0, "清除了枯死作物");
+        const farm = await getFarmData(userId, 6);
+        return jsonResponse({ ok:true, farm });
+      }
+
+      // 切换机器人开关
+      if (action === "toggle_robot") {
+        const { robotType } = body;
+        const field = robotType === "auto_restock" ? "auto_restock" : "auto_farm";
+        const sq = await execTurso("SELECT "+field+" FROM game_engine_state WHERE user_id=?",[userId]);
+        const sir = sq.data.results?.[0]?.response?.result || sq.data.results?.[0]?.response?.results || sq.data;
+        const curVal = sir && sir.rows && sir.rows.length>0 ? parseInt(sir.rows[0][0]?.value??sir.rows[0][0]??0) : 0;
+        const newVal = curVal ? 0 : 1;
+        await execTurso("UPDATE game_engine_state SET "+field+"=? WHERE user_id=?",[newVal, userId]);
+        const state = await getEngineState(userId);
+        await logGameEvent(userId, "toggle_robot", robotType, 0, 0, (newVal?"开启":"关闭")+"了"+(robotType==="auto_restock"?"自动进货":"自动农场"));
+        return jsonResponse({ ok:true, state });
+      }
+
+      return jsonResponse({ error: "未知游戏动作: "+(action||"空") }, 400);
     }
 
     return jsonResponse({ error: "未知路径" }, 404);

@@ -129,6 +129,14 @@ var JITApi = (function() {
     fn.saveFarmData = function(username, data) {
       return _tursoCall("/farm-save", { userId: username, data: data });
     };
+    // 游戏引擎：统一接口
+    fn.gameAction = function(username, action, params) {
+      var payload = { userId: username, action: action };
+      if (params) {
+        Object.keys(params).forEach(function(k) { payload[k] = params[k]; });
+      }
+      return _tursoCall("/game", payload);
+    };
     return fn;
   };
 
