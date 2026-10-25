@@ -340,3 +340,25 @@ CREATE TABLE IF NOT EXISTS user_outfits (
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_outfits_user ON user_outfits(user_id);
+
+-- ============================================================
+-- v3.3.7 社区互动：动态点赞/评论
+-- ============================================================
+CREATE TABLE IF NOT EXISTS community_likes (
+  status_id TEXT NOT NULL,
+  username TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(status_id, username)
+);
+
+CREATE TABLE IF NOT EXISTS community_comments (
+  id TEXT PRIMARY KEY,
+  status_id TEXT NOT NULL,
+  username TEXT NOT NULL,
+  content TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_community_likes_status ON community_likes(status_id);
+CREATE INDEX IF NOT EXISTS idx_community_likes_user ON community_likes(username);
+CREATE INDEX IF NOT EXISTS idx_community_comments_status ON community_comments(status_id);

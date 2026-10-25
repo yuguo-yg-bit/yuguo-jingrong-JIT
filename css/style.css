@@ -4525,3 +4525,67 @@ body.theme-galaxy .modal-container { border-color: rgba(156,39,176,0.25); }
   padding: 5px 10px;
   display: inline-block;
 }
+
+/* ===== 社区动态点赞/评论 ===== */
+.feed-card-actions {
+  display: flex; gap: 16px; margin-top: 10px; padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+.feed-action-btn {
+  background: none; border: none; color: var(--text-dim, #556677);
+  font-size: 13px; cursor: pointer; padding: 4px 8px; border-radius: 6px;
+  transition: all 0.15s; display: flex; align-items: center; gap: 4px;
+}
+.feed-action-btn:hover { background: rgba(255,255,255,0.05); color: var(--text-primary, #eee); }
+.feed-action-btn.liked { color: #ef5350; }
+.feed-action-btn.liked .feed-like-icon { transform: scale(1.1); }
+.feed-like-icon { transition: transform 0.2s; display: inline-block; }
+
+/* 评论区 */
+.feed-comments {
+  margin-top: 8px; padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
+.feed-comments-list { max-height: 260px; overflow-y: auto; margin-bottom: 8px; }
+.feed-comments-empty, .feed-comments-loading {
+  font-size: 12px; color: var(--text-dim, #556677); padding: 6px 0;
+}
+.feed-comment-item {
+  display: flex; gap: 8px; align-items: flex-start; padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.feed-comment-item:last-child { border-bottom: none; }
+.feed-comment-avatar {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: rgba(66,165,245,0.15); color: var(--accent, #42a5f5);
+  font-size: 12px; font-weight: 600; display: flex; align-items: center;
+  justify-content: center; flex-shrink: 0;
+}
+.feed-comment-body { flex: 1; min-width: 0; }
+.feed-comment-user {
+  font-size: 12px; font-weight: 600; color: var(--accent, #42a5f5);
+  margin-right: 6px;
+}
+.feed-comment-text { font-size: 13px; color: var(--text-primary, #eee); word-break: break-word; }
+.feed-comment-time {
+  display: block; font-size: 10px; color: var(--text-dim, #556677);
+  margin-top: 2px;
+}
+
+.feed-comment-input-row {
+  display: flex; gap: 6px; align-items: center;
+}
+.feed-comment-input {
+  flex: 1; padding: 7px 10px; border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.04); color: var(--text-primary, #eee);
+  font-size: 13px; font-family: inherit; outline: none;
+}
+.feed-comment-input:focus { border-color: rgba(66,165,245,0.5); }
+.feed-comment-input::placeholder { color: var(--text-dim, #556677); }
+.feed-comment-submit {
+  background: rgba(66,165,245,0.15); border: 1px solid rgba(66,165,245,0.3);
+  color: var(--accent, #42a5f5); padding: 7px 14px; border-radius: 10px;
+  font-size: 13px; cursor: pointer; white-space: nowrap; transition: all 0.15s;
+}
+.feed-comment-submit:hover { background: rgba(66,165,245,0.25); }

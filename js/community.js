@@ -255,7 +255,7 @@ var JITCommunity = (function() {
   var _handleAvatarUpload = function(e) {
     var file = e.target.files && e.target.files[0];
     if (!file) return;
-    if (file.size > 500 * 1024) { _showToast("头像文件不能超过500KB", "error"); return; }
+    if (file.size > 1.5 * 1024 * 1024) { _showToast("头像文件不能超过1.5MB", "error"); return; }
     var reader = new FileReader();
     reader.onload = function(ev) {
       var dataUrl = ev.target.result;
@@ -278,7 +278,7 @@ var JITCommunity = (function() {
   var _handleCoverUpload = function(e) {
     var file = e.target.files && e.target.files[0];
     if (!file) return;
-    if (file.size > 1024 * 1024) { _showToast("封面文件不能超过1MB", "error"); return; }
+    if (file.size > 3 * 1024 * 1024) { _showToast("封面文件不能超过3MB", "error"); return; }
     var reader = new FileReader();
     reader.onload = function(ev) {
       var dataUrl = ev.target.result;
@@ -321,10 +321,11 @@ var JITCommunity = (function() {
     var feed = document.getElementById("communityFeed");
     if (feed) feed.innerHTML = '<div class="feed-loading">加载动态中...</div>';
 
-    return _TURSO("SELECT * FROM community_statuses ORDER BY created_at DESC LIMIT 200", []).then(function(result) {
+    return _TURSO("SELECT rowid, * FROM community_statuses ORDER BY created_at DESC LIMIT 200", []).then(function(result) {
       var rows = _TURSO.rowsToObjects(result.columns, result.rows);
       _statuses = rows.map(function(r) {
         return {
+          id: r.rowid || "",
           username: r.username || "",
           content: r.content || "",
           time: r.created_at || "",
@@ -373,6 +374,7 @@ var JITCommunity = (function() {
       html += _buildFeedCards(othersStatuses);
     }
     feed.innerHTML = html;
+    _loadLikeCounts();
   };
 
   var _buildFeedCards = function(list) {
@@ -403,8 +405,10 @@ var JITCommunity = (function() {
       var isOtherUser = s.username !== _currentUser;
       var avatarOnclick = isOtherUser ? ' onclick="JITCommunity.openVisitFarm(\'' + _escapeAttr(s.username) + '\')" style="cursor:pointer;"' : '';
 
+      var sid = s.id || "";
+
       html +=
-        '<div class="feed-card">' +
+        '<div class="feed-card" data-sid="' + _escapeAttr(sid) + '">' +
           '<div class="feed-card-avatar"' + avatarOnclick + ' style="background:' + avatarColor + ';">' + avatarHtml + '</div>' +
           '<div class="feed-card-body">' +
             '<div class="feed-card-head">' +
@@ -412,6 +416,21 @@ var JITCommunity = (function() {
               '<span class="feed-card-time">' + timeStr + "</span>" +
             '</div>' +
             body +
+            '<div class="feed-card-actions">' +
+              '<button class="feed-action-btn feed-like-btn" data-sid="' + _escapeAttr(sid) + '" onclick="JITCommunity.toggleLike(this,\'' + _escapeAttr(sid) + '\')">' +
+                '<span class="feed-like-icon">❤️</span> <span class="feed-like-count">0</span>' +
+              '</button>' +
+              '<button class="feed-action-btn feed-comment-toggle-btn" data-sid="' + _escapeAttr(sid) + '" onclick="JITCommunity.toggleComments(this,\'' + _escapeAttr(sid) + '\')">' +
+                '💬 <span class="feed-comment-count">0</span>' +
+              '</button>' +
+            '</div>' +
+            '<div class="feed-comments" id="feed-comments-' + _escapeAttr(sid) + '" style="display:none;">' +
+              '<div class="feed-comments-list" id="feed-comments-list-' + _escapeAttr(sid) + '"></div>' +
+              '<div class="feed-comment-input-row">' +
+                '<input class="feed-comment-input" id="feed-comment-input-' + _escapeAttr(sid) + '" placeholder="写评论...按回车发送" maxlength="500">' +
+                '<button class="feed-comment-submit" onclick="JITCommunity.postComment(\'' + _escapeAttr(sid) + '\')">发送</button>' +
+              '</div>' +
+            '</div>' +
           '</div>' +
         '</div>';
     });
@@ -715,6 +734,154 @@ var JITCommunity = (function() {
       picker.style.display = "none";
     }
   };
+
+  // ===== 点赞与评论系统 =====
+  var _likedStatuses = {};   // { statusId: true/false } 当前用户是否已点赞
+  var _likeCounts = {};      // { statusId: count }
+  var _commentsCache = {};   // { statusId: [comment, ...] }
+  var _commentsLoading = {};
+
+  var _loadLikeCounts = function() {
+    var ids = _statuses.map(function(s) { return s.id; }).filter(function(id) { return !!id; });
+    if (ids.length === 0) return;
+    if (!JITApi || !JITApi.getTursoHelpers) return;
+    JITApi.getTursoHelpers().communityCall("load_likes_batch", { statusIds: ids }).then(function(data) {
+      if (data.likes) _likeCounts = data.likes;
+      if (data.myLikes) {
+        _likedStatuses = {};
+        data.myLikes.forEach(function(id) { _likedStatuses[id] = true; });
+      }
+      _refreshLikeUI();
+    }).catch(function() {});
+  };
+
+  var _refreshLikeUI = function() {
+    document.querySelectorAll(".feed-like-btn").forEach(function(btn) {
+      var sid = btn.getAttribute("data-sid");
+      var countEl = btn.querySelector(".feed-like-count");
+      var iconEl = btn.querySelector(".feed-like-icon");
+      if (countEl) countEl.textContent = String(_likeCounts[sid] || 0);
+      if (_likedStatuses[sid]) {
+        btn.classList.add("liked");
+        if (iconEl) iconEl.textContent = "❤️‍🔥";
+      } else {
+        btn.classList.remove("liked");
+        if (iconEl) iconEl.textContent = "❤️";
+      }
+    });
+  };
+
+  var toggleLike = function(btn, statusId) {
+    if (!statusId) return;
+    if (!JITApi || !JITApi.getTursoHelpers) { _showToast("请先登录", "error"); return; }
+    btn.disabled = true;
+    JITApi.getTursoHelpers().communityCall("toggle_like", { statusId: statusId }).then(function(data) {
+      _likedStatuses[statusId] = data.liked;
+      _likeCounts[statusId] = data.likeCount;
+      _refreshLikeUI();
+    }).catch(function(err) {
+      _showToast("操作失败: " + (err.message || "网络错误"), "error");
+    }).finally(function() {
+      btn.disabled = false;
+    });
+  };
+
+  var toggleComments = function(btn, statusId) {
+    if (!statusId) return;
+    var panel = document.getElementById("feed-comments-" + statusId);
+    if (!panel) return;
+    var visible = panel.style.display !== "none";
+    if (visible) {
+      panel.style.display = "none";
+      return;
+    }
+    panel.style.display = "block";
+    _loadComments(statusId);
+    var input = document.getElementById("feed-comment-input-" + statusId);
+    if (input) { input.focus(); }
+  };
+
+  var _loadComments = function(statusId) {
+    if (_commentsLoading[statusId]) return;
+    if (_commentsCache[statusId]) {
+      _renderComments(statusId);
+      return;
+    }
+    _commentsLoading[statusId] = true;
+    var listEl = document.getElementById("feed-comments-list-" + statusId);
+    if (listEl) listEl.innerHTML = '<div class="feed-comments-loading">加载中...</div>';
+    if (!JITApi || !JITApi.getTursoHelpers) { _commentsLoading[statusId] = false; return; }
+    JITApi.getTursoHelpers().communityCall("load_comments", { statusId: statusId }).then(function(data) {
+      _commentsCache[statusId] = data.comments || [];
+      _renderComments(statusId);
+    }).catch(function() {
+      if (listEl) listEl.innerHTML = '<div class="feed-comments-empty">加载失败</div>';
+    }).finally(function() {
+      _commentsLoading[statusId] = false;
+    });
+  };
+
+  var _renderComments = function(statusId) {
+    var listEl = document.getElementById("feed-comments-list-" + statusId);
+    if (!listEl) return;
+    var comments = _commentsCache[statusId] || [];
+    if (comments.length === 0) {
+      listEl.innerHTML = '<div class="feed-comments-empty">暂无评论，快来抢沙发</div>';
+      return;
+    }
+    var html = "";
+    comments.forEach(function(c) {
+      var init = c.username ? c.username.charAt(0).toUpperCase() : "?";
+      var t = "";
+      try { t = _formatTime(c.createdAt); } catch(e) { t = c.createdAt || ""; }
+      html += '<div class="feed-comment-item">' +
+        '<span class="feed-comment-avatar">' + _escapeHtml(init) + '</span>' +
+        '<div class="feed-comment-body">' +
+          '<span class="feed-comment-user">' + _escapeHtml(c.username || "") + '</span>' +
+          '<span class="feed-comment-text">' + _escapeHtml(c.content || "") + '</span>' +
+          '<span class="feed-comment-time">' + t + '</span>' +
+        '</div>' +
+      '</div>';
+    });
+    listEl.innerHTML = html;
+  };
+
+  var postComment = function(statusId) {
+    if (!statusId) return;
+    var input = document.getElementById("feed-comment-input-" + statusId);
+    if (!input) return;
+    var txt = input.value.trim();
+    if (!txt) { _showToast("评论内容不能为空", "error"); return; }
+    if (txt.length > 500) { _showToast("评论不能超过500字", "error"); return; }
+    if (!JITApi || !JITApi.getTursoHelpers) { _showToast("请先登录", "error"); return; }
+    input.disabled = true;
+    JITApi.getTursoHelpers().communityCall("add_comment", { statusId: statusId, content: txt }).then(function(data) {
+      input.value = "";
+      if (!_commentsCache[statusId]) _commentsCache[statusId] = [];
+      _commentsCache[statusId].push(data.comment || { id:"", username:_currentUser, content:txt, createdAt:new Date().toISOString() });
+      _renderComments(statusId);
+      _showToast("评论成功", "success");
+    }).catch(function(err) {
+      _showToast("评论失败: " + (err.message || "网络错误"), "error");
+    }).finally(function() {
+      input.disabled = false;
+    });
+  };
+
+  // 评论输入框回车发送
+  var _onCommentInputKeydown = function(e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      var input = e.target;
+      var sid = input.id.replace("feed-comment-input-", "");
+      if (sid) postComment(sid);
+    }
+  };
+  document.addEventListener("keydown", function(e) {
+    if (e.target && e.target.classList && e.target.classList.contains("feed-comment-input")) {
+      _onCommentInputKeydown(e);
+    }
+  });
 
   // ===== 绑定事件 =====
   var _bindEvents = function() {
@@ -1147,7 +1314,7 @@ var JITCommunity = (function() {
   var _handleUCProfileAvatarUpload = function(e) {
     var file = e.target.files && e.target.files[0];
     if (!file) return;
-    if (file.size > 500 * 1024) { _showToast("头像文件不能超过500KB", "error"); return; }
+    if (file.size > 1.5 * 1024 * 1024) { _showToast("头像文件不能超过1.5MB", "error"); return; }
     var reader = new FileReader();
     reader.onload = function(ev) {
       var dataUrl = ev.target.result;
@@ -1447,7 +1614,7 @@ var JITCommunity = (function() {
     });
   };
 
-  return { init: init, openVisitFarm: openVisitFarm, closeVisitFarm: closeVisitFarm, buyFromShelf: buyFromShelf };
+  return { init: init, openVisitFarm: openVisitFarm, closeVisitFarm: closeVisitFarm, buyFromShelf: buyFromShelf, toggleLike: toggleLike, toggleComments: toggleComments, postComment: postComment };
 })();
 
 document.addEventListener("DOMContentLoaded", function() {

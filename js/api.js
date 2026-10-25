@@ -174,6 +174,32 @@ var JITApi = (function() {
         return data;
       });
     };
+    // 社区互动：点赞/评论（走游戏引擎 /community 端点）
+    fn.communityCall = function(action, params) {
+      var payload = { action: action };
+      if (params) {
+        Object.keys(params).forEach(function(k) { payload[k] = params[k]; });
+      }
+      return fetch(_gameProxy + "/community", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Session-Token": _sessionToken()
+        },
+        body: JSON.stringify(payload)
+      }).then(function(resp) {
+        if (!resp.ok) {
+          return resp.text().then(function(txt) {
+            try { var e = JSON.parse(txt); throw new Error(e.error || "社区错误 HTTP "+resp.status); }
+            catch(p) { if (p.message.indexOf("社区错误 HTTP")===0) throw p; throw new Error("社区错误 HTTP "+resp.status); }
+          });
+        }
+        return resp.json();
+      }).then(function(data) {
+        if (data.error) throw new Error(data.error);
+        return data;
+      });
+    };
     return fn;
   };
 
