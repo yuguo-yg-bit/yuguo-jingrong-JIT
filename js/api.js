@@ -1662,6 +1662,18 @@ var JITApi = (function() {
     migrateLocalToTurso: _migrateLocalToTurso,
     hasMigratedToTurso: _hasMigratedToTurso,
     syncLoad: _syncLoad,
-    syncSave: _syncSave
+    syncSave: _syncSave,
+    // ===== 邮箱注册验证 =====
+    registerEmail: function(email, username, password, fullName, birthdate, country, province, city, referrer) {
+      return fetch(_tursoProxy + "/oauth/email/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email, username: username, password: password, fullName: fullName, birthdate: birthdate || "", country: country || "", province: province || "", city: city || "", referrer: referrer || "" })
+      }).then(function(r) { return r.json(); });
+    },
+    checkEmailRegister: function(email) {
+      return fetch(_tursoProxy + "/oauth/email/check-register?email=" + encodeURIComponent(email))
+        .then(function(r) { return r.json(); });
+    },
   };
 })();

@@ -315,7 +315,7 @@ CREATE TABLE IF NOT EXISTS oauth_tokens (
 );
 
 -- ============================================================
--- localStorage → Turso 迁移：任务奖励、装扮、过期券
+-- localStorage -> Turso 迁移：任务奖励、装扮、过期券
 -- ============================================================
 
 -- 任务奖励表
@@ -362,3 +362,24 @@ CREATE TABLE IF NOT EXISTS community_comments (
 CREATE INDEX IF NOT EXISTS idx_community_likes_status ON community_likes(status_id);
 CREATE INDEX IF NOT EXISTS idx_community_likes_user ON community_likes(username);
 CREATE INDEX IF NOT EXISTS idx_community_comments_status ON community_comments(status_id);
+
+-- ============================================================
+-- v3.5.0 邮箱注册验证
+-- ============================================================
+CREATE TABLE IF NOT EXISTS email_verifications (
+  email TEXT PRIMARY KEY,
+  username TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  full_name TEXT NOT NULL,
+  birthdate TEXT DEFAULT '',
+  country TEXT DEFAULT '',
+  province TEXT DEFAULT '',
+  city TEXT DEFAULT '',
+  referrer TEXT DEFAULT '',
+  code TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at TEXT NOT NULL,
+  verified_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_verifications_status ON email_verifications(status);

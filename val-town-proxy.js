@@ -6,6 +6,8 @@
 // ============================================================
 
 export default async function (req) {
+  // ========== HTTP 代理 ==========
+
   const ALLOW_ORIGINS = ["https://www.yuguojinrong.cc.cd", "https://yuguo-yg-bit.github.io", "https://yuguoygbit.github.io"];
   const TURSO_API = process.env.TURSO_API_URL;
   const TURSO_TOKEN = process.env.TURSO_RW_TOKEN;
@@ -51,7 +53,27 @@ export default async function (req) {
       return { columns, rows: unwrappedRows };
     }
 
-    if (path === "/health") {
+ if (path === "/health") {
+      return jsonResponse({ ok: true, time: new Date().toISOString() });
+    }
+
+    // ========== 密码哈希：SHA-256(盐 + 密码) ==========
+    const SALT = "yuguo-jr-salt-2024";
+    async function hashPassword(password) {
+      const input = SALT + password;
+      if (crypto.subtle && crypto.subtle.digest) {
+        const enc = new TextEncoder();
+        const buf = await crypto.subtle.digest("SHA-256", enc.encode(input));
+        const hex = Array.from(new Uint8Array(buf)).map(function(b) { return b.toString(16).padStart(2, "0"); }).join("");
+        return "sha256$" + hex;
+      }
+      // 回退：简易哈希（Val.town 环境不一定支持 crypto.subtle）
+      var h = 0;
+      for (var i = 0; i < input.length; i++) { h = ((h << 5) - h + input.charCodeAt(i)) | 0; }
+      return "sha256$" + (h >>> 0).toString(16).padStart(8, "0");
+    }
+
+    if (path === "/health_old") {
       return jsonResponse({ ok: true, time: new Date().toISOString() });
     }
 
@@ -61,7 +83,7 @@ export default async function (req) {
       "notifications","notification_replies","blacklist","urgent_blacklist","registrations",
       "whitelist","sys_config","test_ping","test_users","oauth_tokens","task_rewards",
       "user_levels","lottery_tickets","lottery_records","win_wall","risk_control",
-      "user_monthly_rewards","user_outfits","community_statuses","community_likes","community_comments","community_bans","sqlite_sequence","ledger","audit_logs","sessions","farm_data",
+      "user_monthly_rewards","user_outfits","community_statuses","community_likes","community_comments","community_bans","email_verifications","sqlite_sequence","ledger","audit_logs","sessions","farm_data",
       "game_shop_stock","game_shelves","game_farm_plots","game_engine_state","game_engine_log"
     ];
     const DANGER_KEYWORDS = ["DROP","ATTACH","DETACH","VACUUM","REINDEX","TRIGGER","TRUNCATE","PRAGMA"];
@@ -861,6 +883,67 @@ export default async function (req) {
       } catch (e) {
         return jsonResponse({ error: "发送失败: " + (e.message || "未知错误") }, 500);
       }
+    }
+
+    // ========== Email 注册 + 验证码 ==========
+    // 注册：生成 6 位验证码，存入 email_verifications，用户需发邮件到 yuguoemail@yuconemail.cc.cd 完成验证
+    if (path === "/oauth/email/register" && req.method === "POST") {
+      const { email, username, password, fullName, birthdate, country, province, city, referrer } = await req.json();
+      if (!email || !username || !password) return jsonResponse({ error: "缺少必填字段" }, 400);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonResponse({ error: "邮箱格式不正确" }, 400);
+      if (password.length < 6) return jsonResponse({ error: "密码至少需要6位" }, 400);
+
+      const emailLower = email.toLowerCase();
+      const now = new Date().toISOString();
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+
+      // 检查用户名是否已存在（包括 users 表和 registrations 表）
+      const { data: userCheck } = await execTurso("SELECT id FROM users WHERE id=?", [username]);
+      if (userCheck.results?.[0]?.response?.result?.rows?.length > 0) return jsonResponse({ error: "该用户名已被使用" }, 400);
+      const { data: regCheck } = await execTurso("SELECT id FROM registrations WHERE username=?", [username]);
+      if (regCheck.results?.[0]?.response?.result?.rows?.length > 0) return jsonResponse({ error: "该用户名已被使用" }, 400);
+
+      // 检查邮箱是否已被注册
+      const { data: emailCheck } = await execTurso("SELECT id FROM users WHERE oauth_id=?", [emailLower]);
+      if (emailCheck.results?.[0]?.response?.result?.rows?.length > 0) return jsonResponse({ error: "该邮箱已被注册" }, 400);
+
+      const passwordHash = await hashPassword(password);
+
+      await execTurso(
+        "INSERT OR REPLACE INTO email_verifications (email, username, password_hash, full_name, birthdate, country, province, city, referrer, code, status, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        [emailLower, username, passwordHash, fullName || "", birthdate || "", country || "", province || "", city || "", referrer || "", code, "pending", now]
+      );
+
+      return jsonResponse({ ok: true, code: code, email: emailLower, message: "验证码已生成" });
+    }
+
+    // 轮询：检查邮箱是否已验证通过
+    if (path === "/oauth/email/check-register" && req.method === "GET") {
+      const email = new URL(req.url).searchParams.get("email");
+      if (!email) return jsonResponse({ error: "缺少 email 参数" }, 400);
+      const emailLower = email.toLowerCase();
+      const now = new Date().toISOString();
+
+      const { data: verData } = await execTurso(
+        "SELECT status, username, created_at FROM email_verifications WHERE email=?",
+        [emailLower]
+      );
+      const vrows = verData.results?.[0]?.response?.result?.rows || [];
+      if (vrows.length === 0) return jsonResponse({ verified: false, error: "未找到注册记录" });
+
+      // 老用户：如果在 users 表中存在且已审核，直接返回已验证
+      const status = (vrows[0][0]?.value || vrows[0][0] || "");
+      if (status === "verified") {
+        const uname = (vrows[0][1]?.value || vrows[0][1] || "");
+        const loginToken = crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).substring(2,15));
+        const loginExpires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+        await execTurso(
+          "INSERT INTO oauth_tokens (token, username, oauth_id, provider, created_at, expires_at) VALUES (?,?,?,?,?,?)",
+          [loginToken, uname, emailLower, "email", now, loginExpires]
+        );
+        return jsonResponse({ verified: true, oauth_token: loginToken, username: uname });
+      }
+      return jsonResponse({ verified: false, status: "pending" });
     }
 
     // ========== Email 魔法链接验证 ==========

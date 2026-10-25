@@ -387,6 +387,7 @@
       <div class="login-tabs">
         <button class="login-tab active" id="tabLogin">登 录</button>
         <button class="login-tab" id="tabRegister">注 册</button>
+        <button class="login-tab" id="tabEmailRegister">邮箱注册</button>
       </div>
 
       <!-- OAuth 状态提示 -->
@@ -472,6 +473,70 @@
         <div style="text-align:center;font-size:12px;color:var(--text-secondary);margin-top:8px;">提交后需等待管理员审核通过方可登录</div>
         <button class="btn-submit" id="btnRegister" style="width:100%;margin-top:12px;">提交注册申请</button>
       </div>
+
+      <!-- 邮箱注册面板 -->
+      <div class="login-panel" id="panelEmailRegister">
+        <div class="form-group">
+          <label class="form-label">邮箱 <span class="required">*</span></label>
+          <input type="email" class="form-input" id="emailRegEmail" placeholder="example@domain.com" autocapitalize="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">用户名 <span class="required">*</span></label>
+          <input type="text" class="form-input" id="emailRegUsername" placeholder="2-20个字符，用于登录">
+        </div>
+        <div class="form-group">
+          <label class="form-label">密码 <span class="required">*</span></label>
+          <input type="password" class="form-input" id="emailRegPassword" placeholder="至少6位">
+        </div>
+        <div class="form-group">
+          <label class="form-label">确认密码 <span class="required">*</span></label>
+          <input type="password" class="form-input" id="emailRegPassword2" placeholder="请再次输入密码">
+        </div>
+        <div class="form-group">
+          <label class="form-label">姓名</label>
+          <input type="text" class="form-input" id="emailRegFullName" placeholder="可选，建议填写真实姓名">
+        </div>
+        <div class="form-group">
+          <label class="form-label">出生日期</label>
+          <input type="date" class="form-input" id="emailRegBirthdate">
+        </div>
+        <div class="form-group">
+          <label class="form-label">国家</label>
+          <select class="form-input" id="emailRegCountry"><option value="">请选择国家</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">省份</label>
+          <select class="form-input" id="emailRegProvince" disabled><option value="">请先选择国家</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">城市</label>
+          <select class="form-input" id="emailRegCity" disabled><option value="">请先选择省份</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">邀请人（选填）</label>
+          <input type="text" class="form-input" id="emailRegReferrer" placeholder="输入邀请人用户名">
+        </div>
+        <div class="form-error" id="emailRegError" style="display:none;"></div>
+
+        <!-- 验证码展示区（提交后显示） -->
+        <div id="emailVerifySection" style="display:none;">
+          <div style="background:rgba(45,190,255,0.1);border:1px solid var(--ice-blue);border-radius:12px;padding:16px;margin-top:12px;text-align:center;">
+            <p style="margin:0 0 8px 0;font-size:13px;color:var(--text-secondary);">您的验证码</p>
+            <p style="margin:0 0 12px 0;font-size:28px;font-weight:700;color:var(--gold-primary);letter-spacing:6px;font-family:monospace;" id="emailVerifyCode">------</p>
+            <p style="margin:0 0 4px 0;font-size:12px;color:var(--pale-cyan);line-height:1.6;">
+              请将以上 <strong>6位验证码</strong> 通过邮件发送到<br>
+              <strong style="font-size:13px;color:var(--text-primary);">yuguoemail@yuconemail.cc.cd</strong>
+            </p>
+            <p style="margin:8px 0 0 0;font-size:11px;color:var(--text-secondary);">邮件主题和标题随意，正文只写验证码即可</p>
+          </div>
+          <div id="emailPollStatus" style="text-align:center;margin-top:10px;font-size:13px;color:var(--text-secondary);">
+            ⏳ 等待验证邮件…
+          </div>
+          <button class="btn-submit" id="btnEmailResend" style="width:100%;margin-top:8px;background:var(--ice-blue);">重新发送</button>
+        </div>
+
+        <button class="btn-submit" id="btnEmailRegister" style="width:100%;margin-top:12px;">发送验证邮件</button>
+      </div>
     </div>
   </div>
 </div>
@@ -524,22 +589,32 @@
   // ========= Tab 切换 =========
   var _switchTab = function(tab) {
     var isLogin = (tab === "login");
+    var isRegister = (tab === "register");
+    var isEmail = (tab === "email");
     document.getElementById("tabLogin").classList.toggle("active", isLogin);
-    document.getElementById("tabRegister").classList.toggle("active", !isLogin);
+    document.getElementById("tabRegister").classList.toggle("active", isRegister);
+    document.getElementById("tabEmailRegister").classList.toggle("active", isEmail);
     document.getElementById("panelLogin").classList.toggle("active", isLogin);
-    document.getElementById("panelRegister").classList.toggle("active", !isLogin);
-    document.getElementById("loginCardTitle").textContent = isLogin ? "欢迎回来" : "创建账户";
-    document.getElementById("loginCardSub").textContent = isLogin ? "登录您的账户继续使用" : "注册后需等待管理员审核通过";
+    document.getElementById("panelRegister").classList.toggle("active", isRegister);
+    document.getElementById("panelEmailRegister").classList.toggle("active", isEmail);
+    document.getElementById("loginCardTitle").textContent = isEmail ? "邮箱注册" : (isRegister ? "创建账户" : "欢迎回来");
+    document.getElementById("loginCardSub").textContent = isEmail ? "使用邮箱注册，验证后立即放行" : (isRegister ? "注册后需等待管理员审核通过" : "登录您的账户继续使用");
     document.getElementById("loginError").style.display = "none";
     document.getElementById("regError").style.display = "none";
+    var emailErr = document.getElementById("emailRegError");
+    if (emailErr) emailErr.style.display = "none";
   };
 
   document.getElementById("tabLogin").addEventListener("click", function() { _switchTab("login"); });
   document.getElementById("tabRegister").addEventListener("click", function() { _switchTab("register"); });
+  document.getElementById("tabEmailRegister").addEventListener("click", function() { _switchTab("email"); });
 
   // 处理 ?tab=register 参数
-  if ((new URLSearchParams(window.location.search)).get("tab") === "register") {
+  var queryParams = new URLSearchParams(window.location.search);
+  if (queryParams.get("tab") === "register") {
     _switchTab("register");
+  } else if (queryParams.get("tab") === "email") {
+    _switchTab("email");
   }
 
   // ========= Toast 提示 =========
@@ -847,6 +922,183 @@
       btn.disabled = false;
       btn.textContent = "提交注册申请";
     });
+  });
+
+  // ========= 邮箱注册逻辑 =========
+  // 初始化邮箱注册面板的地区选择
+  (function() {
+    var emailCountrySel = document.getElementById("emailRegCountry");
+    var emailProvinceSel = document.getElementById("emailRegProvince");
+    var emailCitySel = document.getElementById("emailRegCity");
+    Object.keys(_REGION_DATA).forEach(function(c) {
+      var opt = document.createElement("option");
+      opt.value = c; opt.textContent = c;
+      emailCountrySel.appendChild(opt);
+    });
+    if (_REGION_DATA["中国"]) {
+      emailCountrySel.value = "中国";
+      emailCountrySel.dispatchEvent(new Event("change"));
+    }
+    emailCountrySel.addEventListener("change", function() {
+      var country = this.value;
+      emailProvinceSel.innerHTML = '<option value="">请选择省份</option>';
+      emailCitySel.innerHTML = '<option value="">请先选择省份</option>';
+      emailCitySel.disabled = true;
+      if (!country || !_REGION_DATA[country]) { emailProvinceSel.disabled = true; return; }
+      Object.keys(_REGION_DATA[country]).forEach(function(p) {
+        var opt = document.createElement("option");
+        opt.value = p; opt.textContent = p;
+        emailProvinceSel.appendChild(opt);
+      });
+      emailProvinceSel.disabled = false;
+    });
+    emailProvinceSel.addEventListener("change", function() {
+      var country = emailCountrySel.value;
+      var province = this.value;
+      emailCitySel.innerHTML = '<option value="">请选择城市</option>';
+      if (!country || !province || !_REGION_DATA[country] || !_REGION_DATA[country][province]) { emailCitySel.disabled = true; return; }
+      _REGION_DATA[country][province].forEach(function(c) {
+        var opt = document.createElement("option");
+        opt.value = c; opt.textContent = c;
+        emailCitySel.appendChild(opt);
+      });
+      emailCitySel.disabled = false;
+    });
+  })();
+
+  var _emailPollTimer = null;
+  var _emailPollData = { email: "", code: "" };
+
+  var _stopEmailPoll = function() {
+    if (_emailPollTimer) { clearInterval(_emailPollTimer); _emailPollTimer = null; }
+  };
+
+  // 开始轮询验证状态
+  var _startEmailPoll = function(email) {
+    _stopEmailPoll();
+    var statusEl = document.getElementById("emailPollStatus");
+    var pollCount = 0;
+    _emailPollTimer = setInterval(function() {
+      pollCount++;
+      if (pollCount > 120) { _stopEmailPoll(); statusEl.textContent = "超时，请检查邮件是否已发送"; statusEl.style.color = "var(--danger)"; return; }
+      JITApi.checkEmailRegister(email).then(function(res) {
+        if (res.verified && res.oauth_token) {
+          _stopEmailPoll();
+          statusEl.innerHTML = '<span style="color:var(--success);">验证通过！正在登录…</span>';
+          setTimeout(function() {
+            // 存储 OAuth token 并跳转
+            var tokenData = { token: res.oauth_token, username: res.username, provider: "email" };
+            localStorage.setItem("jit_oauth_session", JSON.stringify(tokenData));
+            localStorage.setItem("jit_oauth_token", res.oauth_token);
+            localStorage.setItem("jit_username", res.username);
+            window.location.href = "index.html";
+          }, 800);
+        } else if (res.error) {
+          _stopEmailPoll();
+          statusEl.textContent = "错误: " + res.error;
+          statusEl.style.color = "var(--danger)";
+        } else {
+          statusEl.textContent = "⏳ 等待验证邮件…（已轮询 " + pollCount + " 次）";
+        }
+      }).catch(function() {
+        // 网络错误，继续轮询
+      });
+    }, 5000);
+  };
+
+  // 邮箱注册提交按钮
+  document.getElementById("btnEmailRegister").addEventListener("click", function() {
+    var email = document.getElementById("emailRegEmail").value.trim();
+    var username = document.getElementById("emailRegUsername").value.trim();
+    var password = document.getElementById("emailRegPassword").value;
+    var password2 = document.getElementById("emailRegPassword2").value;
+    var fullName = document.getElementById("emailRegFullName").value.trim();
+    var birthdate = document.getElementById("emailRegBirthdate").value;
+    var country = document.getElementById("emailRegCountry").value;
+    var province = document.getElementById("emailRegProvince").value;
+    var city = document.getElementById("emailRegCity").value;
+    var referrer = document.getElementById("emailRegReferrer").value.trim();
+    var errorEl = document.getElementById("emailRegError");
+
+    if (!email) { errorEl.style.display = "block"; errorEl.textContent = "请输入邮箱"; return; }
+    var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRe.test(email)) { errorEl.style.display = "block"; errorEl.textContent = "邮箱格式不正确"; return; }
+    if (!username || username.length < 2) { errorEl.style.display = "block"; errorEl.textContent = "用户名至少需要2个字符"; return; }
+    if (!password || password.length < 6) { errorEl.style.display = "block"; errorEl.textContent = "密码至少需要6位"; return; }
+    if (password !== password2) { errorEl.style.display = "block"; errorEl.textContent = "两次密码输入不一致"; return; }
+
+    errorEl.style.display = "none";
+    var btn = document.getElementById("btnEmailRegister");
+    btn.disabled = true;
+    btn.textContent = "提交中...";
+
+    JITApi.registerEmail(email, username, password, fullName, birthdate, country, province, city, referrer).then(function(res) {
+      if (res.error) {
+        errorEl.style.display = "block";
+        errorEl.textContent = res.error;
+        btn.disabled = false;
+        btn.textContent = "发送验证邮件";
+        return;
+      }
+      // 展示验证码区域
+      document.getElementById("emailVerifyCode").textContent = res.code;
+      document.getElementById("emailVerifySection").style.display = "block";
+      btn.style.display = "none";
+      _emailPollData = { email: res.email || email, code: res.code };
+      _showToast("验证码已生成，请发送邮件验证", "success");
+      document.getElementById("emailPollStatus").textContent = "⏳ 等待验证邮件…";
+      _startEmailPoll(res.email || email);
+    }).catch(function(err) {
+      errorEl.style.display = "block";
+      errorEl.textContent = "注册失败: " + (err.message || "网络错误");
+    }).finally(function() {
+      btn.disabled = false;
+      btn.textContent = "发送验证邮件";
+    });
+  });
+
+  // 重新发送按钮
+  document.getElementById("btnEmailResend").addEventListener("click", function() {
+    var email = document.getElementById("emailRegEmail").value.trim();
+    var username = document.getElementById("emailRegUsername").value.trim();
+    var password = document.getElementById("emailRegPassword").value;
+    var password2 = document.getElementById("emailRegPassword2").value;
+    var fullName = document.getElementById("emailRegFullName").value.trim();
+    var birthdate = document.getElementById("emailRegBirthdate").value;
+    var country = document.getElementById("emailRegCountry").value;
+    var province = document.getElementById("emailRegProvince").value;
+    var city = document.getElementById("emailRegCity").value;
+    var referrer = document.getElementById("emailRegReferrer").value.trim();
+
+    if (!email || !username || !password || password !== password2 || password.length < 6) {
+      _showToast("请填写完整的注册信息", "error");
+      return;
+    }
+    _stopEmailPoll();
+    var btn = document.getElementById("btnEmailResend");
+    btn.disabled = true;
+    btn.textContent = "重新提交中...";
+    JITApi.registerEmail(email, username, password, fullName, birthdate, country, province, city, referrer).then(function(res) {
+      if (res.error) {
+        _showToast(res.error, "error");
+        return;
+      }
+      document.getElementById("emailVerifyCode").textContent = res.code;
+      _emailPollData = { email: res.email || email, code: res.code };
+      document.getElementById("emailPollStatus").textContent = "⏳ 等待验证邮件…";
+      _showToast("已生成新验证码", "success");
+      _startEmailPoll(res.email || email);
+    }).catch(function(err) {
+      _showToast("网络错误: " + (err.message || ""), "error");
+    }).finally(function() {
+      btn.disabled = false;
+      btn.textContent = "重新发送";
+    });
+  });
+
+  // 切换到邮箱注册选项卡时停止旧轮询
+  document.getElementById("tabEmailRegister").addEventListener("click", function() {
+    _stopEmailPoll();
   });
 
   // ========= GitHub OAuth 登录 =========
