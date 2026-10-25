@@ -61,7 +61,7 @@ export default async function (req) {
       "notifications","notification_replies","blacklist","urgent_blacklist","registrations",
       "whitelist","sys_config","test_ping","test_users","oauth_tokens","task_rewards",
       "user_levels","lottery_tickets","lottery_records","win_wall","risk_control",
-      "user_monthly_rewards","user_outfits","community_statuses","community_bans","sqlite_sequence","ledger","audit_logs","sessions","farm_data",
+      "user_monthly_rewards","user_outfits","community_statuses","community_likes","community_comments","community_bans","sqlite_sequence","ledger","audit_logs","sessions","farm_data",
       "game_shop_stock","game_shelves","game_farm_plots","game_engine_state","game_engine_log"
     ];
     const DANGER_KEYWORDS = ["DROP","ATTACH","DETACH","VACUUM","REINDEX","TRIGGER","TRUNCATE","PRAGMA"];

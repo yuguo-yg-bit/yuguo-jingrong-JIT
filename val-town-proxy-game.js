@@ -190,7 +190,9 @@ export default async function (req) {
           "CREATE TABLE IF NOT EXISTS game_shelves (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, item_id TEXT NOT NULL, item_name TEXT NOT NULL, cost_price INTEGER NOT NULL, profit_pct REAL DEFAULT 0.3, sell_price INTEGER NOT NULL, quantity INTEGER DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
           "CREATE TABLE IF NOT EXISTS game_farm_plots (user_id TEXT, plot_index INTEGER, crop_type TEXT, planted_at TEXT, growth_hours REAL DEFAULT 0, water_hours REAL DEFAULT 0, wilt_hours REAL DEFAULT 0, last_watered TEXT, status TEXT DEFAULT 'empty', PRIMARY KEY(user_id,plot_index))",
           "CREATE TABLE IF NOT EXISTS game_engine_state (user_id TEXT PRIMARY KEY, last_tick TEXT, market_heat REAL DEFAULT 0.5, buyer_freq INTEGER DEFAULT 1800, auto_restock INTEGER DEFAULT 0, auto_farm INTEGER DEFAULT 0, robot_level INTEGER DEFAULT 1, total_revenue INTEGER DEFAULT 0, total_cost INTEGER DEFAULT 0, updated_at TEXT NOT NULL)",
-          "CREATE TABLE IF NOT EXISTS game_engine_log (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, event_type TEXT NOT NULL, item_id TEXT, quantity INTEGER, amount INTEGER NOT NULL, detail TEXT, created_at TEXT NOT NULL)"
+          "CREATE TABLE IF NOT EXISTS game_engine_log (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, event_type TEXT NOT NULL, item_id TEXT, quantity INTEGER, amount INTEGER NOT NULL, detail TEXT, created_at TEXT NOT NULL)",
+          "CREATE TABLE IF NOT EXISTS community_likes (status_id TEXT NOT NULL, username TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(status_id,username))",
+          "CREATE TABLE IF NOT EXISTS community_comments (id TEXT PRIMARY KEY, status_id TEXT NOT NULL, username TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL)"
         ];
         for (var i=0;i<tbls.length;i++) {
           try { await execTurso(tbls[i],[]); } catch(e) {}
@@ -542,6 +544,88 @@ export default async function (req) {
       var vsh = await getShopData(vuid);
       var vfm = await getFarmData(vuid, 6);
       return jsonResponse({ ok:true, state:vst, shop:vsh, farm:vfm });
+    }
+
+    // ========== 社区互动：点赞（得先登录） ==========
+    if (path === "/community" && req.method === "POST") {
+      var cbody = await req.json();
+      var cAction = cbody.action;
+      var csess = await requireSession();
+      if (csess.error) return jsonResponse({ error:csess.error }, 403);
+
+      // 切换点赞
+      if (cAction === "toggle_like") {
+        var sid = cbody.statusId;
+        var uname = csess.username;
+        if (!sid) return jsonResponse({ error:"缺少 statusId" }, 400);
+        var exQ = await execTurso("SELECT 1 FROM community_likes WHERE status_id=? AND username=?",[sid,uname]);
+        var exR = exQ.data.results?.[0]?.response?.result || exQ.data.results?.[0]?.response?.results || exQ.data;
+        var exists = exR && exR.rows && exR.rows.length > 0;
+        if (exists) {
+          await execTurso("DELETE FROM community_likes WHERE status_id=? AND username=?",[sid,uname]);
+        } else {
+          await execTurso("INSERT INTO community_likes (status_id,username,created_at) VALUES (?,?,?)",[sid,uname,new Date().toISOString()]);
+        }
+        var cntQ = await execTurso("SELECT COUNT(*) AS c FROM community_likes WHERE status_id=?",[sid]);
+        var cntR = cntQ.data.results?.[0]?.response?.result || cntQ.data.results?.[0]?.response?.results || cntQ.data;
+        var cnt = cntR && cntR.rows && cntR.rows.length>0 ? parseInt(cntR.rows[0][0]?.value??cntR.rows[0][0]??0) : 0;
+        return jsonResponse({ ok:true, liked:!exists, likeCount:cnt });
+      }
+
+      // 添加评论
+      if (cAction === "add_comment") {
+        var sid = cbody.statusId;
+        var txt = (cbody.content||"").trim();
+        var uname = csess.username;
+        if (!sid) return jsonResponse({ error:"缺少 statusId" }, 400);
+        if (!txt || txt.length > 500) return jsonResponse({ error:"评论内容不能为空或超过500字" }, 400);
+        var cid = "cmt_"+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+        var nw = new Date().toISOString();
+        await execTurso("INSERT INTO community_comments (id,status_id,username,content,created_at) VALUES (?,?,?,?,?)",[cid,sid,uname,txt,nw]);
+        return jsonResponse({ ok:true, comment:{ id:cid, statusId:sid, username:uname, content:txt, createdAt:nw } });
+      }
+
+      // 加载某条动态的评论
+      if (cAction === "load_comments") {
+        var sid = cbody.statusId;
+        if (!sid) return jsonResponse({ error:"缺少 statusId" }, 400);
+        var cmtQ = await execTurso("SELECT id,username,content,created_at FROM community_comments WHERE status_id=? ORDER BY created_at ASC",[sid]);
+        var cmtR = cmtQ.data.results?.[0]?.response?.result || cmtQ.data.results?.[0]?.response?.results || cmtQ.data;
+        var list = [];
+        if (cmtR && cmtR.rows) {
+          for (var ci=0;ci<cmtR.rows.length;ci++) {
+            var cr = cmtR.rows[ci];
+            list.push({ id:cr[0]?.value??cr[0], username:cr[1]?.value??cr[1], content:cr[2]?.value??cr[2], createdAt:cr[3]?.value??cr[3] });
+          }
+        }
+        return jsonResponse({ ok:true, comments:list });
+      }
+
+      // 批量加载多条动态的点赞数
+      if (cAction === "load_likes_batch") {
+        var ids = cbody.statusIds || [];
+        if (!Array.isArray(ids) || ids.length===0) return jsonResponse({ ok:true, likes:{} });
+        var likes = {};
+        for (var li=0;li<ids.length;li++) {
+          var cnQ = await execTurso("SELECT COUNT(*) AS c FROM community_likes WHERE status_id=?",[ids[li]]);
+          var cnR = cnQ.data.results?.[0]?.response?.result || cnQ.data.results?.[0]?.response?.results || cnQ.data;
+          likes[ids[li]] = cnR && cnR.rows && cnR.rows.length>0 ? parseInt(cnR.rows[0][0]?.value??cnR.rows[0][0]??0) : 0;
+        }
+        // 同时返回当前用户点了哪些
+        var myLikes = [];
+        if (csess.username) {
+          var myQ = await execTurso("SELECT status_id FROM community_likes WHERE username=?",[csess.username]);
+          var myR = myQ.data.results?.[0]?.response?.result || myQ.data.results?.[0]?.response?.results || myQ.data;
+          if (myR && myR.rows) {
+            for (var mi=0;mi<myR.rows.length;mi++) {
+              myLikes.push(myR.rows[mi][0]?.value??myR.rows[mi][0]);
+            }
+          }
+        }
+        return jsonResponse({ ok:true, likes:likes, myLikes:myLikes });
+      }
+
+      return jsonResponse({ error:"未知社区动作: "+(cAction||"空") }, 400);
     }
 
     return jsonResponse({ error:"未知路径" }, 404);
