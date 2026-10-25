@@ -530,9 +530,12 @@
             <p style="margin:8px 0 0 0;font-size:11px;color:var(--text-secondary);">邮件主题和标题随意，正文只写验证码即可</p>
           </div>
           <div id="emailPollStatus" style="text-align:center;margin-top:10px;font-size:13px;color:var(--text-secondary);">
-            ⏳ 等待验证邮件…
+            请发送邮件后点击下方「刷新验证状态」
           </div>
-          <button class="btn-submit" id="btnEmailResend" style="width:100%;margin-top:8px;background:var(--ice-blue);">重新发送</button>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <button class="btn-submit" id="btnEmailCheck" style="flex:1;background:var(--gold-primary);">刷新验证状态</button>
+            <button class="btn-submit" id="btnEmailResend" style="flex:1;background:var(--ice-blue);">重新生成验证码</button>
+          </div>
         </div>
 
         <button class="btn-submit" id="btnEmailRegister" style="width:100%;margin-top:12px;">发送验证邮件</button>
@@ -966,45 +969,7 @@
     });
   })();
 
-  var _emailPollTimer = null;
-  var _emailPollData = { email: "", code: "" };
-
-  var _stopEmailPoll = function() {
-    if (_emailPollTimer) { clearInterval(_emailPollTimer); _emailPollTimer = null; }
-  };
-
-  // 开始轮询验证状态
-  var _startEmailPoll = function(email) {
-    _stopEmailPoll();
-    var statusEl = document.getElementById("emailPollStatus");
-    var pollCount = 0;
-    _emailPollTimer = setInterval(function() {
-      pollCount++;
-      if (pollCount > 120) { _stopEmailPoll(); statusEl.textContent = "超时，请检查邮件是否已发送"; statusEl.style.color = "var(--danger)"; return; }
-      JITApi.checkEmailRegister(email).then(function(res) {
-        if (res.verified && res.oauth_token) {
-          _stopEmailPoll();
-          statusEl.innerHTML = '<span style="color:var(--success);">验证通过！正在登录…</span>';
-          setTimeout(function() {
-            // 存储 OAuth token 并跳转
-            var tokenData = { token: res.oauth_token, username: res.username, provider: "email" };
-            localStorage.setItem("jit_oauth_session", JSON.stringify(tokenData));
-            localStorage.setItem("jit_oauth_token", res.oauth_token);
-            localStorage.setItem("jit_username", res.username);
-            window.location.href = "index.html";
-          }, 800);
-        } else if (res.error) {
-          _stopEmailPoll();
-          statusEl.textContent = "错误: " + res.error;
-          statusEl.style.color = "var(--danger)";
-        } else {
-          statusEl.textContent = "⏳ 等待验证邮件…（已轮询 " + pollCount + " 次）";
-        }
-      }).catch(function() {
-        // 网络错误，继续轮询
-      });
-    }, 5000);
-  };
+  var _emailRegEmail = "";
 
   // 邮箱注册提交按钮
   document.getElementById("btnEmailRegister").addEventListener("click", function() {
@@ -1040,14 +1005,13 @@
         btn.textContent = "发送验证邮件";
         return;
       }
-      // 展示验证码区域
+      _emailRegEmail = res.email || email;
       document.getElementById("emailVerifyCode").textContent = res.code;
       document.getElementById("emailVerifySection").style.display = "block";
       btn.style.display = "none";
-      _emailPollData = { email: res.email || email, code: res.code };
-      _showToast("验证码已生成，请发送邮件验证", "success");
-      document.getElementById("emailPollStatus").textContent = "⏳ 等待验证邮件…";
-      _startEmailPoll(res.email || email);
+      document.getElementById("emailPollStatus").textContent = "请发送邮件后点击下方「刷新验证状态」";
+      document.getElementById("emailPollStatus").style.color = "var(--text-secondary)";
+      _showToast("验证码已生成，请发送邮件后点击刷新", "success");
     }).catch(function(err) {
       errorEl.style.display = "block";
       errorEl.textContent = "注册失败: " + (err.message || "网络错误");
@@ -1057,7 +1021,42 @@
     });
   });
 
-  // 重新发送按钮
+  // 手动刷新验证状态
+  document.getElementById("btnEmailCheck").addEventListener("click", function() {
+    var statusEl = document.getElementById("emailPollStatus");
+    var btn = document.getElementById("btnEmailCheck");
+    btn.disabled = true;
+    btn.textContent = "检查中...";
+    statusEl.textContent = "正在检查验证状态…";
+    statusEl.style.color = "var(--text-secondary)";
+
+    JITApi.checkEmailRegister(_emailRegEmail).then(function(res) {
+      if (res.verified && res.oauth_token) {
+        statusEl.innerHTML = '<span style="color:var(--success);">验证通过！正在登录…</span>';
+        setTimeout(function() {
+          var tokenData = { token: res.oauth_token, username: res.username, provider: "email" };
+          localStorage.setItem("jit_oauth_session", JSON.stringify(tokenData));
+          localStorage.setItem("jit_oauth_token", res.oauth_token);
+          localStorage.setItem("jit_username", res.username);
+          window.location.href = "index.html";
+        }, 800);
+      } else if (res.error) {
+        statusEl.textContent = "错误: " + res.error;
+        statusEl.style.color = "var(--danger)";
+      } else {
+        statusEl.textContent = "尚未验证，请发送邮件后重试";
+        statusEl.style.color = "var(--warning)";
+      }
+    }).catch(function() {
+      statusEl.textContent = "网络错误，请重试";
+      statusEl.style.color = "var(--danger)";
+    }).finally(function() {
+      btn.disabled = false;
+      btn.textContent = "刷新验证状态";
+    });
+  });
+
+  // 重新生成验证码按钮
   document.getElementById("btnEmailResend").addEventListener("click", function() {
     var email = document.getElementById("emailRegEmail").value.trim();
     var username = document.getElementById("emailRegUsername").value.trim();
@@ -1074,31 +1073,25 @@
       _showToast("请填写完整的注册信息", "error");
       return;
     }
-    _stopEmailPoll();
     var btn = document.getElementById("btnEmailResend");
     btn.disabled = true;
-    btn.textContent = "重新提交中...";
+    btn.textContent = "生成中...";
     JITApi.registerEmail(email, username, password, fullName, birthdate, country, province, city, referrer).then(function(res) {
       if (res.error) {
         _showToast(res.error, "error");
         return;
       }
+      _emailRegEmail = res.email || email;
       document.getElementById("emailVerifyCode").textContent = res.code;
-      _emailPollData = { email: res.email || email, code: res.code };
-      document.getElementById("emailPollStatus").textContent = "⏳ 等待验证邮件…";
-      _showToast("已生成新验证码", "success");
-      _startEmailPoll(res.email || email);
+      document.getElementById("emailPollStatus").textContent = "请发送邮件后点击下方「刷新验证状态」";
+      document.getElementById("emailPollStatus").style.color = "var(--text-secondary)";
+      _showToast("已生成新验证码，请用新码发送邮件", "success");
     }).catch(function(err) {
       _showToast("网络错误: " + (err.message || ""), "error");
     }).finally(function() {
       btn.disabled = false;
-      btn.textContent = "重新发送";
+      btn.textContent = "重新生成验证码";
     });
-  });
-
-  // 切换到邮箱注册选项卡时停止旧轮询
-  document.getElementById("tabEmailRegister").addEventListener("click", function() {
-    _stopEmailPoll();
   });
 
   // ========= GitHub OAuth 登录 =========
