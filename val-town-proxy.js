@@ -2,7 +2,7 @@
 // 玉国金融 Val.town 中转代理
 // 功能：接收前端请求 → 转发SQL到Turso → 返回结果
 // 部署到 Val.town 后访问：
-//   https://yuguoygbit--efeee912c58011f1af2f1607ee4eb77e.web.val.run
+//   https://yuguoygbit--efeee912c58011f1af2f1607ee4eb77e.web.val.run （主代理）
 // ============================================================
 
 export default async function (req) {

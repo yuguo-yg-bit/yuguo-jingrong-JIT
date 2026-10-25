@@ -1,7 +1,7 @@
 var JITApi = (function() {
   // ========== Turso 代理配置 ==========
-  var _tursoProxy = "https://yuguoygbit--8f55f7b6d02111f18f891607ee4eb77e.web.val.run";
-  var _gameProxy = "https://yuguoygbit--游戏引擎val名.web.val.run";
+  var _tursoProxy = "https://yuguoygbit--efeee912c58011f1af2f1607ee4eb77e.web.val.run";
+  var _gameProxy = "https://yuguoygbit--8f55f7b6d02111f18f891607ee4eb77e.web.val.run";
   var _tursoAuth = "Jrb@025808";
 
   // ========== Turso 代理调用 ==========
