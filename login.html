@@ -520,12 +520,15 @@
 
         <!-- 验证码展示区（提交后显示） -->
         <div id="emailVerifySection" style="display:none;">
-          <!-- 状态A: Mailtrap 自动发送成功，隐藏验证码 -->
+          <!-- 状态A: Mailtrap 自动发送，输入验证码 -->
           <div id="emailSentBox" style="display:none;background:rgba(0,200,100,0.1);border:1px solid var(--success);border-radius:12px;padding:20px;margin-top:12px;text-align:center;">
             <p style="margin:0 0 8px 0;font-size:28px;">📬</p>
             <p style="margin:0 0 6px 0;font-size:15px;font-weight:600;color:var(--success);">验证码已发送</p>
-            <p style="margin:0;font-size:13px;color:var(--text-primary);">请前往邮箱查收验证码</p>
-            <p style="margin:6px 0 0 0;font-size:12px;color:var(--text-secondary);" id="emailSentAddr"></p>
+            <p style="margin:0;font-size:13px;color:var(--text-primary);" id="emailSentAddr"></p>
+            <p style="margin:6px 0 0 0;font-size:12px;color:var(--text-secondary);">请查看邮箱，输入收到的 6 位验证码</p>
+            <input type="text" class="form-input" id="emailVerifyCodeInput" placeholder="输入 6 位验证码" maxlength="6" autocomplete="off" style="width:200px;margin:12px auto 0 auto;text-align:center;font-size:24px;letter-spacing:8px;font-family:monospace;">
+            <br>
+            <button class="btn-submit" id="btnEmailVerifyCode" style="width:200px;margin-top:10px;background:var(--success);">确认验证</button>
           </div>
           <!-- 状态B: 手动模式，显示验证码 -->
           <div id="emailCodeBox" style="background:rgba(45,190,255,0.1);border:1px solid var(--ice-blue);border-radius:12px;padding:16px;margin-top:12px;text-align:center;">
@@ -1021,8 +1024,8 @@
         document.getElementById("emailSentBox").style.display = "block";
         document.getElementById("emailCodeBox").style.display = "none";
         document.getElementById("emailSentAddr").textContent = _emailRegEmail;
-        document.getElementById("emailPollStatus").textContent = "请查收邮件中的验证码，回复该验证码到 yuguoemail@yuconemail.cc.cd 完成验证";
-        document.getElementById("emailPollStatus").style.color = "var(--success)";
+        document.getElementById("emailPollStatus").textContent = "请输入邮箱中收到的 6 位验证码，点击「确认验证」";
+        document.getElementById("emailPollStatus").style.color = "var(--text-secondary)";
         _showToast("验证码已发送到 " + _emailRegEmail, "success");
       } else {
         document.getElementById("emailSentBox").style.display = "none";
@@ -1042,7 +1045,38 @@
     });
   });
 
-  // 手动刷新验证状态
+  // 直接输入验证码验证（Mailtrap 模式）
+  document.getElementById("btnEmailVerifyCode").addEventListener("click", function() {
+    var code = document.getElementById("emailVerifyCodeInput").value.trim();
+    var btn = document.getElementById("btnEmailVerifyCode");
+    if (!code || code.length !== 6 || !/^\d{6}$/.test(code)) {
+      _showToast("请输入6位数字验证码", "error");
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = "验证中...";
+    JITApi.verifyEmailCode(_emailRegEmail, code).then(function(res) {
+      if (res.verified && res.oauth_token) {
+        btn.textContent = "验证通过！";
+        var tokenData = { token: res.oauth_token, username: res.username, provider: "email" };
+        localStorage.setItem("jit_oauth_session", JSON.stringify(tokenData));
+        localStorage.setItem("jit_oauth_token", res.oauth_token);
+        localStorage.setItem("jit_username", res.username);
+        _showToast("验证通过，正在登录...", "success");
+        setTimeout(function() { window.location.href = "index.html"; }, 500);
+      } else {
+        _showToast(res.error || "验证码错误", "error");
+        btn.disabled = false;
+        btn.textContent = "确认验证";
+      }
+    }).catch(function() {
+      _showToast("网络错误", "error");
+      btn.disabled = false;
+      btn.textContent = "确认验证";
+    });
+  });
+
+  // 手动刷新验证状态（降级：邮箱触发器验证）
   document.getElementById("btnEmailCheck").addEventListener("click", function() {
     var statusEl = document.getElementById("emailPollStatus");
     var btn = document.getElementById("btnEmailCheck");
@@ -1107,8 +1141,8 @@
         document.getElementById("emailSentBox").style.display = "block";
         document.getElementById("emailCodeBox").style.display = "none";
         document.getElementById("emailSentAddr").textContent = _emailRegEmail;
-        document.getElementById("emailPollStatus").textContent = "新验证码已发送，请查收邮件并回复验证码完成验证";
-        document.getElementById("emailPollStatus").style.color = "var(--success)";
+        document.getElementById("emailPollStatus").textContent = "新验证码已发送，请输入邮箱中收到的验证码";
+        document.getElementById("emailPollStatus").style.color = "var(--text-secondary)";
         _showToast("新验证码已发送到 " + _emailRegEmail, "success");
       } else {
         document.getElementById("emailSentBox").style.display = "none";

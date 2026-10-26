@@ -1675,5 +1675,12 @@ var JITApi = (function() {
       return fetch(_tursoProxy + "/oauth/email/check-register?email=" + encodeURIComponent(email))
         .then(function(r) { return r.json(); });
     },
+    verifyEmailCode: function(email, code) {
+      return fetch(_tursoProxy + "/oauth/email/verify-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email, code: code })
+      }).then(function(r) { return r.json(); });
+    },
   };
 })();

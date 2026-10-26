@@ -959,7 +959,61 @@ export default async function (req) {
       });
     }
 
-    // 轮询：检查邮箱是否已验证通过
+    // ========== 直接验证码校验（用户在邮箱收到码后填入前端） ==========
+    if (path === "/oauth/email/verify-code" && req.method === "POST") {
+      const { email, code } = await req.json();
+      if (!email || !code) return jsonResponse({ error: "缺少 email 或 code 参数" }, 400);
+      const emailLower = email.toLowerCase();
+      const now = new Date().toISOString();
+
+      const { data: verData } = await execTurso(
+        "SELECT username, password_hash, full_name, birthdate, country, province, city, referrer FROM email_verifications WHERE email=? AND code=? AND status='pending'",
+        [emailLower, code]
+      );
+      const vrows = verData.results?.[0]?.response?.result?.rows || [];
+      if (vrows.length === 0) return jsonResponse({ verified: false, error: "验证码错误或已过期" });
+
+      const row = vrows[0];
+      const gv = function(cell) {
+        return cell !== null && typeof cell === "object" && "value" in cell ? cell.value : cell;
+      };
+      const username = gv(row[0]);
+      const passwordHash = gv(row[1]);
+      const fullName = gv(row[2]);
+      const birthdate = gv(row[3]);
+      const country = gv(row[4]);
+      const province = gv(row[5]);
+      const city = gv(row[6]);
+      const referrer = gv(row[7]);
+      const regId = crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).substring(2,15));
+
+      // 标记验证通过
+      await execTurso("UPDATE email_verifications SET status='verified', verified_at=? WHERE email=?", [now, emailLower]);
+
+      // 写入 registrations（免审核）
+      await execTurso(
+        "INSERT OR REPLACE INTO registrations (id, username, password_hash, full_name, birthdate, country, province, city, referrer, review_status, oauth_provider, oauth_id, oauth_email, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [regId, username, passwordHash, fullName, birthdate, country, province, city, referrer, "approved", "email", emailLower, emailLower, now]
+      );
+
+      // 写入 users
+      await execTurso(
+        "INSERT INTO users (id, password_hash, full_name, birthdate, country, province, city, referrer, review_status, oauth_provider, oauth_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET oauth_provider=EXCLUDED.oauth_provider, oauth_id=EXCLUDED.oauth_id, updated_at=EXCLUDED.updated_at",
+        [username, passwordHash, fullName, birthdate, country, province, city, referrer, "approved", "email", emailLower, now, now]
+      );
+
+      // 生成登录 token
+      const loginToken = crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).substring(2,15));
+      const loginExpires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+      await execTurso(
+        "INSERT INTO oauth_tokens (token, username, oauth_id, provider, created_at, expires_at) VALUES (?,?,?,?,?,?)",
+        [loginToken, username, emailLower, "email", now, loginExpires]
+      );
+
+      return jsonResponse({ verified: true, oauth_token: loginToken, username: username, message: "验证通过" });
+    }
+
+    // 轮询：检查邮箱是否已验证通过（降级场景：邮箱触发器验证）
     if (path === "/oauth/email/check-register" && req.method === "GET") {
       const email = new URL(req.url).searchParams.get("email");
       if (!email) return jsonResponse({ error: "缺少 email 参数" }, 400);
