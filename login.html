@@ -528,6 +528,7 @@
               <strong style="font-size:13px;color:var(--text-primary);">yuguoemail@yuconemail.cc.cd</strong>
             </p>
             <p style="margin:8px 0 0 0;font-size:11px;color:var(--text-secondary);">邮件主题和标题随意，正文只写验证码即可</p>
+            <a href="#" id="btnEmailMailto" target="_blank" style="display:inline-block;margin-top:12px;padding:10px 24px;background:var(--gold-primary);color:#fff;text-decoration:none;border-radius:8px;font-size:13px;font-weight:600;">📧 一键发送邮件</a>
           </div>
           <div id="emailPollStatus" style="text-align:center;margin-top:10px;font-size:13px;color:var(--text-secondary);">
             请发送邮件后点击下方「刷新验证状态」
@@ -1008,6 +1009,7 @@
       _emailRegEmail = res.email || email;
       document.getElementById("emailVerifyCode").textContent = res.code;
       document.getElementById("emailVerifySection").style.display = "block";
+      document.getElementById("btnEmailMailto").href = "mailto:yuguoemail@yuconemail.cc.cd?subject=" + encodeURIComponent("玉国金融邮箱验证") + "&body=" + encodeURIComponent(res.code);
       btn.style.display = "none";
       document.getElementById("emailPollStatus").textContent = "请发送邮件后点击下方「刷新验证状态」";
       document.getElementById("emailPollStatus").style.color = "var(--text-secondary)";
@@ -1083,6 +1085,7 @@
       }
       _emailRegEmail = res.email || email;
       document.getElementById("emailVerifyCode").textContent = res.code;
+      document.getElementById("btnEmailMailto").href = "mailto:yuguoemail@yuconemail.cc.cd?subject=" + encodeURIComponent("玉国金融邮箱验证") + "&body=" + encodeURIComponent(res.code);
       document.getElementById("emailPollStatus").textContent = "请发送邮件后点击下方「刷新验证状态」";
       document.getElementById("emailPollStatus").style.color = "var(--text-secondary)";
       _showToast("已生成新验证码，请用新码发送邮件", "success");

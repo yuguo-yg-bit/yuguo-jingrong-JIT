@@ -1,7 +1,8 @@
 // ============================================================
 // 玉国金融 Val.town 邮箱触发器（独立部署）
 // 功能：接收邮箱入站 → 提取验证码 → 匹配数据库 → 创建用户
-// 部署为独立的 Val，邮箱触发器地址:
+// 部署为独立的 Val，类型选 Email Handler
+// 邮箱触发器地址（Val.town 自动生成）:
 //   yuguoygbit-a648aa1cd06811f18f8b1607ee4eb77e@valtown.email
 // ============================================================
 
@@ -9,17 +10,26 @@ export default async function (email) {
   const TURSO_API = process.env.TURSO_API_URL;
   const TURSO_TOKEN = process.env.TURSO_RW_TOKEN;
 
-  // 提取发件人邮箱
-  const senderMatch = (email.from || "").match(/<([^>]+)>/);
-  const senderEmail = (senderMatch ? senderMatch[1] : email.from || "").trim().toLowerCase();
+  if (!TURSO_API || !TURSO_TOKEN) {
+    return new Response("Missing env vars: TURSO_API_URL or TURSO_RW_TOKEN", { status: 500 });
+  }
+
+  // Val.town email 对象结构: { from, to, subject, text, html, date }
+  const rawFrom = email.from || "";
+  const senderMatch = rawFrom.match(/<([^>]+)>/);
+  const senderEmail = (senderMatch ? senderMatch[1] : rawFrom).trim().toLowerCase();
   const body = (email.text || "").trim();
+
+  if (!senderEmail) {
+    return new Response("Could not extract sender email from: " + rawFrom, { status: 400 });
+  }
 
   // 从邮件正文提取 6 位验证码
   const codeMatch = body.match(/\b(\d{6})\b/);
   const code = codeMatch ? codeMatch[1] : null;
 
   if (!code) {
-    return new Response("No verification code found in email body", { status: 400 });
+    return new Response("No 6-digit code found in email body. Body: " + body.substring(0, 100), { status: 400 });
   }
 
   const now = new Date().toISOString();
@@ -50,7 +60,7 @@ export default async function (email) {
     const rows = (checkData.results?.[0]?.response?.result?.rows || []);
 
     if (rows.length === 0) {
-      return new Response("No matching pending verification found for " + senderEmail, { status: 404 });
+      return new Response("No matching pending verification. Email: " + senderEmail + " Code: " + code, { status: 404 });
     }
 
     // 2. 提取用户数据
@@ -132,9 +142,9 @@ export default async function (email) {
       })
     });
 
-    return new Response("OK - User " + username + " verified via email " + senderEmail, { status: 200 });
+    return new Response("OK - User " + username + " verified via " + senderEmail, { status: 200 });
 
   } catch (e) {
-    return new Response("Internal error: " + (e.message || ""), { status: 500 });
+    return new Response("Internal error: " + (e.message || "unknown"), { status: 500 });
   }
 }
