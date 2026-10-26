@@ -298,7 +298,7 @@ export default async function (req) {
         if (rows.length > 0) {
           const s = String(rows[0][1]?.value ?? "");
           if (s === String(passwordHash)) valid = true;
-          dbUser = { username: username, role: "user" };
+          dbUser = { username: rows[0][0]?.value || username, role: "user" };
         }
       }
 
