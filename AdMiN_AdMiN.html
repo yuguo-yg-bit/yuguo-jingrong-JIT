@@ -134,32 +134,6 @@
 
     <!-- ===== 超级管理（代码级权限） ===== -->
     <div class="admin-tab" id="tabSuperadmin">
-      <!-- SQL 控制台 -->
-      <div class="admin-card" style="margin-bottom:20px;">
-        <div class="admin-card-header">
-          <h3>💻 SQL 控制台</h3>
-          <p class="admin-card-desc">直接在 Turso 数据库上执行任意 SQL 语句。结果以表格形式展示。<b style="color:#f44336;">危险操作（DROP/DELETE/UPDATE）请谨慎！</b></p>
-        </div>
-        <div class="admin-card-body">
-          <div style="display:flex;gap:10px;align-items:flex-start;">
-            <textarea class="form-textarea" id="saSqlInput" rows="5" placeholder="输入 SQL 语句，如：SELECT * FROM users LIMIT 10;" style="flex:1;font-family:monospace;font-size:13px;"></textarea>
-          </div>
-          <div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap;">
-            <button class="btn btn-approve" id="btnSaExec">▶ 执行</button>
-            <button class="action-btn" id="btnSaClear">🗑 清空</button>
-            <span style="font-size:12px;color:var(--text-muted);margin-left:8px;" id="saResultInfo"></span>
-          </div>
-          <div class="admin-table-wrap" style="margin-top:12px;max-height:400px;overflow:auto;">
-            <table class="admin-table" style="margin-top:0;">
-              <thead id="saResultHead"></thead>
-              <tbody id="saResultBody">
-                <tr><td colspan="10" style="text-align:center;color:#999;padding:20px;">输入 SQL 并点击「执行」查看结果</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
       <!-- 用户数据编辑器 -->
       <div class="admin-card" style="margin-bottom:20px;">
         <div class="admin-card-header">

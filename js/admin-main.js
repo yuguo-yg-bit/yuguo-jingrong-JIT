@@ -2295,30 +2295,13 @@ var JITAdmin = (function() {
   };
 
   var _bindSaButtons = function() {
-    var btnExec = document.getElementById("btnSaExec");
-    var btnClear = document.getElementById("btnSaClear");
     var btnSearch = document.getElementById("btnSaUserSearch");
     var btnSave = document.getElementById("btnSaUserSave");
     var btnDelete = document.getElementById("btnSaUserDelete");
     var btnResetPwd = document.getElementById("btnSaUserResetPwd");
     var btnLoadTables = document.getElementById("btnSaLoadTables");
-    var sqlInput = document.getElementById("saSqlInput");
     var userSearch = document.getElementById("saUserSearch");
 
-    if (btnExec) {
-      btnExec.replaceWith(btnExec.cloneNode(true));
-      document.getElementById("btnSaExec").addEventListener("click", _saExecSql);
-    }
-    if (btnClear) {
-      btnClear.replaceWith(btnClear.cloneNode(true));
-      document.getElementById("btnSaClear").addEventListener("click", function() {
-        var el = document.getElementById("saSqlInput"); if (el) el.value = "";
-        var head = document.getElementById("saResultHead"); if (head) head.innerHTML = "";
-        var body = document.getElementById("saResultBody");
-        if (body) body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#999;padding:20px;">输入 SQL 并点击「执行」查看结果</td></tr>';
-        var info = document.getElementById("saResultInfo"); if (info) info.textContent = "";
-      });
-    }
     if (btnSearch) {
       btnSearch.replaceWith(btnSearch.cloneNode(true));
       document.getElementById("btnSaUserSearch").addEventListener("click", _saSearchUser);
@@ -2339,59 +2322,11 @@ var JITAdmin = (function() {
       btnLoadTables.replaceWith(btnLoadTables.cloneNode(true));
       document.getElementById("btnSaLoadTables").addEventListener("click", _saLoadTableList);
     }
-    if (sqlInput) {
-      sqlInput.addEventListener("keydown", function(e) {
-        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { _saExecSql(); }
-      });
-    }
     if (userSearch) {
       userSearch.addEventListener("keydown", function(e) {
         if (e.key === "Enter") { _saSearchUser(); }
       });
     }
-  };
-
-  var _saExecSql = function() {
-    var sql = (document.getElementById("saSqlInput") || {}).value || "";
-    if (!sql.trim()) { _showToast("请输入 SQL 语句"); return; }
-    var infoEl = document.getElementById("saResultInfo");
-    var body = document.getElementById("saResultBody");
-    var head = document.getElementById("saResultHead");
-    if (infoEl) infoEl.textContent = "执行中...";
-    if (body) body.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;">执行中...</td></tr>';
-
-    var startTime = Date.now();
-    JITApi.getTursoHelpers()(sql, []).then(function(result) {
-      var elapsed = Date.now() - startTime;
-      if (!result || !result.columns || !result.rows) {
-        if (head) head.innerHTML = "";
-        if (body) body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#4caf50;padding:20px;">SQL 执行成功（无返回行），耗时 ' + elapsed + 'ms</td></tr>';
-        if (infoEl) infoEl.textContent = "完成，耗时 " + elapsed + "ms";
-        return;
-      }
-      var cols = result.columns || [];
-      var rows = result.rows || [];
-      if (head) {
-        head.innerHTML = '<tr>' + cols.map(function(c) { return '<th>' + _escapeHtml(c) + '</th>'; }).join("") + '</tr>';
-      }
-      if (body) {
-        if (rows.length === 0) {
-          body.innerHTML = '<tr><td colspan="' + Math.max(cols.length, 1) + '" style="text-align:center;color:#999;padding:20px;">查询结果为空，耗时 ' + elapsed + 'ms</td></tr>';
-        } else {
-          body.innerHTML = rows.map(function(row) {
-            return '<tr>' + row.map(function(cell) {
-              var val = cell !== null && cell !== undefined ? String(cell) : "NULL";
-              return '<td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + _escapeHtml(val) + '">' + _escapeHtml(val.length > 100 ? val.substring(0, 100) + "..." : val) + '</td>';
-            }).join("") + '</tr>';
-          }).join("");
-        }
-      }
-      if (infoEl) infoEl.textContent = rows.length + " 行，耗时 " + elapsed + "ms";
-    }).catch(function(e) {
-      if (head) head.innerHTML = "";
-      if (body) body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#f44336;padding:20px;">执行失败: ' + _escapeHtml(e.message || "未知错误") + '</td></tr>';
-      if (infoEl) infoEl.textContent = "执行失败";
-    });
   };
 
   var _saCurrentUserData = null;
