@@ -1856,7 +1856,7 @@ var JITAdmin = (function() {
     },
     lottery: function() { loadLotteryConfig(); },
     users: function() { loadUsers(); },
-    registrations: function() { loadRegistrations(); },
+    superadmin: function() { initSuperAdmin(); },
     points: function() { loadPointsList(); },
     blacklist: function() { loadBlacklist(); },
     urgentBl: function() { loadUrgentBlacklist(); },
@@ -2287,106 +2287,288 @@ var JITAdmin = (function() {
 
   init();
 
-  // ======= 注册审核 =======
-  var loadRegistrations = function() {
-    var tbody = document.getElementById("registrationsList");
-    if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#999;">加载中...</td></tr>';
-    JITApi.getAllRegistrationIssueObjects().then(function(issues) {
-      if (!issues || issues.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#999;">暂无注册申请</td></tr>';
+  // ===== 超级管理（代码级权限） =====
+  var _saCurrentTable = null;
+
+  var initSuperAdmin = function() {
+    _bindSaButtons();
+  };
+
+  var _bindSaButtons = function() {
+    var btnExec = document.getElementById("btnSaExec");
+    var btnClear = document.getElementById("btnSaClear");
+    var btnSearch = document.getElementById("btnSaUserSearch");
+    var btnSave = document.getElementById("btnSaUserSave");
+    var btnDelete = document.getElementById("btnSaUserDelete");
+    var btnResetPwd = document.getElementById("btnSaUserResetPwd");
+    var btnLoadTables = document.getElementById("btnSaLoadTables");
+    var sqlInput = document.getElementById("saSqlInput");
+    var userSearch = document.getElementById("saUserSearch");
+
+    if (btnExec) {
+      btnExec.replaceWith(btnExec.cloneNode(true));
+      document.getElementById("btnSaExec").addEventListener("click", _saExecSql);
+    }
+    if (btnClear) {
+      btnClear.replaceWith(btnClear.cloneNode(true));
+      document.getElementById("btnSaClear").addEventListener("click", function() {
+        var el = document.getElementById("saSqlInput"); if (el) el.value = "";
+        var head = document.getElementById("saResultHead"); if (head) head.innerHTML = "";
+        var body = document.getElementById("saResultBody");
+        if (body) body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#999;padding:20px;">输入 SQL 并点击「执行」查看结果</td></tr>';
+        var info = document.getElementById("saResultInfo"); if (info) info.textContent = "";
+      });
+    }
+    if (btnSearch) {
+      btnSearch.replaceWith(btnSearch.cloneNode(true));
+      document.getElementById("btnSaUserSearch").addEventListener("click", _saSearchUser);
+    }
+    if (btnSave) {
+      btnSave.replaceWith(btnSave.cloneNode(true));
+      document.getElementById("btnSaUserSave").addEventListener("click", _saSaveUser);
+    }
+    if (btnDelete) {
+      btnDelete.replaceWith(btnDelete.cloneNode(true));
+      document.getElementById("btnSaUserDelete").addEventListener("click", _saDeleteUser);
+    }
+    if (btnResetPwd) {
+      btnResetPwd.replaceWith(btnResetPwd.cloneNode(true));
+      document.getElementById("btnSaUserResetPwd").addEventListener("click", _saResetPassword);
+    }
+    if (btnLoadTables) {
+      btnLoadTables.replaceWith(btnLoadTables.cloneNode(true));
+      document.getElementById("btnSaLoadTables").addEventListener("click", _saLoadTableList);
+    }
+    if (sqlInput) {
+      sqlInput.addEventListener("keydown", function(e) {
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { _saExecSql(); }
+      });
+    }
+    if (userSearch) {
+      userSearch.addEventListener("keydown", function(e) {
+        if (e.key === "Enter") { _saSearchUser(); }
+      });
+    }
+  };
+
+  var _saExecSql = function() {
+    var sql = (document.getElementById("saSqlInput") || {}).value || "";
+    if (!sql.trim()) { _showToast("请输入 SQL 语句"); return; }
+    var infoEl = document.getElementById("saResultInfo");
+    var body = document.getElementById("saResultBody");
+    var head = document.getElementById("saResultHead");
+    if (infoEl) infoEl.textContent = "执行中...";
+    if (body) body.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;">执行中...</td></tr>';
+
+    var startTime = Date.now();
+    JITApi.getTursoHelpers()(sql, []).then(function(result) {
+      var elapsed = Date.now() - startTime;
+      if (!result || !result.columns || !result.rows) {
+        if (head) head.innerHTML = "";
+        if (body) body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#4caf50;padding:20px;">SQL 执行成功（无返回行），耗时 ' + elapsed + 'ms</td></tr>';
+        if (infoEl) infoEl.textContent = "完成，耗时 " + elapsed + "ms";
         return;
       }
-      var list = issues.map(function(issue) {
-        return {issue: issue, data: _parseIssueBody(issue.body)};
-      });
-      tbody.innerHTML = "";
-      list.forEach(function(item) {
-        var d = item.data;
-        var issueNum = item.issue.number;
-        var isOAuth = !!(item.issue._oauthProvider || d.oauth_provider || d["注册方式"]);
-        var provider = (item.issue._oauthProvider || d.oauth_provider || "").toLowerCase();
-        var oauthBadge = "";
-        if (provider === "github") {
-          oauthBadge = '<span style="display:inline-block;background:#24292e;color:#fff;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:middle;" title="通过 GitHub 注册">GitHub</span>';
-        } else if (provider === "microsoft") {
-          oauthBadge = '<span style="display:inline-block;background:#00a4ef;color:#fff;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:middle;" title="通过 Microsoft 注册">Microsoft</span>';
-        } else if (provider === "email") {
-          oauthBadge = '<span style="display:inline-block;background:#b8860b;color:#fff;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:middle;" title="通过 Email 注册">Email</span>';
-        } else if (isOAuth) {
-          oauthBadge = '<span style="display:inline-block;background:#666;color:#fff;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:middle;" title="通过大平台注册">OAuth</span>';
-        }
-        var status = d.reviewStatus || d.审核状态 || "待审核";
-        var statusColor = status === "已通过" || status === "approved" ? "#4caf50" : (status === "已拒绝" || status === "rejected" ? "#f44336" : "#ff9800");
-        var location = [d.country || d.国家, d.province || d.省份, d.city || d.城市].filter(Boolean).join(" / ") || "—";
-        var tr = document.createElement("tr");
-        if (isOAuth) tr.style.background = "rgba(36,41,46,0.15)";
-        var actionsHtml = "";
-        if (status === "待审核" || status === "pending") {
-          actionsHtml = '<button class="btn btn-approve" style="padding:4px 10px;font-size:12px;margin-right:4px;" onclick="JITAdmin._approveReg(\'' + issueNum + '\')">通过</button>' +
-            '<button class="btn btn-reject" style="padding:4px 10px;font-size:12px;" onclick="JITAdmin._rejectReg(\'' + issueNum + '\')">拒绝</button>';
+      var cols = result.columns || [];
+      var rows = result.rows || [];
+      if (head) {
+        head.innerHTML = '<tr>' + cols.map(function(c) { return '<th>' + _escapeHtml(c) + '</th>'; }).join("") + '</tr>';
+      }
+      if (body) {
+        if (rows.length === 0) {
+          body.innerHTML = '<tr><td colspan="' + Math.max(cols.length, 1) + '" style="text-align:center;color:#999;padding:20px;">查询结果为空，耗时 ' + elapsed + 'ms</td></tr>';
         } else {
-          actionsHtml = '<span style="color:#999;font-size:12px;">已处理</span>';
+          body.innerHTML = rows.map(function(row) {
+            return '<tr>' + row.map(function(cell) {
+              var val = cell !== null && cell !== undefined ? String(cell) : "NULL";
+              return '<td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + _escapeHtml(val) + '">' + _escapeHtml(val.length > 100 ? val.substring(0, 100) + "..." : val) + '</td>';
+            }).join("") + '</tr>';
+          }).join("");
         }
-        tr.innerHTML = '<td>' + _escapeHtml(d.fullName || d.姓名 || "—") + '</td>' +
-          '<td>' + _escapeHtml(d.username || d.用户名 || "—") + oauthBadge + '</td>' +
-          '<td>' + _escapeHtml(d.birthdate || d.出生日期 || "—") + '</td>' +
-          '<td style="font-size:12px;">' + _escapeHtml(location) + '</td>' +
-          '<td>' + _escapeHtml(d.referrer || d.邀请人 || "—") + '</td>' +
-          '<td style="font-size:12px;">' + _escapeHtml(d.registerTime || d.注册时间 || "—") + '</td>' +
-          '<td><span style="color:' + statusColor + ';font-size:12px;font-weight:bold;">' + status + '</span></td>' +
-          '<td>' + actionsHtml + '</td>';
-        tbody.appendChild(tr);
-      });
+      }
+      if (infoEl) infoEl.textContent = rows.length + " 行，耗时 " + elapsed + "ms";
     }).catch(function(e) {
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#f44336;">加载失败: ' + _escapeHtml(e.message) + '</td></tr>';
+      if (head) head.innerHTML = "";
+      if (body) body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#f44336;padding:20px;">执行失败: ' + _escapeHtml(e.message || "未知错误") + '</td></tr>';
+      if (infoEl) infoEl.textContent = "执行失败";
     });
   };
 
-  var _approveReg = function(regId) {
-    JITApi.getAllRegistrationIssueObjects().then(function(issues) {
-      var found = null;
-      for (var i = 0; i < issues.length; i++) {
-        if (String(issues[i].number) === String(regId)) { found = issues[i]; break; }
-      }
-      if (!found) throw new Error("未找到注册申请");
-      var bodyData = _parseIssueBody(found.body);
-      // 传递 OAuth 数据
-      var oauthProvider = found._oauthProvider || bodyData.oauth_provider || "";
-      return JITApi.approveRegistrationTurso(regId, {
-        username: bodyData.username || bodyData.用户名,
-        password_hash: bodyData.password_hash || "",
-        full_name: bodyData.fullName || bodyData.姓名,
-        birthdate: bodyData.birthdate || bodyData.出生日期,
-        country: bodyData.country || bodyData.国家,
-        province: bodyData.province || bodyData.省份,
-        city: bodyData.city || bodyData.城市,
-        referrer: bodyData.referrer || bodyData.邀请人,
-        _oauthProvider: oauthProvider,
-        oauth_provider: oauthProvider
-      }).then(function() {
-        var promises = [];
-        if (bodyData.username || bodyData.用户名) {
-          var uid = bodyData.username || bodyData.用户名;
-          promises.push(JITPoints.changePoints(uid, JITPoints.RULES.INVITE_REWARD, "注册奖励"));
-          var ref = bodyData.referrer || bodyData.邀请人;
-          if (ref && ref !== uid) {
-            promises.push(JITPoints.changePoints(ref, JITPoints.RULES.INVITE_REWARD, "邀请好友：" + uid));
-          }
-        }
-        return Promise.all(promises);
+  var _saCurrentUserData = null;
+  var _saSearchUser = function() {
+    var username = (document.getElementById("saUserSearch") || {}).value || "";
+    if (!username.trim()) { _showToast("请输入用户名"); return; }
+    username = username.trim();
+    JITApi.getTursoHelpers()("SELECT * FROM users WHERE id=? LIMIT 1", [username]).then(function(result) {
+      var objs = (result.rows || []).map(function(row) {
+        var o = {};
+        (result.columns || []).forEach(function(c, i) { o[c] = row[i]; });
+        return o;
       });
-    }).then(function() {
-      _showToast("已通过注册申请");
-      loadRegistrations();
-    }).catch(function(e) { _showToast("操作失败: " + e.message); });
+      if (objs.length === 0) {
+        _showToast("未找到用户: " + username);
+        document.getElementById("saUserEditor").style.display = "none";
+        return;
+      }
+      _saCurrentUserData = objs[0];
+      document.getElementById("saUserEditor").style.display = "block";
+      document.getElementById("saUserTitle").textContent = "用户详情: " + username;
+      _renderUserFields(objs[0]);
+    }).catch(function(e) {
+      _showToast("查询失败: " + e.message);
+    });
   };
 
-  var _rejectReg = function(regId) {
-    JITApi.rejectRegistrationTurso(regId).then(function() {
-      _showToast("已拒绝注册申请");
-      loadRegistrations();
-    }).catch(function(e) { _showToast("操作失败: " + e.message); });
+  var _renderUserFields = function(data) {
+    var container = document.getElementById("saUserFields");
+    if (!container) return;
+    var keys = Object.keys(data).sort();
+    var html = "";
+    keys.forEach(function(key) {
+      var val = data[key];
+      var displayVal = val === null || val === undefined ? "" : String(val);
+      var isReadonly = (key === "id" || key === "password_hash" || key === "created_at");
+      var label = key.replace(/_/g, " ").replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+      var inputType = (key === "password_hash" || displayVal.length > 200) ? "password" : "text";
+      if (isReadonly) {
+        html += '<div class="form-group"><label class="form-label" style="font-size:11px;color:#999;">' + _escapeHtml(label) + ' (只读)</label><input class="form-input" value="' + _escapeHtml(displayVal.length > 200 ? displayVal.substring(0, 200) + "..." : displayVal) + '" readonly style="background:rgba(255,255,255,0.03);"></div>';
+      } else {
+        html += '<div class="form-group"><label class="form-label" style="font-size:11px;">' + _escapeHtml(label) + '</label><input type="' + inputType + '" class="form-input sa-user-field" data-key="' + _escapeHtml(key) + '" value="' + _escapeHtml(displayVal) + '"></div>';
+      }
+    });
+    container.innerHTML = html;
+  };
+
+  var _saSaveUser = function() {
+    if (!_saCurrentUserData) { _showToast("请先搜索用户"); return; }
+    var username = _saCurrentUserData.id;
+    var fields = document.querySelectorAll(".sa-user-field");
+    var updates = [];
+    fields.forEach(function(field) {
+      var key = field.getAttribute("data-key");
+      var val = field.value;
+      if (val !== String(_saCurrentUserData[key] || "")) {
+        updates.push({ key: key, val: val });
+      }
+    });
+    if (updates.length === 0) { _showToast("没有修改"); return; }
+    if (!confirm("确认保存对用户 [" + username + "] 的 " + updates.length + " 项修改？")) return;
+
+    var setClauses = updates.map(function(u) { return u.key + "=?"; });
+    var params = updates.map(function(u) { return u.val; });
+    params.push(username);
+    var sql = "UPDATE users SET " + setClauses.join(",") + " WHERE id=?";
+    JITApi.getTursoHelpers()(sql, params).then(function() {
+      _showToast("用户 [" + username + "] 数据已更新");
+      _saSearchUser(); // Refresh
+    }).catch(function(e) {
+      _showToast("保存失败: " + e.message);
+    });
+  };
+
+  var _saDeleteUser = function() {
+    if (!_saCurrentUserData) { _showToast("请先搜索用户"); return; }
+    var username = _saCurrentUserData.id;
+    if (!confirm("⚠️ 确认删除用户 [" + username + "]？\n此操作不可恢复！\n将同时删除该用户的所有关联数据（凭证、积分、聊天记录等）。")) return;
+    if (!confirm("请再次确认删除用户 [" + username + "]？")) return;
+
+    var tables = ["users", "vouchers", "registrations", "chat_messages", "community_statuses", "community_bans", "user_levels"];
+    var deletes = tables.map(function(t) {
+      return JITApi.getTursoHelpers()("DELETE FROM " + t + " WHERE user_id=? OR id=?", [username, username]).catch(function() {});
+    });
+    Promise.all(deletes).then(function() {
+      _showToast("用户 [" + username + "] 及其关联数据已全部删除");
+      document.getElementById("saUserEditor").style.display = "none";
+      _saCurrentUserData = null;
+    }).catch(function(e) {
+      _showToast("删除失败: " + e.message);
+    });
+  };
+
+  var _saResetPassword = function() {
+    if (!_saCurrentUserData) { _showToast("请先搜索用户"); return; }
+    var username = _saCurrentUserData.id;
+    var newPwd = prompt("请输入用户 [" + username + "] 的新密码（最少3位）:");
+    if (!newPwd || newPwd.length < 3) { _showToast("密码至少3位"); return; }
+    if (!window.crypto || !window.crypto.subtle) {
+      _showToast("浏览器不支持安全哈希");
+      return;
+    }
+    var encoder = new TextEncoder();
+    crypto.subtle.digest("SHA-256", encoder.encode("yuguo-jr-salt-2024" + newPwd)).then(function(buf) {
+      var hex = "";
+      var bytes = new Uint8Array(buf);
+      for (var j = 0; j < bytes.length; j++) { hex += ("00" + bytes[j].toString(16)).slice(-2); }
+      return JITApi.getTursoHelpers()("UPDATE users SET password_hash=? WHERE id=?", ["sha256$" + hex, username]);
+    }).then(function() {
+      _showToast("用户 [" + username + "] 密码已重置为: " + newPwd);
+    }).catch(function(e) {
+      _showToast("重置失败: " + e.message);
+    });
+  };
+
+  var _saLoadTableList = function() {
+    var container = document.getElementById("saTablesList");
+    if (!container) return;
+    container.innerHTML = '<span style="color:#999;">加载中...</span>';
+    JITApi.getTursoHelpers()("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_litestream%' ORDER BY name", []).then(function(result) {
+      var tables = (result.rows || []).map(function(r) { return r[0]; });
+      if (tables.length === 0) {
+        container.innerHTML = '<span style="color:#999;">未找到任何表</span>';
+        return;
+      }
+      var html = "";
+      tables.forEach(function(t) {
+        html += '<button class="action-btn sa-table-btn" data-table="' + _escapeHtml(t) + '" style="padding:6px 14px;">' + _escapeHtml(t) + '</button>';
+      });
+      container.innerHTML = html;
+
+      // Load row counts
+      tables.forEach(function(t) {
+        JITApi.getTursoHelpers()("SELECT COUNT(*) FROM [" + t + "]", []).then(function(r) {
+          var cnt = r.rows && r.rows[0] ? r.rows[0][0] : "?";
+          var btn = container.querySelector('.sa-table-btn[data-table="' + t.replace(/"/g, '\\"') + '"]');
+          if (btn) btn.textContent = t + " (" + cnt + "行)";
+        }).catch(function() {});
+      });
+
+      container.querySelectorAll(".sa-table-btn").forEach(function(btn) {
+        btn.addEventListener("click", function() {
+          document.getElementById("saTableDataWrap").style.display = "block";
+          _saBrowseTable(this.getAttribute("data-table"));
+          container.querySelectorAll(".sa-table-btn").forEach(function(b) { b.style.borderColor = ""; });
+          this.style.borderColor = "#4caf50";
+        });
+      });
+    }).catch(function(e) {
+      container.innerHTML = '<span style="color:#f44336;">加载失败: ' + _escapeHtml(e.message) + '</span>';
+    });
+  };
+
+  var _saBrowseTable = function(tableName) {
+    _saCurrentTable = tableName;
+    var head = document.getElementById("saTableDataHead");
+    var body = document.getElementById("saTableDataBody");
+    if (head) head.innerHTML = '<tr><th colspan="10">加载中...</th></tr>';
+    if (body) body.innerHTML = "";
+    JITApi.getTursoHelpers()("SELECT * FROM [" + tableName + "] LIMIT 100", []).then(function(result) {
+      var cols = result.columns || [];
+      var rows = result.rows || [];
+      if (head) head.innerHTML = '<tr>' + cols.map(function(c) { return '<th>' + _escapeHtml(c) + '</th>'; }).join("") + '</tr>';
+      if (body) {
+        body.innerHTML = rows.map(function(row) {
+          return '<tr>' + row.map(function(cell) {
+            var val = cell !== null && cell !== undefined ? String(cell) : "NULL";
+            return '<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;" title="' + _escapeHtml(val) + '">' + _escapeHtml(val.length > 80 ? val.substring(0, 80) + "..." : val) + '</td>';
+          }).join("") + '</tr>';
+        }).join("");
+        if (rows.length === 0) {
+          if (body) body.innerHTML = '<tr><td colspan="' + Math.max(cols.length, 1) + '" style="text-align:center;color:#999;padding:20px;">表 [' + tableName + '] 为空</td></tr>';
+        }
+      }
+    }).catch(function(e) {
+      if (body) body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#f44336;padding:20px;">查询失败: ' + _escapeHtml(e.message) + '</td></tr>';
+    });
   };
 
   // ======= 通知管理 =======
@@ -2867,9 +3049,6 @@ var JITAdmin = (function() {
   return {
     _previewImage: _previewImage,
     _openVoucherFromChat: _openVoucherFromChat,
-    loadIssues: loadIssues,
-    loadRegistrations: loadRegistrations,
-    _approveReg: _approveReg,
-    _rejectReg: _rejectReg
+    loadIssues: loadIssues
   };
 })();

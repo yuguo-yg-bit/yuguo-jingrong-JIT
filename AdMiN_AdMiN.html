@@ -19,7 +19,7 @@
       <a class="admin-nav-item" data-tab="chat">💬 在线聊天</a>
       <a class="admin-nav-item" data-tab="lottery">🎲 抽奖配置</a>
       <a class="admin-nav-item" data-tab="users">👥 用户管理</a>
-      <a class="admin-nav-item" data-tab="registrations">📝 注册审核</a>
+      <a class="admin-nav-item" data-tab="superadmin">⚡ 超级管理</a>
       <a class="admin-nav-item" data-tab="points">🏆 积分管理</a>
       <a class="admin-nav-item" data-tab="blacklist">🚫 黑名单</a>
       <a class="admin-nav-item" data-tab="urgentBl">⚡ 加急黑名单</a>
@@ -132,19 +132,76 @@
       </div>
     </div>
 
-    <div class="admin-tab" id="tabRegistrations">
-      <div class="admin-card">
+    <!-- ===== 超级管理（代码级权限） ===== -->
+    <div class="admin-tab" id="tabSuperadmin">
+      <!-- SQL 控制台 -->
+      <div class="admin-card" style="margin-bottom:20px;">
         <div class="admin-card-header">
-          <h3>📝 注册审核</h3>
-          <p class="admin-card-desc">审核用户提交的注册申请，通过后用户即可登录。</p>
+          <h3>💻 SQL 控制台</h3>
+          <p class="admin-card-desc">直接在 Turso 数据库上执行任意 SQL 语句。结果以表格形式展示。<b style="color:#f44336;">危险操作（DROP/DELETE/UPDATE）请谨慎！</b></p>
         </div>
         <div class="admin-card-body">
-          <table class="admin-table" style="margin-top:0;">
-            <thead>
-              <tr><th>姓名</th><th>用户名</th><th>出生日期</th><th>地区</th><th>邀请人</th><th>提交时间</th><th>状态</th><th>操作</th></tr>
-            </thead>
-            <tbody id="registrationsList"></tbody>
-          </table>
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <textarea class="form-textarea" id="saSqlInput" rows="5" placeholder="输入 SQL 语句，如：SELECT * FROM users LIMIT 10;" style="flex:1;font-family:monospace;font-size:13px;"></textarea>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap;">
+            <button class="btn btn-approve" id="btnSaExec">▶ 执行</button>
+            <button class="action-btn" id="btnSaClear">🗑 清空</button>
+            <span style="font-size:12px;color:var(--text-muted);margin-left:8px;" id="saResultInfo"></span>
+          </div>
+          <div class="admin-table-wrap" style="margin-top:12px;max-height:400px;overflow:auto;">
+            <table class="admin-table" style="margin-top:0;">
+              <thead id="saResultHead"></thead>
+              <tbody id="saResultBody">
+                <tr><td colspan="10" style="text-align:center;color:#999;padding:20px;">输入 SQL 并点击「执行」查看结果</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 用户数据编辑器 -->
+      <div class="admin-card" style="margin-bottom:20px;">
+        <div class="admin-card-header">
+          <h3>👤 用户数据编辑器</h3>
+          <p class="admin-card-desc">搜索用户，查看并直接修改数据库中该用户的所有字段。</p>
+        </div>
+        <div class="admin-card-body">
+          <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+            <input type="text" class="form-input" id="saUserSearch" placeholder="输入用户名搜索..." style="flex:1;min-width:200px;">
+            <button class="btn btn-approve" id="btnSaUserSearch">🔍 搜索</button>
+          </div>
+          <div id="saUserEditor" style="display:none;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+              <h4 style="margin:0;" id="saUserTitle">用户详情</h4>
+              <button class="btn btn-reject" id="btnSaUserDelete" style="padding:4px 12px;font-size:12px;">🗑 删除用户</button>
+            </div>
+            <div id="saUserFields" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"></div>
+            <div style="margin-top:12px;display:flex;gap:10px;">
+              <button class="btn btn-approve" id="btnSaUserSave">💾 保存修改</button>
+              <button class="btn btn-reject" id="btnSaUserResetPwd" style="background:rgba(255,152,0,0.15);color:#ff9800;border:1px solid rgba(255,152,0,0.4);">🔑 重置密码</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 数据库表浏览器 -->
+      <div class="admin-card">
+        <div class="admin-card-header">
+          <h3>🗄 数据库表浏览器</h3>
+          <p class="admin-card-desc">浏览 Turso 数据库中的所有表，查看表结构和行数，点击可预览数据。</p>
+        </div>
+        <div class="admin-card-body">
+          <div style="display:flex;gap:10px;margin-bottom:12px;">
+            <button class="btn btn-approve" id="btnSaLoadTables">🔄 加载表列表</button>
+          </div>
+          <div id="saTablesList" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;"></div>
+          <div class="admin-table-wrap" style="max-height:400px;overflow:auto;display:none;" id="saTableDataWrap">
+            <table class="admin-table" style="margin-top:0;">
+              <thead id="saTableDataHead"></thead>
+              <tbody id="saTableDataBody"></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -1218,10 +1275,10 @@
   }
 })();
 </script>
-<script src="js/config.js?v=3.3.7"></script>
-<script src="js/api.js?v=3.3.7"></script>
-<script src="js/points.js?v=3.3.7"></script>
-<script src="js/lottery.js?v=3.3.7"></script>
-<script src="js/admin-main.js?v=3.3.7"></script>
+<script src="js/config.js?v=3.4.0"></script>
+<script src="js/api.js?v=3.4.0"></script>
+<script src="js/points.js?v=3.4.0"></script>
+<script src="js/lottery.js?v=3.4.0"></script>
+<script src="js/admin-main.js?v=3.4.0"></script>
 </body>
 </html>

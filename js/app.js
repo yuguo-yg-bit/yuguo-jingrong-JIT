@@ -243,6 +243,15 @@ var JITApp = (function() {
         return;
       }
       _currentUser = savedUser;
+
+      // 检查是否有绑定邮箱（老用户无邮箱 → 跳转绑定页）
+      JITApi._tursoCall("/session/email-check?username=" + encodeURIComponent(savedUser)).then(function(res) {
+        if (res && !res.hasEmail) {
+          localStorage.removeItem("jit_current_user");
+          window.location.replace("/login?bind=" + encodeURIComponent(savedUser));
+        }
+      }).catch(function() {});
+
       _updateLogoutText();
       _refreshPointsDisplay();
       _loadNotifications();

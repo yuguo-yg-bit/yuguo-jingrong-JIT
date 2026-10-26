@@ -649,6 +649,13 @@
     _switchTab("email");
   }
 
+  // 处理 ?bind= 参数（老用户无邮箱，从主页跳过来）
+  var bindUser = queryParams.get("bind");
+  if (bindUser) {
+    _switchTab("login");
+    _showEmailBindOverlay(decodeURIComponent(bindUser));
+  }
+
   // ========= Toast 提示 =========
   var _showToast = function(msg, type) {
     var el = document.getElementById("loginToast");

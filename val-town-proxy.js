@@ -325,6 +325,15 @@ export default async function (req) {
       return jsonResponse({ ok: true, token, username: dbUser.username, role: dbUser.role, expiresAt, emailBindingRequired: !emailOk });
     }
 
+    // ========== 邮箱状态检查（已登录用户） ==========
+    if (path === "/session/email-check" && req.method === "GET") {
+      const username = new URL(req.url).searchParams.get("username");
+      if (!username) return jsonResponse({ error: "缺少 username 参数" }, 400);
+      const eq = await execTurso("SELECT email FROM users WHERE id=? AND email IS NOT NULL AND email != '' LIMIT 1", [username]);
+      const erows = eq.data?.results?.[0]?.response?.result?.rows || eq.data?.results?.[0]?.response?.results?.rows || [];
+      return jsonResponse({ hasEmail: erows.length > 0, email: erows.length > 0 ? (erows[0][0]?.value || "") : "" });
+    }
+
     // ========== 会话校验（写资金操作强制） ==========
     async function requireSession() {
       const token = (req.headers.get("x-session-token") || "").trim();
