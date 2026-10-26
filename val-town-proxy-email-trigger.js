@@ -142,7 +142,7 @@ export default async function (email) {
         ]
       },
       {
-        sql: "INSERT INTO users (id, password_hash, full_name, birthdate, country, province, city, referrer, review_status, oauth_provider, oauth_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET oauth_provider=EXCLUDED.oauth_provider, oauth_id=EXCLUDED.oauth_id, updated_at=EXCLUDED.updated_at",
+        sql: "INSERT INTO users (id, password_hash, full_name, birthdate, country, province, city, referrer, review_status, oauth_provider, oauth_id, email, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET oauth_provider=EXCLUDED.oauth_provider, oauth_id=EXCLUDED.oauth_id, email=EXCLUDED.email, updated_at=EXCLUDED.updated_at",
         args: [
           { type: "text", value: username },
           { type: "text", value: passwordHash },
@@ -154,6 +154,7 @@ export default async function (email) {
           { type: "text", value: referrer },
           { type: "text", value: "approved" },
           { type: "text", value: "email" },
+          { type: "text", value: senderEmail },
           { type: "text", value: senderEmail },
           { type: "text", value: now },
           { type: "text", value: now }

@@ -845,14 +845,14 @@ var JITApi = (function() {
   };
 
   // ========== 登录（发会话 token，代理端校验） ==========
-  var _login = function(username, password) {
+  var _login = function(username, password, role) {
     if (!username || !password) return Promise.reject(new Error("请输入用户名和密码"));
     return _hashPw(password, username).then(function(hash) {
       return _tursoCall("/login", {
         username: username,
         password: password,
         passwordHash: "sha256$" + hash,
-        role: "user"
+        role: role || "user"
       }).then(function(res) {
         if (res.ok && res.token) {
           try {
@@ -1680,6 +1680,20 @@ var JITApi = (function() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email, code: code })
+      }).then(function(r) { return r.json(); });
+    },
+    bindEmail: function(username, email) {
+      return fetch(_tursoProxy + "/oauth/email/bind", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username, email: email })
+      }).then(function(r) { return r.json(); });
+    },
+    verifyBind: function(username, email, code) {
+      return fetch(_tursoProxy + "/oauth/email/verify-bind", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username, email: email, code: code })
       }).then(function(r) { return r.json(); });
     },
   };

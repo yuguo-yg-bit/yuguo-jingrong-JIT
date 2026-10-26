@@ -385,9 +385,9 @@
       </div>
 
       <div class="login-tabs">
-        <button class="login-tab active" id="tabLogin">登 录</button>
-        <button class="login-tab" id="tabRegister">注 册</button>
+        <button class="login-tab active" id="tabLogin">邮箱登录</button>
         <button class="login-tab" id="tabEmailRegister">邮箱注册</button>
+        <button class="login-tab" id="tabAdmin">管理员</button>
       </div>
 
       <!-- OAuth 状态提示 -->
@@ -400,8 +400,8 @@
       <div class="login-panel active" id="panelLogin">
         <div id="referrerHint" style="text-align:center;color:var(--ice-blue);font-size:13px;margin-bottom:12px;display:none;"></div>
         <div class="form-group">
-          <label class="form-label">用户名</label>
-          <input type="text" class="form-input" id="loginUsername" placeholder="请输入用户名">
+          <label class="form-label">邮箱/用户名</label>
+          <input type="text" class="form-input" id="loginUsername" placeholder="请输入邮箱或用户名">
         </div>
         <div class="form-group">
           <label class="form-label">密码</label>
@@ -418,8 +418,8 @@
         </div>
       </div>
 
-      <!-- 注册面板 -->
-      <div class="login-panel" id="panelRegister">
+      <!-- 注册面板（已废弃，仅邮箱注册） -->
+      <div class="login-panel" id="panelRegister" style="display:none;">
         <div class="form-group">
           <label class="form-label">姓名 <span class="required">*</span></label>
           <input type="text" class="form-input" id="regFullName" placeholder="请输入真实姓名">
@@ -552,6 +552,43 @@
 
         <button class="btn-submit" id="btnEmailRegister" style="width:100%;margin-top:12px;">发送验证邮件</button>
       </div>
+
+      <!-- 管理员登录面板 -->
+      <div class="login-panel" id="panelAdmin">
+        <div class="form-group">
+          <label class="form-label">管理员账号</label>
+          <input type="text" class="form-input" id="adminUsername" placeholder="请输入管理员账号">
+        </div>
+        <div class="form-group">
+          <label class="form-label">管理员密码</label>
+          <input type="password" class="form-input" id="adminPassword" placeholder="请输入管理员密码">
+        </div>
+        <div class="form-error" id="adminError" style="display:none;"></div>
+        <button class="btn-submit" id="btnAdminLogin" style="width:100%;">管理员登录</button>
+      </div>
+
+      <!-- 邮箱绑定弹窗（老用户无邮箱时强制弹出） -->
+      <div id="emailBindOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10000;align-items:center;justify-content:center;">
+        <div style="background:var(--card-bg, #1a1a2e);border-radius:16px;padding:30px;width:90%;max-width:400px;text-align:center;border:1px solid var(--gold-primary);box-shadow:0 0 40px rgba(212,175,55,0.3);">
+          <p style="font-size:24px;margin:0 0 8px 0;">📧 绑定邮箱</p>
+          <p style="font-size:13px;color:var(--text-secondary);margin:0 0 20px 0;">为保障账户安全，请绑定您的邮箱</p>
+          <div id="emailBindStep1">
+            <input type="email" class="form-input" id="bindEmail" placeholder="请输入邮箱" style="width:100%;box-sizing:border-box;">
+            <p style="font-size:11px;color:var(--text-secondary);margin:4px 0;">绑定后可使用邮箱登录</p>
+            <button class="btn-submit" id="btnSendBindCode" style="width:100%;margin-top:12px;">发送验证码</button>
+            <p id="bindError1" style="font-size:12px;color:#f44336;margin:6px 0 0 0;display:none;"></p>
+          </div>
+          <div id="emailBindStep2" style="display:none;">
+            <p style="font-size:13px;color:var(--success);margin:0 0 12px 0;">验证码已发送，请查收邮箱</p>
+            <input type="text" class="form-input" id="bindCode" placeholder="输入 6 位验证码" maxlength="6" style="width:200px;text-align:center;font-size:24px;letter-spacing:8px;font-family:monospace;">
+            <p id="bindError2" style="font-size:12px;color:#f44336;margin:6px 0 0 0;display:none;"></p>
+            <button class="btn-submit" id="btnVerifyBind" style="width:200px;margin-top:12px;background:var(--success);">确认绑定</button>
+            <br>
+            <a href="#" id="btnResendBind" style="font-size:12px;color:var(--ice-blue);margin-top:8px;display:inline-block;">重新发送</a>
+          </div>
+          <p style="font-size:11px;color:var(--text-secondary);margin:16px 0 0 0;">此操作不可跳过，绑定后立即进入系统</p>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -604,25 +641,25 @@
   // ========= Tab 切换 =========
   var _switchTab = function(tab) {
     var isLogin = (tab === "login");
-    var isRegister = (tab === "register");
     var isEmail = (tab === "email");
+    var isAdmin = (tab === "admin");
     document.getElementById("tabLogin").classList.toggle("active", isLogin);
-    document.getElementById("tabRegister").classList.toggle("active", isRegister);
     document.getElementById("tabEmailRegister").classList.toggle("active", isEmail);
+    document.getElementById("tabAdmin").classList.toggle("active", isAdmin);
     document.getElementById("panelLogin").classList.toggle("active", isLogin);
-    document.getElementById("panelRegister").classList.toggle("active", isRegister);
     document.getElementById("panelEmailRegister").classList.toggle("active", isEmail);
-    document.getElementById("loginCardTitle").textContent = isEmail ? "邮箱注册" : (isRegister ? "创建账户" : "欢迎回来");
-    document.getElementById("loginCardSub").textContent = isEmail ? "使用邮箱注册，验证后立即放行" : (isRegister ? "注册后需等待管理员审核通过" : "登录您的账户继续使用");
+    document.getElementById("panelAdmin").classList.toggle("active", isAdmin);
+    document.getElementById("loginCardTitle").textContent = isAdmin ? "管理员登录" : (isEmail ? "邮箱注册" : "用户登录");
+    document.getElementById("loginCardSub").textContent = isAdmin ? "管理员专用入口" : (isEmail ? "使用邮箱注册，验证后立即放行" : "使用邮箱登录您的账户");
     document.getElementById("loginError").style.display = "none";
-    document.getElementById("regError").style.display = "none";
+    if (document.getElementById("adminError")) document.getElementById("adminError").style.display = "none";
     var emailErr = document.getElementById("emailRegError");
     if (emailErr) emailErr.style.display = "none";
   };
 
   document.getElementById("tabLogin").addEventListener("click", function() { _switchTab("login"); });
-  document.getElementById("tabRegister").addEventListener("click", function() { _switchTab("register"); });
   document.getElementById("tabEmailRegister").addEventListener("click", function() { _switchTab("email"); });
+  document.getElementById("tabAdmin").addEventListener("click", function() { _switchTab("admin"); });
 
   // 处理 ?tab=register 参数
   var queryParams = new URLSearchParams(window.location.search);
@@ -662,7 +699,7 @@
 
     if (!username || !password) {
       errorEl.style.display = "block";
-      errorEl.textContent = "请输入用户名和密码";
+      errorEl.textContent = "请输入邮箱/用户名和密码";
       return;
     }
 
@@ -683,8 +720,15 @@
     btn.textContent = "验证中...";
     JITApi.login(username, password).then(function(res) {
       if (res && res.ok) {
-        localStorage.setItem("jit_current_user", username);
-        _showToast("登录成功，欢迎 " + username, "success");
+        localStorage.setItem("jit_current_user", res.username);
+        if (res.emailBindingRequired) {
+          // 老用户无邮箱 → 弹出绑定弹窗
+          _showEmailBindOverlay(res.username);
+          btn.disabled = false;
+          btn.textContent = "登 录";
+          return;
+        }
+        _showToast("登录成功", "success");
         setTimeout(function() { window.location.replace("/work"); }, 600);
         return;
       }
@@ -694,7 +738,7 @@
           errorEl.textContent = "您的注册申请正在审核中，请耐心等待管理员通过";
         } else {
           errorEl.style.display = "block";
-          errorEl.textContent = "用户名或密码错误";
+          errorEl.textContent = "邮箱/用户名或密码错误";
         }
       });
     }).catch(function(err) {
@@ -704,6 +748,107 @@
         btn.disabled = false;
         btn.textContent = "登 录";
       });
+  });
+
+  // ========= 管理员登录 =========
+  document.getElementById("btnAdminLogin").addEventListener("click", function() {
+    var username = document.getElementById("adminUsername").value.trim();
+    var password = document.getElementById("adminPassword").value.trim();
+    var errorEl = document.getElementById("adminError");
+    if (!username || !password) { errorEl.style.display = "block"; errorEl.textContent = "请输入管理员账号和密码"; return; }
+    errorEl.style.display = "none";
+    var btn = document.getElementById("btnAdminLogin");
+    btn.disabled = true;
+    btn.textContent = "验证中...";
+    JITApi.login(username, password, "admin").then(function(res) {
+      if (res && res.ok) {
+        localStorage.setItem("jit_current_user", "admin");
+        _showToast("管理员登录成功", "success");
+        setTimeout(function() { window.location.replace("/work"); }, 600);
+      } else {
+        errorEl.style.display = "block";
+        errorEl.textContent = "管理员账号或密码错误";
+      }
+    }).catch(function(err) {
+      errorEl.style.display = "block";
+      errorEl.textContent = "登录失败: " + err.message;
+    }).finally(function() {
+      btn.disabled = false;
+      btn.textContent = "管理员登录";
+    });
+  });
+
+  // ========= 邮箱绑定弹窗 =========
+  var _emailBindUsername = "";
+  var _emailBindEmail = "";
+
+  function _showEmailBindOverlay(username) {
+    _emailBindUsername = username;
+    document.getElementById("emailBindOverlay").style.display = "flex";
+    document.getElementById("emailBindStep1").style.display = "block";
+    document.getElementById("emailBindStep2").style.display = "none";
+    document.getElementById("bindEmail").value = "";
+    document.getElementById("bindCode").value = "";
+    document.getElementById("bindError1").style.display = "none";
+    document.getElementById("bindError2").style.display = "none";
+  }
+
+  document.getElementById("btnSendBindCode").addEventListener("click", function() {
+    var email = document.getElementById("bindEmail").value.trim();
+    var errEl = document.getElementById("bindError1");
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errEl.style.display = "block"; errEl.textContent = "请输入正确的邮箱"; return;
+    }
+    errEl.style.display = "none";
+    var btn = document.getElementById("btnSendBindCode");
+    btn.disabled = true; btn.textContent = "发送中...";
+    JITApi.bindEmail(_emailBindUsername, email).then(function(res) {
+      if (res.ok) {
+        _emailBindEmail = email;
+        document.getElementById("emailBindStep1").style.display = "none";
+        document.getElementById("emailBindStep2").style.display = "block";
+        if (!res.mailSent && res.fallbackCode) {
+          _showToast("邮件发送失败，验证码: " + res.fallbackCode, "error");
+        }
+      } else {
+        errEl.style.display = "block"; errEl.textContent = res.error || "发送失败";
+      }
+    }).catch(function(err) {
+      errEl.style.display = "block"; errEl.textContent = "网络错误: " + err.message;
+    }).finally(function() {
+      btn.disabled = false; btn.textContent = "发送验证码";
+    });
+  });
+
+  document.getElementById("btnVerifyBind").addEventListener("click", function() {
+    var code = document.getElementById("bindCode").value.trim();
+    var errEl = document.getElementById("bindError2");
+    if (!code || code.length !== 6 || !/^\d{6}$/.test(code)) {
+      errEl.style.display = "block"; errEl.textContent = "请输入 6 位验证码"; return;
+    }
+    errEl.style.display = "none";
+    var btn = document.getElementById("btnVerifyBind");
+    btn.disabled = true; btn.textContent = "验证中...";
+    JITApi.verifyBind(_emailBindUsername, _emailBindEmail, code).then(function(res) {
+      if (res.verified) {
+        document.getElementById("emailBindOverlay").style.display = "none";
+        localStorage.setItem("jit_current_user", _emailBindUsername);
+        _showToast("邮箱绑定成功，欢迎进入系统", "success");
+        setTimeout(function() { window.location.replace("/work"); }, 600);
+      } else {
+        errEl.style.display = "block"; errEl.textContent = res.error || "验证码错误";
+      }
+    }).catch(function(err) {
+      errEl.style.display = "block"; errEl.textContent = "网络错误: " + err.message;
+    }).finally(function() {
+      btn.disabled = false; btn.textContent = "确认绑定";
+    });
+  });
+
+  document.getElementById("btnResendBind").addEventListener("click", function(e) {
+    e.preventDefault();
+    document.getElementById("emailBindStep2").style.display = "none";
+    document.getElementById("emailBindStep1").style.display = "block";
   });
 
   document.getElementById("loginPassword").addEventListener("keydown", function(e) {

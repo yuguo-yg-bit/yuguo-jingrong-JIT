@@ -312,8 +312,17 @@ export default async function (req) {
       const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
       await execTurso("INSERT OR REPLACE INTO sessions (token, username, role, created_at, expires_at, ip, ua) VALUES (?,?,?,?,?,?,?)",
         [token, dbUser.username, dbUser.role, nowIso, expiresAt, ip, ua]);
-      logAudit("LOGIN_SUCCESS", dbUser.username, "sessions", token, "登录成功（" + dbUser.role + "）", "/login", "", "ok");
-      return jsonResponse({ ok: true, token, username: dbUser.username, role: dbUser.role, expiresAt });
+
+      // 检查是否有绑定邮箱（老用户可能没有）
+      let emailOk = true;
+      if (!isAdmin) {
+        const eq = await execTurso("SELECT email FROM users WHERE id=? AND email IS NOT NULL AND email != '' LIMIT 1", [dbUser.username]);
+        const erows = eq.data?.results?.[0]?.response?.result?.rows || eq.data?.results?.[0]?.response?.results?.rows || [];
+        if (erows.length === 0) emailOk = false;
+      }
+
+      logAudit("LOGIN_SUCCESS", dbUser.username, "sessions", token, "登录成功（" + dbUser.role + "）" + (emailOk ? "" : " [需绑定邮箱]"), "/login", "", "ok");
+      return jsonResponse({ ok: true, token, username: dbUser.username, role: dbUser.role, expiresAt, emailBindingRequired: !emailOk });
     }
 
     // ========== 会话校验（写资金操作强制） ==========
@@ -906,6 +915,59 @@ export default async function (req) {
       }
     }
 
+    // ========== 老用户绑定邮箱（发送验证码） ==========
+    if (path === "/oauth/email/bind" && req.method === "POST") {
+      const { username, email } = await req.json();
+      if (!username || !email) return jsonResponse({ error: "缺少 username 或 email" }, 400);
+      const emailLower = email.toLowerCase();
+      const now = new Date().toISOString();
+
+      const uq = await execTurso("SELECT id FROM users WHERE id=? LIMIT 1", [username]);
+      const urows = uq.data?.results?.[0]?.response?.result?.rows || uq.data?.results?.[0]?.response?.results?.rows || [];
+      if (urows.length === 0) return jsonResponse({ error: "用户不存在" }, 404);
+
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      await execTurso(
+        "INSERT OR REPLACE INTO email_bindings (email, username, code, status, created_at) VALUES (?,?,?,?,?)",
+        [emailLower, username, code, "pending", now]
+      );
+
+      let mailSent = false;
+      try {
+        await mailtrapClient.send({
+          from: sender,
+          to: [{ email: emailLower }],
+          subject: "玉国金融 - 绑定邮箱验证码: " + code,
+          text: "您的绑定邮箱验证码是: " + code + "\n请在页面中输入此验证码完成邮箱绑定。",
+          category: "EmailBinding",
+        });
+        mailSent = true;
+      } catch (e) { console.error("[mailtrap]", String(e).substring(0,200)); }
+
+      return jsonResponse({ ok: true, mailSent, message: mailSent ? "验证码已发送到邮箱" : "邮件发送失败，请稍后重试", fallbackCode: mailSent ? null : code });
+    }
+
+    // ========== 老用户绑定邮箱（验证验证码） ==========
+    if (path === "/oauth/email/verify-bind" && req.method === "POST") {
+      const { username, email, code } = await req.json();
+      if (!username || !email || !code) return jsonResponse({ error: "缺少参数" }, 400);
+      const emailLower = email.toLowerCase();
+      const now = new Date().toISOString();
+
+      const bq = await execTurso(
+        "SELECT code FROM email_bindings WHERE username=? AND email=? AND code=? AND status='pending'",
+        [username, emailLower, code]
+      );
+      const brows = bq.data?.results?.[0]?.response?.result?.rows || bq.data?.results?.[0]?.response?.results?.rows || [];
+      if (brows.length === 0) return jsonResponse({ verified: false, error: "验证码错误或已过期" });
+
+      await execTurso("UPDATE email_bindings SET status='verified', verified_at=? WHERE email=? AND username=?", [now, emailLower, username]);
+      await execTurso("UPDATE users SET email=?, updated_at=? WHERE id=?", [emailLower, now, username]);
+      await execTurso("UPDATE registrations SET email=?, oauth_id=?, oauth_email=? WHERE username=?", [emailLower, emailLower, emailLower, username]);
+
+      return jsonResponse({ verified: true, message: "邮箱绑定成功" });
+    }
+
     // ========== Email 注册 + 验证码 ==========
     // 注册：生成 6 位验证码，存入 email_verifications，用户需发邮件到 yuguoemail@yuconemail.cc.cd 完成验证
     if (path === "/oauth/email/register" && req.method === "POST") {
@@ -997,14 +1059,14 @@ export default async function (req) {
 
       // 写入 registrations（免审核）
       await execTurso(
-        "INSERT OR REPLACE INTO registrations (id, username, password_hash, full_name, birthdate, country, province, city, referrer, review_status, oauth_provider, oauth_id, oauth_email, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        [regId, username, passwordHash, fullName, birthdate, country, province, city, referrer, "approved", "email", emailLower, emailLower, now]
+        "INSERT OR REPLACE INTO registrations (id, username, password_hash, full_name, birthdate, country, province, city, referrer, review_status, oauth_provider, oauth_id, oauth_email, email, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [regId, username, passwordHash, fullName, birthdate, country, province, city, referrer, "approved", "email", emailLower, emailLower, emailLower, now]
       );
 
       // 写入 users
       await execTurso(
-        "INSERT INTO users (id, password_hash, full_name, birthdate, country, province, city, referrer, review_status, oauth_provider, oauth_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET oauth_provider=EXCLUDED.oauth_provider, oauth_id=EXCLUDED.oauth_id, updated_at=EXCLUDED.updated_at",
-        [username, passwordHash, fullName, birthdate, country, province, city, referrer, "approved", "email", emailLower, now, now]
+        "INSERT INTO users (id, password_hash, full_name, birthdate, country, province, city, referrer, review_status, oauth_provider, oauth_id, email, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET oauth_provider=EXCLUDED.oauth_provider, oauth_id=EXCLUDED.oauth_id, email=EXCLUDED.email, updated_at=EXCLUDED.updated_at",
+        [username, passwordHash, fullName, birthdate, country, province, city, referrer, "approved", "email", emailLower, emailLower, now, now]
       );
 
       // 生成登录 token
