@@ -15,12 +15,26 @@ export default async function (email) {
   }
 
   // Val.town email 对象结构: { from, to, subject, text, html, date }
+  console.log("[EMAIL-TRIGGER] ========== 收到邮件 ==========");
+  console.log("[EMAIL-TRIGGER] 完整 email 对象:", JSON.stringify({
+    from: email.from,
+    to: email.to,
+    subject: email.subject,
+    text: email.text ? email.text.substring(0, 200) : "",
+    date: email.date
+  }));
+
   const rawFrom = email.from || "";
   const senderMatch = rawFrom.match(/<([^>]+)>/);
   const senderEmail = (senderMatch ? senderMatch[1] : rawFrom).trim().toLowerCase();
   const body = (email.text || "").trim();
 
+  console.log("[EMAIL-TRIGGER] 发件人原始值:", rawFrom);
+  console.log("[EMAIL-TRIGGER] 提取的发件人邮箱:", senderEmail);
+  console.log("[EMAIL-TRIGGER] 邮件正文(前200字):", body.substring(0, 200));
+
   if (!senderEmail) {
+    console.log("[EMAIL-TRIGGER] ❌ 无法提取发件人邮箱");
     return new Response("Could not extract sender email from: " + rawFrom, { status: 400 });
   }
 
@@ -28,14 +42,20 @@ export default async function (email) {
   const codeMatch = body.match(/\b(\d{6})\b/);
   const code = codeMatch ? codeMatch[1] : null;
 
+  console.log("[EMAIL-TRIGGER] 提取的验证码:", code);
+
   if (!code) {
+    console.log("[EMAIL-TRIGGER] ❌ 未在正文中找到6位数字验证码");
     return new Response("No 6-digit code found in email body. Body: " + body.substring(0, 100), { status: 400 });
   }
 
   const now = new Date().toISOString();
+  console.log("[EMAIL-TRIGGER] 当前时间:", now);
 
   try {
     // 1. 查 email_verifications 表：匹配邮箱 + 验证码 + 未验证状态
+    console.log("[EMAIL-TRIGGER] 🔍 查询 email_verifications: email=" + senderEmail + " code=" + code);
+
     const checkRes = await fetch(TURSO_API, {
       method: "POST",
       headers: {
@@ -59,9 +79,18 @@ export default async function (email) {
     const checkData = await checkRes.json();
     const rows = (checkData.results?.[0]?.response?.result?.rows || []);
 
+    console.log("[EMAIL-TRIGGER] Turso响应状态:", checkRes.status);
+    console.log("[EMAIL-TRIGGER] 匹配到的行数:", rows.length);
+    if (checkData.results?.[0]?.error) {
+      console.log("[EMAIL-TRIGGER] ❌ Turso错误:", JSON.stringify(checkData.results[0].error));
+    }
+
     if (rows.length === 0) {
+      console.log("[EMAIL-TRIGGER] ❌ 未匹配到待验证记录，完整响应的results:", JSON.stringify(checkData.results).substring(0, 500));
       return new Response("No matching pending verification. Email: " + senderEmail + " Code: " + code, { status: 404 });
     }
+
+    console.log("[EMAIL-TRIGGER] ✅ 找到匹配记录!");
 
     // 2. 提取用户数据
     const row = rows[0];
@@ -81,7 +110,10 @@ export default async function (email) {
       ? crypto.randomUUID()
       : (Date.now().toString(36) + Math.random().toString(36).substring(2, 15));
 
+    console.log("[EMAIL-TRIGGER] 用户数据: username=" + username + " fullName=" + fullName + " regId=" + regId);
+
     // 3. 标记验证通过 + 创建用户（免审核 approved）+ 写入 registrations 表
+    console.log("[EMAIL-TRIGGER] ✍️ 写入数据库: 更新验证状态 + 创建用户 + 插入registrations");
     const stmts = [
       {
         sql: "UPDATE email_verifications SET status='verified', verified_at=? WHERE email=?",
@@ -129,7 +161,7 @@ export default async function (email) {
       }
     ];
 
-    await fetch(TURSO_API, {
+    const writeRes = await fetch(TURSO_API, {
       method: "POST",
       headers: {
         "Authorization": "Bearer " + TURSO_TOKEN,
@@ -142,9 +174,25 @@ export default async function (email) {
       })
     });
 
+    const writeData = await writeRes.json();
+    console.log("[EMAIL-TRIGGER] 写入响应状态:", writeRes.status);
+    if (writeData.results) {
+      for (var wi = 0; wi < writeData.results.length; wi++) {
+        var wr = writeData.results[wi];
+        if (wr.error) {
+          console.log("[EMAIL-TRIGGER] ❌ 写入步骤" + wi + "失败:", JSON.stringify(wr.error));
+        } else {
+          console.log("[EMAIL-TRIGGER] ✅ 写入步骤" + wi + "成功");
+        }
+      }
+    }
+
+    console.log("[EMAIL-TRIGGER] 🎉 验证完成! User " + username + " via " + senderEmail);
     return new Response("OK - User " + username + " verified via " + senderEmail, { status: 200 });
 
   } catch (e) {
+    console.log("[EMAIL-TRIGGER] ❌ 异常:", e.message || "unknown");
+    console.log("[EMAIL-TRIGGER] ❌ 堆栈:", e.stack || "no stack");
     return new Response("Internal error: " + (e.message || "unknown"), { status: 500 });
   }
 }
