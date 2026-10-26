@@ -1011,9 +1011,16 @@
       document.getElementById("emailVerifySection").style.display = "block";
       document.getElementById("btnEmailMailto").href = "mailto:yuguoemail@yuconemail.cc.cd?subject=" + encodeURIComponent("玉国金融邮箱验证") + "&body=" + encodeURIComponent(res.code);
       btn.style.display = "none";
-      document.getElementById("emailPollStatus").textContent = "请发送邮件后点击下方「刷新验证状态」";
-      document.getElementById("emailPollStatus").style.color = "var(--text-secondary)";
-      _showToast("验证码已生成，请发送邮件后点击刷新", "success");
+      if (res.mailSent) {
+        document.getElementById("emailPollStatus").textContent = "验证码已自动发送到您的邮箱，请查收后回复验证码完成验证";
+        document.getElementById("emailPollStatus").style.color = "var(--success)";
+        document.getElementById("btnEmailMailto").style.display = "none";
+        _showToast("验证码已发送到 " + _emailRegEmail, "success");
+      } else {
+        document.getElementById("emailPollStatus").textContent = "请发送邮件后点击下方「刷新验证状态」";
+        document.getElementById("emailPollStatus").style.color = "var(--text-secondary)";
+        _showToast(res.message || "验证码已生成，请发送邮件后点击刷新", res.mailError ? "warning" : "success");
+      }
     }).catch(function(err) {
       errorEl.style.display = "block";
       errorEl.textContent = "注册失败: " + (err.message || "网络错误");
@@ -1086,9 +1093,16 @@
       _emailRegEmail = res.email || email;
       document.getElementById("emailVerifyCode").textContent = res.code;
       document.getElementById("btnEmailMailto").href = "mailto:yuguoemail@yuconemail.cc.cd?subject=" + encodeURIComponent("玉国金融邮箱验证") + "&body=" + encodeURIComponent(res.code);
-      document.getElementById("emailPollStatus").textContent = "请发送邮件后点击下方「刷新验证状态」";
-      document.getElementById("emailPollStatus").style.color = "var(--text-secondary)";
-      _showToast("已生成新验证码，请用新码发送邮件", "success");
+      if (res.mailSent) {
+        document.getElementById("emailPollStatus").textContent = "新验证码已发送到您的邮箱，请查收后回复验证码完成验证";
+        document.getElementById("emailPollStatus").style.color = "var(--success)";
+        document.getElementById("btnEmailMailto").style.display = "none";
+        _showToast("新验证码已发送到 " + _emailRegEmail, "success");
+      } else {
+        document.getElementById("emailPollStatus").textContent = "请发送邮件后点击下方「刷新验证状态」";
+        document.getElementById("emailPollStatus").style.color = "var(--text-secondary)";
+        _showToast("已生成新验证码，请用新码发送邮件", "success");
+      }
     }).catch(function(err) {
       _showToast("网络错误: " + (err.message || ""), "error");
     }).finally(function() {

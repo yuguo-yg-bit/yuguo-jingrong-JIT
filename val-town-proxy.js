@@ -5,6 +5,8 @@
 //   https://yuguoygbit--efeee912c58011f1af2f1607ee4eb77e.web.val.run （主代理）
 // ============================================================
 
+import { MailtrapClient } from "npm:mailtrap";
+
 export default async function (req) {
   // ========== HTTP 代理 ==========
 
@@ -12,6 +14,7 @@ export default async function (req) {
   const TURSO_API = process.env.TURSO_API_URL;
   const TURSO_TOKEN = process.env.TURSO_RW_TOKEN;
   const Github_TOKEN = process.env.GitHub_API_TOKEN;
+  const MAILTRAP_TOKEN = process.env.MAILTRAP_TOKEN;
 
   function getCorsHeaders(origin) {
     const allowed = ALLOW_ORIGINS.includes(origin) ? origin : ALLOW_ORIGINS[0];
@@ -927,7 +930,33 @@ export default async function (req) {
         [emailLower, username, passwordHash, fullName || "", birthdate || "", country || "", province || "", city || "", referrer || "", code, "pending", now]
       );
 
-      return jsonResponse({ ok: true, code: code, email: emailLower, message: "验证码已生成" });
+      // 通过 Mailtrap 自动发送验证码邮件给用户
+      let mailSent = false;
+      let mailError = null;
+      if (MAILTRAP_TOKEN) {
+        try {
+          const mailtrap = new MailtrapClient({ token: MAILTRAP_TOKEN });
+          await mailtrap.send({
+            from: { email: "hello@yuguojinrongemail.cc.cd", name: "玉国金融" },
+            to: [{ email: emailLower }],
+            subject: "玉国金融 - 邮箱验证码: " + code,
+            text: "您的验证码是: " + code + "\n\n请将此验证码回复发送到 yuguoemail@yuconemail.cc.cd 完成验证。\n\n验证码邮件正文请只填写这 6 位数字。\n\n玉国金融团队",
+            category: "Email Verification",
+          });
+          mailSent = true;
+        } catch (e) {
+          mailError = e.message || "unknown";
+        }
+      }
+
+      return jsonResponse({
+        ok: true,
+        code: code,
+        email: emailLower,
+        mailSent: mailSent,
+        mailError: mailError,
+        message: mailSent ? "验证码已发送到您的邮箱" : "验证码已生成" + (mailError ? "（邮件发送失败: " + mailError + "）" : "（Mailtrap 未配置）"),
+      });
     }
 
     // 轮询：检查邮箱是否已验证通过
