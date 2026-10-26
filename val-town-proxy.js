@@ -288,8 +288,13 @@ export default async function (req) {
         if (!passwordHash || String(passwordHash).indexOf("sha256$") !== 0) {
           return jsonResponse({ error: "请使用安全密码登录" }, 400);
         }
-        const q = await execTurso("SELECT username, password_hash FROM registrations WHERE username=? AND review_status='approved' LIMIT 1", [username]);
-        const rows = q.data?.results?.[0]?.response?.result?.rows || q.data?.results?.[0]?.response?.results?.rows || [];
+        // 先用 username 查，找不到再用 email（oauth_id）查
+        let q = await execTurso("SELECT username, password_hash FROM registrations WHERE username=? AND review_status='approved' LIMIT 1", [username]);
+        let rows = q.data?.results?.[0]?.response?.result?.rows || q.data?.results?.[0]?.response?.results?.rows || [];
+        if (rows.length === 0 && username.indexOf("@") > 0) {
+          q = await execTurso("SELECT username, password_hash FROM registrations WHERE oauth_id=? AND review_status='approved' LIMIT 1", [username.toLowerCase()]);
+          rows = q.data?.results?.[0]?.response?.result?.rows || q.data?.results?.[0]?.response?.results?.rows || [];
+        }
         if (rows.length > 0) {
           const s = String(rows[0][1]?.value ?? "");
           if (s === String(passwordHash)) valid = true;
