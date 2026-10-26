@@ -156,6 +156,19 @@ export default async function (req) {
       let data;
       try { data = JSON.parse(rawText); } catch (e) { throw new Error("Turso 返回非JSON: " + rawText.substring(0, 200)); }
 
+      // 检查 Turso pipeline 内部错误（如表不存在、权限不足等）
+      if (data && data.results && Array.isArray(data.results)) {
+        for (var i = 0; i < data.results.length; i++) {
+          if (data.results[i].error) {
+            throw new Error("Turso 错误: " + (data.results[i].error.message || JSON.stringify(data.results[i].error)));
+          }
+        }
+      }
+
+      if (!tursoRes.ok) {
+        throw new Error("Turso HTTP " + tursoRes.status + ": " + rawText.substring(0, 200));
+      }
+
       return { ok: tursoRes.ok, status: tursoRes.status, data, rawText };
     }
 

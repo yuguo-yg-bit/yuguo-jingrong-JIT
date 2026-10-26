@@ -36,7 +36,7 @@ export default async function (email) {
 
   try {
     // 1. 查 email_verifications 表：匹配邮箱 + 验证码 + 未验证状态
-    const checkRes = await fetch(TURSO_API + "/v2/pipeline", {
+    const checkRes = await fetch(TURSO_API, {
       method: "POST",
       headers: {
         "Authorization": "Bearer " + TURSO_TOKEN,
@@ -129,7 +129,7 @@ export default async function (email) {
       }
     ];
 
-    await fetch(TURSO_API + "/v2/pipeline", {
+    await fetch(TURSO_API, {
       method: "POST",
       headers: {
         "Authorization": "Bearer " + TURSO_TOKEN,
