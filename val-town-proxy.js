@@ -839,6 +839,21 @@ export default async function (req) {
       }
     }
 
+    // 检测 Microsoft 系列邮箱域名（Outlook/Hotmail/Live/MSN），Mailtrap 无法投递，需降级为手动模式
+    function isMicrosoftEmail(email) {
+      const domain = (email || "").split("@")[1]?.toLowerCase() || "";
+      if (!domain) return false;
+      const msDomains = [
+        "outlook.com", "outlook.jp", "outlook.fr", "outlook.de", "outlook.co.uk",
+        "outlook.co.jp", "outlook.kr", "outlook.in", "outlook.com.br", "outlook.com.au",
+        "hotmail.com", "hotmail.co.uk", "hotmail.fr", "hotmail.de", "hotmail.co.jp",
+        "hotmail.it", "hotmail.es", "hotmail.com.br",
+        "live.com", "live.co.uk", "live.fr", "live.de", "live.jp", "live.cn",
+        "msn.com", "windowslive.com", "passport.com"
+      ];
+      return msDomains.some(function(d) { return domain === d || domain.endsWith("." + d); });
+    }
+
     // ========== Email 魔法链接登录 ==========
     if (path === "/oauth/email/send" && req.method === "POST") {
       const { email, returnUrl } = await req.json();
@@ -942,18 +957,24 @@ export default async function (req) {
       );
 
       let mailSent = false;
-      try {
-        await mailtrapClient.send({
-          from: sender,
-          to: [{ email: emailLower }],
-          subject: "玉国金融 - 绑定邮箱验证码: " + code,
-          text: "您的绑定邮箱验证码是: " + code + "\n请在页面中输入此验证码完成邮箱绑定。",
-          category: "EmailBinding",
-        });
-        mailSent = true;
-      } catch (e) { console.error("[mailtrap]", String(e).substring(0,200)); }
+      let mailError = null;
+      let skipMailtrap = isMicrosoftEmail(emailLower);
+      if (skipMailtrap) {
+        mailError = "Microsoft 邮箱域名不支持自动投递（严格头认证），请手动发送邮件";
+      } else {
+        try {
+          await mailtrapClient.send({
+            from: sender,
+            to: [{ email: emailLower }],
+            subject: "玉国金融 - 绑定邮箱验证码: " + code,
+            text: "您的绑定邮箱验证码是: " + code + "\n请在页面中输入此验证码完成邮箱绑定。",
+            category: "EmailBinding",
+          });
+          mailSent = true;
+        } catch (e) { console.error("[mailtrap]", String(e).substring(0,200)); mailError = e.message || "unknown"; }
+      }
 
-      return jsonResponse({ ok: true, mailSent, message: mailSent ? "验证码已发送到邮箱" : "邮件发送失败，请稍后重试", fallbackCode: mailSent ? null : code });
+      return jsonResponse({ ok: true, mailSent, skipMailtrap: skipMailtrap || false, message: mailSent ? "验证码已发送到邮箱" : "邮件发送失败，请稍后重试", fallbackCode: mailSent ? null : code });
     }
 
     // ========== 老用户绑定邮箱（验证验证码） ==========
@@ -1007,9 +1028,13 @@ export default async function (req) {
       );
 
       // 通过 Mailtrap 自动发送验证码邮件给用户
+      // 微软系邮箱（Outlook/Hotmail/Live/MSN）Mailtrap 无法投递，直接降级为手动模式
       let mailSent = false;
       let mailError = null;
-      if (MAILTRAP_TOKEN) {
+      let skipMailtrap = isMicrosoftEmail(emailLower);
+      if (skipMailtrap) {
+        mailError = "Microsoft 邮箱域名不支持自动投递（严格头认证），请手动发送邮件";
+      } else if (MAILTRAP_TOKEN) {
         try {
           const mailtrap = new MailtrapClient({ token: MAILTRAP_TOKEN });
           await mailtrap.send({
@@ -1031,7 +1056,8 @@ export default async function (req) {
         email: emailLower,
         mailSent: mailSent,
         mailError: mailError,
-        message: mailSent ? "验证码已发送到您的邮箱" : "验证码已生成" + (mailError ? "（邮件发送失败: " + mailError + "）" : "（Mailtrap 未配置）"),
+        skipMailtrap: skipMailtrap || false,
+        message: mailSent ? "验证码已发送到您的邮箱" : "验证码已生成" + (mailError ? "（" + mailError + "）" : "（Mailtrap 未配置）"),
       });
     }
 

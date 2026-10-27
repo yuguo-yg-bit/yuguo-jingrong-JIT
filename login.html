@@ -743,6 +743,7 @@
   // ========= 邮箱绑定弹窗 =========
   var _emailBindUsername = "";
   var _emailBindEmail = "";
+  var _emailBindResendCount = 0;
 
   function _showEmailBindOverlay(username) {
     _emailBindUsername = username;
@@ -767,10 +768,16 @@
     JITApi.bindEmail(_emailBindUsername, email).then(function(res) {
       if (res.ok) {
         _emailBindEmail = email;
+        _emailBindResendCount = 0;
         document.getElementById("emailBindStep1").style.display = "none";
         document.getElementById("emailBindStep2").style.display = "block";
         if (!res.mailSent && res.fallbackCode) {
-          _showToast("邮件发送失败，验证码: " + res.fallbackCode, "error");
+          document.getElementById("bindCode").value = res.fallbackCode;
+          if (res.skipMailtrap) {
+            _showToast("您的邮箱（微软系域名）不支持自动投递，验证码已显示在输入框中，请查收邮箱或直接使用此验证码", "warning");
+          } else {
+            _showToast("邮件发送失败，验证码已显示在输入框中: " + res.fallbackCode, "error");
+          }
         }
       } else {
         errEl.style.display = "block"; errEl.textContent = res.error || "发送失败";
@@ -809,8 +816,35 @@
 
   document.getElementById("btnResendBind").addEventListener("click", function(e) {
     e.preventDefault();
-    document.getElementById("emailBindStep2").style.display = "none";
-    document.getElementById("emailBindStep1").style.display = "block";
+    _emailBindResendCount++;
+    var btn = document.getElementById("btnResendBind");
+    btn.style.pointerEvents = "none";
+    btn.style.opacity = "0.6";
+    btn.textContent = "发送中...";
+    JITApi.bindEmail(_emailBindUsername, _emailBindEmail).then(function(res) {
+      if (res.ok) {
+        if (res.mailSent && _emailBindResendCount < 3) {
+          document.getElementById("bindCode").value = "";
+          _showToast("新验证码已重新发送", "success");
+        } else {
+          if (res.fallbackCode) {
+            document.getElementById("bindCode").value = res.fallbackCode;
+          }
+          var msg = _emailBindResendCount >= 3
+            ? "已重发 " + _emailBindResendCount + " 次，自动切换为手动模式"
+            : "验证码已显示在输入框中";
+          _showToast(msg, _emailBindResendCount >= 3 ? "warning" : "success");
+        }
+      } else {
+        _showToast(res.error || "发送失败", "error");
+      }
+    }).catch(function(err) {
+      _showToast("网络错误: " + (err.message || ""), "error");
+    }).finally(function() {
+      btn.style.pointerEvents = "";
+      btn.style.opacity = "";
+      btn.textContent = _emailBindResendCount >= 3 ? "重新发送（手动模式）" : "重新发送";
+    });
   });
 
   document.getElementById("loginPassword").addEventListener("keydown", function(e) {
@@ -1089,6 +1123,7 @@
   })();
 
   var _emailRegEmail = "";
+  var _emailRegResendCount = 0;
 
   // 邮箱注册提交按钮
   document.getElementById("btnEmailRegister").addEventListener("click", function() {
@@ -1125,6 +1160,7 @@
         return;
       }
       _emailRegEmail = res.email || email;
+      _emailRegResendCount = 0;
       document.getElementById("emailVerifySection").style.display = "block";
       btn.style.display = "none";
       if (res.mailSent) {
@@ -1139,8 +1175,11 @@
         document.getElementById("emailCodeBox").style.display = "block";
         document.getElementById("emailVerifyCode").textContent = res.code;
         document.getElementById("btnEmailMailto").href = "mailto:yuguoemail@yuconemail.cc.cd?subject=" + encodeURIComponent("玉国金融邮箱验证") + "&body=" + encodeURIComponent(res.code);
-        document.getElementById("emailPollStatus").textContent = "请发送邮件后点击下方「刷新验证状态」";
-        document.getElementById("emailPollStatus").style.color = "var(--text-secondary)";
+        var statusText = res.skipMailtrap
+          ? "您的邮箱（微软系域名）不支持自动投递，请手动发送邮件后点击下方「刷新验证状态」"
+          : "请发送邮件后点击下方「刷新验证状态」";
+        document.getElementById("emailPollStatus").textContent = statusText;
+        document.getElementById("emailPollStatus").style.color = res.skipMailtrap ? "var(--gold-primary)" : "var(--text-secondary)";
         _showToast(res.message || "验证码已生成，请发送邮件后点击刷新", res.mailError ? "warning" : "success");
       }
     }).catch(function(err) {
@@ -1236,6 +1275,7 @@
       return;
     }
     var btn = document.getElementById("btnEmailResend");
+    _emailRegResendCount++;
     btn.disabled = true;
     btn.textContent = "生成中...";
     JITApi.registerEmail(email, username, password, fullName, birthdate, country, province, city, referrer).then(function(res) {
@@ -1244,11 +1284,13 @@
         return;
       }
       _emailRegEmail = res.email || email;
-      if (res.mailSent) {
+      // 3 次以上重新发送 → 强制降级为手动模式
+      var forceManual = _emailRegResendCount >= 3;
+      if (res.mailSent && !forceManual) {
         document.getElementById("emailSentBox").style.display = "block";
         document.getElementById("emailCodeBox").style.display = "none";
         document.getElementById("emailSentAddr").textContent = _emailRegEmail;
-        document.getElementById("emailPollStatus").textContent = "新验证码已发送，请输入邮箱中收到的验证码";
+        document.getElementById("emailPollStatus").textContent = "新验证码已发送，请输入邮箱中收到的验证码（第" + _emailRegResendCount + "次）";
         document.getElementById("emailPollStatus").style.color = "var(--text-secondary)";
         _showToast("新验证码已发送到 " + _emailRegEmail, "success");
       } else {
@@ -1256,15 +1298,18 @@
         document.getElementById("emailCodeBox").style.display = "block";
         document.getElementById("emailVerifyCode").textContent = res.code;
         document.getElementById("btnEmailMailto").href = "mailto:yuguoemail@yuconemail.cc.cd?subject=" + encodeURIComponent("玉国金融邮箱验证") + "&body=" + encodeURIComponent(res.code);
-        document.getElementById("emailPollStatus").textContent = "请发送邮件后点击下方「刷新验证状态」";
-        document.getElementById("emailPollStatus").style.color = "var(--text-secondary)";
-        _showToast("已生成新验证码，请用新码发送邮件", "success");
+        var statusText = forceManual
+          ? "已重发 " + _emailRegResendCount + " 次，自动切换为手动发送模式。请发送邮件后点击下方「刷新验证状态」"
+          : (res.skipMailtrap ? "您的邮箱（微软系域名）不支持自动投递，请手动发送邮件后点击下方「刷新验证状态」" : "请发送邮件后点击下方「刷新验证状态」");
+        document.getElementById("emailPollStatus").textContent = statusText;
+        document.getElementById("emailPollStatus").style.color = forceManual ? "var(--gold-primary)" : (res.skipMailtrap ? "var(--gold-primary)" : "var(--text-secondary)");
+        _showToast(forceManual ? "自动发送已达上限，已切换为手动模式" : "已生成新验证码，请用新码发送邮件", forceManual ? "warning" : "success");
       }
     }).catch(function(err) {
       _showToast("网络错误: " + (err.message || ""), "error");
     }).finally(function() {
       btn.disabled = false;
-      btn.textContent = "重新生成验证码";
+      btn.textContent = _emailRegResendCount >= 3 ? "重新生成验证码（手动模式）" : "重新生成验证码";
     });
   });
 
