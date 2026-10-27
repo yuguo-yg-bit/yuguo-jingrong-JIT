@@ -181,32 +181,22 @@ var JITPoints = (function() {
     });
   };
 
-  // ------- 对外：修改积分（唯一入口走代理 /points 账务入账） -------
-  var _changePoints = function(username, delta, reason, opts) {
-    if (delta === 0) return Promise.resolve(0);
+  // ------- 积分业务动作（唯一写入口） -------
+  // 前端只传动作名称+参数，积分规则由中转层决定
+  var _doAction = function(action, username, params, opts) {
     opts = opts || {};
     return _ensureAccount(username).then(function(account) {
       if (!opts.forceAdmin && Number(account.frozen) === 1) {
         throw new Error("积分账户已冻结，暂不可赚取或消耗积分");
       }
-      var amt = Math.round(Number(delta));
-      if (!amt || !isFinite(amt) || Math.abs(amt) > 100000000) {
-        return Promise.reject(new Error("非法积分变动值"));
-      }
-      // 幂等单号：同一单号重放只生效一次（防网络重试双扣）
-      var bizNo = "biz_" + username + "_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
       var helper = (typeof JITApi !== "undefined" && JITApi.getTursoHelpers) ? JITApi.getTursoHelpers() : null;
-      var post = helper && helper.postPoints
-        ? helper.postPoints({
-            bizNo: bizNo,
-            userId: username,
-            delta: amt,
-            reason: String(reason || "积分变动"),
-            refId: opts.refId || "",
-            operator: opts.forceAdmin ? "admin" : "system"
-          })
-        : Promise.reject(new Error("账务入账接口不可用"));
-      return post.then(function(res) {
+      if (!helper || !helper.postPointsAction) {
+        return Promise.reject(new Error("积分动作接口不可用"));
+      }
+      return helper.postPointsAction(action, username, params).then(function(res) {
+        if (!res.ok) throw new Error(res.error || "积分操作失败");
+        var amt = Number(res.delta || 0);
+        var reason = res.reason || action;
         var newPoints = (res.balance != null && res.balance !== "") ? Number(res.balance) : Math.max(0, _num(account.points) + amt);
         var now = new Date().toISOString();
         // 流水落 points_records 供展示（权威流水在 ledger，幂等跳过时不重复记）
@@ -262,7 +252,7 @@ var JITPoints = (function() {
         if (streak > 0 && streak % 3 === 0) {
           result.bonusGranted = true;
           result.bonusPoints = RULES.STREAK_BONUS;
-          return _changePoints(username, RULES.STREAK_BONUS, "连续" + streak + "天添加凭证奖励").then(function() {
+          return _doAction("streak_bonus", username, { streak: streak }).then(function() {
             var cached = _loadLocal(username);
             if (cached) {
               cached.signIns = signIns.slice();
@@ -301,14 +291,14 @@ var JITPoints = (function() {
       var have = data.points || 0;
       if (have <= 0) return { ok: false, usedPoints: 0, usedYuan: 0, remainingYuan: amountYuan, remainingPoints: 0 };
       if (have >= neededPoints) {
-        return _changePoints(username, -neededPoints, "积分抵消¥" + amountYuan.toFixed(2)).then(function(pts) {
+        return _doAction("points_offset", username, { amountYuan: amountYuan }).then(function(pts) {
           return { ok: true, usedPoints: neededPoints, usedYuan: amountYuan, remainingYuan: 0, remainingPoints: pts };
         });
       }
       var usePoints = have;
       var useYuan = Math.floor(usePoints / RULES.POINTS_PER_YUAN);
       var remainYuan = amountYuan - useYuan;
-      return _changePoints(username, -usePoints, "积分抵消¥" + useYuan.toFixed(2)).then(function(pts) {
+      return _doAction("points_offset", username, { amountYuan: useYuan }).then(function(pts) {
         return { ok: true, usedPoints: usePoints, usedYuan: useYuan, remainingYuan: remainYuan, remainingPoints: pts };
       });
     });
@@ -320,7 +310,7 @@ var JITPoints = (function() {
       if ((data.points || 0) < RULES.LUCKY_COST) {
         return { ok: false, reason: "积分不足，需要" + RULES.LUCKY_COST + "积分", remaining: data.points || 0 };
       }
-      return _changePoints(username, -RULES.LUCKY_COST, "兑换幸运抽奖1次").then(function(pts) {
+      return _doAction("lucky_lottery_exchange", username).then(function(pts) {
         return { ok: true, remaining: pts, cost: RULES.LUCKY_COST };
       });
     });
@@ -378,35 +368,7 @@ var JITPoints = (function() {
     return _ensureAccount(username).then(function(account) {
       var currentPts = Number(account.points || 0);
       if (currentPts === 0) return 0;
-      var bizNo = "biz_reset_" + username + "_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
-      var helper = (typeof JITApi !== "undefined" && JITApi.getTursoHelpers) ? JITApi.getTursoHelpers() : null;
-      var post = helper && helper.postPoints
-        ? helper.postPoints({
-            bizNo: bizNo,
-            userId: username,
-            delta: -currentPts,
-            reason: "管理员清零积分",
-            refId: "",
-            operator: "admin"
-          })
-        : Promise.reject(new Error("账务入账接口不可用"));
-      return post.then(function(res) {
-        var now = new Date().toISOString();
-        if (res.inserted !== false) {
-          _addLog(username, -currentPts, "管理员清零积分").catch(function() {});
-        }
-        var cached = _loadLocal(username);
-        if (cached) {
-          cached.points = 0;
-          cached.logs = cached.logs || [];
-          cached.logs.unshift({
-            delta: -currentPts,
-            reason: "管理员清零积分",
-            time: now.replace("T", " ").slice(0, 16),
-            createdAt: now
-          });
-          _saveLocal(username, cached);
-        }
+      return _doAction("admin_adjust", username, { delta: -currentPts, reason: "管理员清零积分" }, { forceAdmin: true }).then(function() {
         return 0;
       });
     });
@@ -417,21 +379,34 @@ var JITPoints = (function() {
     return Promise.resolve();
   };
 
+  // ------- 对外公开：业务动作（推荐） -------
+  var _publicDoAction = function(action, username, params) {
+    return _doAction(action, username, params);
+  };
+
+  // ------- 对外公开：changePoints（兼容旧版，转发到 doAction） -------
+  var _publicChangePoints = function(username, delta, reason, opts) {
+    if (delta === 0) return Promise.resolve(0);
+    // 旧版调用统一转为 admin_adjust（需管理员会话）
+    return _doAction("admin_adjust", username, { delta: Math.round(Number(delta)), reason: String(reason || "积分变动") }, opts);
+  };
+
   return {
     RULES: RULES,
     ensureLabel: _ensurePointsLabel,
     getUserPoints: _getUserPoints,
-    changePoints: _changePoints,
+    doAction: _publicDoAction,
+    changePoints: _publicChangePoints,
     signIn: _signIn,
     getLotteryReward: _getLotteryReward,
     usePointsForOffset: _usePointsForOffset,
     useLuckyLottery: _useLuckyLottery,
     getAllUsersPoints: _getAllUsersPoints,
     adminAddPoints: function(username, delta, reason) {
-      return _changePoints(username, delta, reason, { forceAdmin: true });
+      return _doAction("admin_adjust", username, { delta: delta, reason: reason }, { forceAdmin: true });
     },
     adminAdjust: function(username, delta, reason) {
-      return _changePoints(username, delta, reason, { forceAdmin: true });
+      return _doAction("admin_adjust", username, { delta: delta, reason: reason }, { forceAdmin: true });
     },
     setFrozen: _setFrozen,
     resetPoints: _resetPoints

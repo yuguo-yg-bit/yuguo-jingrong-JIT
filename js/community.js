@@ -1137,7 +1137,7 @@ var JITCommunity = (function() {
     if (todayVouchers >= 1 && !userRewards["task_voucher_" + today]) {
       userRewards["task_voucher_" + today] = true;
       _addExp(_currentUser, 50);
-      if (JITPoints && JITPoints.changePoints) { JITPoints.changePoints(_currentUser, 15, "完成每日「添加凭证」任务").then(function() { _refreshLocalPoints(); }).catch(function() {}); }
+      if (JITPoints && JITPoints.doAction) { JITPoints.doAction("daily_task_add_voucher", _currentUser).then(function() { _refreshLocalPoints(); }).catch(function() {}); }
       _showToast("✅ 完成任务：添加凭证！+50经验 +15积分", "success");
     }
 
@@ -1151,7 +1151,7 @@ var JITCommunity = (function() {
     if (todaySlots >= 3 && !userRewards["task_lottery_" + today]) {
       userRewards["task_lottery_" + today] = true;
       _addExp(_currentUser, 100);
-      if (JITPoints && JITPoints.changePoints) { JITPoints.changePoints(_currentUser, 30, "完成每日「完成3次抽奖」任务").then(function() { _refreshLocalPoints(); }).catch(function() {}); }
+      if (JITPoints && JITPoints.doAction) { JITPoints.doAction("daily_task_3_draws", _currentUser).then(function() { _refreshLocalPoints(); }).catch(function() {}); }
       _showToast("🔮 完成任务：完成3次抽奖！+100经验 +30积分", "success");
     }
 
@@ -1162,7 +1162,7 @@ var JITCommunity = (function() {
       userRewards["task_streak_" + today] = true;
       var streakBonus = Math.min(streak * 5, 50);
       _addExp(_currentUser, streakBonus);
-      if (JITPoints && JITPoints.changePoints) { JITPoints.changePoints(_currentUser, 10, "连续打卡" + streak + "天奖励").then(function() { _refreshLocalPoints(); }).catch(function() {}); }
+      if (JITPoints && JITPoints.doAction) { JITPoints.doAction("checkin_streak", _currentUser, { streak: streak }).then(function() { _refreshLocalPoints(); }).catch(function() {}); }
       if (streak >= 7) { _showToast("🔥 连续打卡" + streak + "天！+" + streakBonus + "经验 +10积分", "success"); }
     }
 
@@ -1175,7 +1175,7 @@ var JITCommunity = (function() {
     if (monthSpend >= 5000 && !userRewards["task_spend_" + thisMonth]) {
       userRewards["task_spend_" + thisMonth] = true;
       _addExp(_currentUser, 200);
-      if (JITPoints && JITPoints.changePoints) { JITPoints.changePoints(_currentUser, 100, "完成「消费达人」任务（月消费≥¥5000）").then(function() { _refreshLocalPoints(); }).catch(function() {}); }
+      if (JITPoints && JITPoints.doAction) { JITPoints.doAction("spending_master", _currentUser).then(function() { _refreshLocalPoints(); }).catch(function() {}); }
       _showToast("🏆 消费达人！月消费≥¥5000！+200经验 +100积分", "success");
     }
     _setTaskRewards(rewards);
@@ -1360,8 +1360,8 @@ var JITCommunity = (function() {
       _showToast("积分不足！需要 " + cost + " 积分", "error");
       return Promise.resolve(false);
     }
-    if (JITPoints && JITPoints.changePoints) {
-      return JITPoints.changePoints(_currentUser, -cost, "解锁装扮: " + id).then(function() {
+    if (JITPoints && JITPoints.doAction) {
+      return JITPoints.doAction("unlock_outfit", _currentUser, { cost: cost, outfitId: id }).then(function() {
         var ul = _getUnlockedOutfits(); ul.push(type + "_" + id); _saveUnlockedOutfits(ul);
         _refreshLocalPoints();
         return true;

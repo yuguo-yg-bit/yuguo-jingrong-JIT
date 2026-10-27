@@ -1984,9 +1984,9 @@ var JITAdmin = (function() {
         _showToast("已通过该凭证" + (isElectric ? ("，补贴 " + rateVal + "% ≈ ¥" + amtVal.toFixed(2)) : ""));
         // 审核通过后给该用户 +25 积分
         var uid = data.userId || data.title || (currentIssue.user && currentIssue.user.login);
-        if (uid && typeof JITPoints !== "undefined" && JITPoints.changePoints) {
+        if (uid && typeof JITPoints !== "undefined" && JITPoints.doAction) {
           JITPoints.ensureLabel().catch(function() {});
-          JITPoints.changePoints(uid, 25, "凭证审核通过").then(function() {
+          JITPoints.doAction("voucher_approved", uid).then(function() {
             _showToast("已发放审核通过奖励 +25 积分给 " + uid);
           }).catch(function(err) {
             console.warn("发放积分失败", err);

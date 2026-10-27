@@ -376,7 +376,153 @@ export default async function (req) {
       return false;
     }
 
-    // ========== 账务入账（积分变更唯一入口，原子+幂等） ==========
+    // ========== 积分操作（业务动作映射） ==========
+    // 前端只传业务动作名称，积分多少、规则全部由中转层决定，杜绝前端篡改
+    if (path === "/points/action" && req.method === "POST") {
+      const body = await req.json();
+      const { action, userId, params } = body;
+      if (!action || !userId) return jsonResponse({ error: "缺少 action 或 userId" }, 400);
+
+      const p = params || {};
+
+      // ======== 积分规则表（唯一可信源） ========
+      const R = {
+        // 每日任务
+        daily_task_add_voucher:      { delta: 15,  reason: "完成每日「添加凭证」任务" },
+        daily_task_3_draws:          { delta: 30,  reason: "完成每日「完成3次抽奖」任务" },
+        // 连续打卡
+        checkin_streak:              { delta: 10,  reason: () => "连续打卡" + (p.streak || 0) + "天奖励" },
+        // 消费达人
+        spending_master:             { delta: 100, reason: "完成「消费达人」任务（月消费≥¥5000）" },
+        // 添加凭证
+        add_voucher:                 { delta: 15,  reason: "添加凭证" },
+        add_online_voucher:          { delta: 15,  reason: "添加线上购物凭证" },
+        add_appliance_voucher:       { delta: 15,  reason: "添加电器补贴凭证" },
+        // 凭证审核
+        voucher_approved:            { delta: 25,  reason: "凭证审核通过" },
+        // 连续N天添加凭证
+        streak_bonus:                { delta: 30,  reason: () => "连续" + (p.streak || 0) + "天添加凭证奖励" },
+        // 积分抵消（动态计算）
+        points_offset: {
+          calc: function() {
+            const yuan = Number(p.amountYuan || 0);
+            if (!yuan || yuan <= 0) return null;
+            const needed = Math.ceil(yuan * 10);
+            if (needed > 100000) return null;
+            return { delta: -needed, reason: "积分抵消¥" + yuan.toFixed(2) };
+          }
+        },
+        points_offset_payment: {
+          calc: function() {
+            const pts = Number(p.maxPoints || 0);
+            if (!pts || pts <= 0) return null;
+            return { delta: -pts, reason: "用积分抵消 ¥" + (pts / 10).toFixed(2) + " 支付差额" };
+          }
+        },
+        // 幸运抽奖
+        lucky_lottery_exchange:      { delta: -45, reason: "兑换幸运抽奖1次" },
+        // 转盘抽奖
+        wheel_free_reward: {
+          calc: function() {
+            const d = Number(p.rewardDelta || 0);
+            if (!d || d < 0 || d > 5000) return null;
+            return { delta: d, reason: "转盘抽奖免费获得 " + d + " 积分" };
+          }
+        },
+        wheel_reward: {
+          calc: function() {
+            const reward = Number(p.rewardDelta || 0);
+            const cost = Number(p.cost || 0);
+            if (!reward || cost < 0 || reward > 5000 || cost > 5000) return null;
+            const net = reward - cost;
+            return { delta: net, reason: "转盘抽奖：消耗" + cost + "积分，获得+" + reward + "积分" };
+          }
+        },
+        // 抽奖折扣奖励
+        lottery_discount_reward: {
+          calc: function() {
+            const d = String(p.discount || "");
+            const low = ["0折","7折","8折","9折","9.5折"];
+            const high = ["10折","11折","12折","13折","14折"];
+            if (low.indexOf(d) !== -1) return { delta: 50, reason: "抽到 " + d + "（免单/7-9.5折）奖励" };
+            if (high.indexOf(d) !== -1) return { delta: 60, reason: "抽到 " + d + "（10折及以上）奖励" };
+            return null;
+          }
+        },
+        // 装扮
+        unlock_outfit: {
+          calc: function() {
+            const cost = Number(p.cost || 0);
+            if (!cost || cost <= 0 || cost > 50000) return null;
+            return { delta: -cost, reason: "解锁装扮: " + String(p.outfitId || "unknown") };
+          }
+        },
+        // 完整抽奖奖励
+        lottery_full_reward: {
+          calc: function() {
+            const d = Number(p.rewardDelta || 0);
+            if (!d || d < -10000 || d > 10000) return null;
+            return { delta: d, reason: "完整抽奖奖励" };
+          }
+        },
+        // 邀请好友
+        invite_reward:               { delta: 50,  reason: "邀请好友奖励" },
+        // 管理员调整（必须管理员会话）
+        admin_adjust: {
+          requireAdmin: true,
+          calc: function() {
+            const d = Number(p.delta || 0);
+            if (!d || Math.abs(d) > 1000000) return null;
+            return { delta: d, reason: String(p.reason || "管理员调整积分").slice(0, 200) };
+          }
+        },
+      };
+
+      const rule = R[action];
+      if (!rule) return jsonResponse({ error: "未知的业务动作: " + action }, 400);
+
+      // 管理员动作必须验证会话
+      if (rule.requireAdmin) {
+        const sess = await requireSession();
+        if (sess.error || sess.role !== "admin") {
+          logAudit("POINTS_ACTION_UNAUTHORIZED", String(sess.username || "anonymous"), "users", String(userId), "非管理员尝试执行管理动作: " + action, "/points/action", "", "blocked");
+          return jsonResponse({ error: "无权操作" }, 403);
+        }
+      }
+
+      // 计算 delta 和 reason
+      let result;
+      if (typeof rule.calc === "function") {
+        result = rule.calc();
+        if (!result) return jsonResponse({ error: "参数无效" }, 400);
+      } else {
+        const reason = typeof rule.reason === "function" ? rule.reason() : rule.reason;
+        result = { delta: rule.delta, reason: reason };
+      }
+      if (!result || Math.abs(result.delta) > 100000000) return jsonResponse({ error: "变动金额超限" }, 400);
+
+      // 复用积分账务逻辑（幂等入账）
+      const bizNo = "biz_" + userId + "_" + action + "_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 5);
+      const now = new Date().toISOString();
+      const lid = "ld_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      const mkArg = (v) => ({ type: "text", value: String(v) });
+      const requests = [
+        { type: "execute", stmt: { sql: "INSERT INTO ledger (id, biz_no, user_id, amount, balance_after, reason, ref_id, operator, created_at) SELECT ?,?,?,?,(SELECT COALESCE(points,0) FROM users WHERE id=?)+?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)", args: [lid, bizNo, userId, result.delta, userId, result.delta, result.reason, action, "engine", now, bizNo].map(mkArg) } },
+        { type: "execute", stmt: { sql: "UPDATE users SET points=(SELECT COALESCE(SUM(amount),0) FROM ledger WHERE user_id=?), updated_at=? WHERE id=? AND EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)", args: [userId, now, userId, bizNo].map(mkArg) } },
+        { type: "execute", stmt: { sql: "SELECT COALESCE(points,0) AS p FROM users WHERE id=?", args: [userId].map(mkArg) } }
+      ];
+      const tres = await fetch(TURSO_API, { method:"POST", headers:{ Authorization:"Bearer "+TURSO_TOKEN, "Content-Type":"application/json" }, body:JSON.stringify({ requests }) });
+      const td = await tres.json();
+      if (!tres.ok) throw new Error("账务执行失败: " + JSON.stringify(td).substring(0,300));
+      const first = (td.results||[])[0]?.response?.result || (td.results||[])[0]?.response?.results || (td.results||[])[0];
+      const inserted = (first ? (first.rows_affected ?? first.row_count ?? first.rows_written ?? 0) : 0) > 0;
+      let balance = null;
+      try { const br = (td.results||[])[2]?.response?.result || (td.results||[])[2]?.response?.results || (td.results||[])[2]; if (br&&br.rows) balance = br.rows[0]?.[0]?.value ?? br.rows[0]?.[0]; } catch(e){}
+      logAudit("POINTS_ACTION", "engine", "users", userId, action + " → " + (result.delta>0?"+":"")+result.delta+" 积分", "/points/action", bizNo, inserted?"ok":"dup");
+      return jsonResponse({ ok: true, inserted, balance, bizNo, delta: result.delta, reason: result.reason });
+    }
+
+    // ========== 积分操作（直接入账，兼容旧版） ==========
     // 所有余额变动必须走这里：先落 ledger 流水（biz_no 幂等），再更新 users.points。
     // 同一 bizNo 重复提交只生效一次，防止重复扣款/加款。
     if (path === "/points" && req.method === "POST") {

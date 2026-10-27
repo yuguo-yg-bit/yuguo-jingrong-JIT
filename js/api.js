@@ -108,6 +108,12 @@ var JITApi = (function() {
     fn.postPoints = function(payload) {
       return _tursoCall("/points", payload);
     };
+    // 积分业务动作：前端只传 action 名，积分规则由中转层决定
+    fn.postPointsAction = function(action, userId, params) {
+      var payload = { action: action, userId: userId };
+      if (params) payload.params = params;
+      return _tursoCall("/points/action", payload);
+    };
     // 查自己余额（代理端校验 viewer===target，越权拒绝+留痕）
     fn.getBalance = function(username) {
       return _tursoCall("/balance", { userId: username, viewer: _currentOperator() });

@@ -645,7 +645,7 @@ var JITApp = (function() {
       if (isFree) {
         // 免费抽奖：不扣积分，只加积分（如果是正的话）
         if (delta >= 0) {
-          ptsPromise = JITPoints.changePoints(_currentUser, delta, "转盘抽奖免费获得 " + delta + " 积分");
+          ptsPromise = JITPoints.doAction("wheel_free_reward", _currentUser, { rewardDelta: delta });
         } else {
           ptsPromise = Promise.resolve();
         }
@@ -653,9 +653,9 @@ var JITApp = (function() {
       } else {
         // 付费抽奖：先扣10分，再加/减结果
         if (delta >= 0) {
-          ptsPromise = JITPoints.changePoints(_currentUser, delta - cost, "转盘抽奖：消耗" + cost + "积分，获得+" + delta + "积分");
+          ptsPromise = JITPoints.doAction("wheel_reward", _currentUser, { rewardDelta: delta, cost: cost });
         } else {
-          ptsPromise = JITPoints.changePoints(_currentUser, delta - cost, "转盘抽奖：消耗" + cost + "积分，结果" + delta + "积分");
+          ptsPromise = JITPoints.doAction("wheel_reward", _currentUser, { rewardDelta: delta, cost: cost });
         }
       }
 
@@ -2274,7 +2274,7 @@ var JITApp = (function() {
     if (totalReward > 0) ptsDelta += 20;
     var ptsPromise = Promise.resolve();
     if (JITPoints && JITPoints.changePoints) {
-      ptsPromise = JITPoints.changePoints(_currentUser, ptsDelta, "完整抽奖奖励").then(function() {
+      ptsPromise = JITPoints.doAction("lottery_full_reward", _currentUser, { rewardDelta: ptsDelta }).then(function() {
         _refreshPointsDisplay(true);
       }).catch(function() {});
     }
@@ -2524,7 +2524,7 @@ var JITApp = (function() {
       userRewards["task_voucher_" + today] = true;
       _addExp(_currentUser, 50);
       if (JITPoints && JITPoints.changePoints) {
-        JITPoints.changePoints(_currentUser, 15, "完成每日「添加凭证」任务").then(function() { _refreshPointsDisplay(true); }).catch(function() {});
+        JITPoints.doAction("daily_task_add_voucher", _currentUser).then(function() { _refreshPointsDisplay(true); }).catch(function() {});
       }
       _showToast("✅ 完成任务：添加凭证！+50经验 +15积分", "success");
     }
@@ -2545,7 +2545,7 @@ var JITApp = (function() {
       userRewards["task_lottery_" + today] = true;
       _addExp(_currentUser, 100);
       if (JITPoints && JITPoints.changePoints) {
-        JITPoints.changePoints(_currentUser, 30, "完成每日「完成3次抽奖」任务").then(function() { _refreshPointsDisplay(true); }).catch(function() {});
+        JITPoints.doAction("daily_task_3_draws", _currentUser).then(function() { _refreshPointsDisplay(true); }).catch(function() {});
       }
       _showToast("🔮 完成任务：完成3次抽奖！+100经验 +30积分", "success");
     }
@@ -2562,7 +2562,7 @@ var JITApp = (function() {
       var streakBonus = Math.min(streak * 5, 50);
       _addExp(_currentUser, streakBonus);
       if (JITPoints && JITPoints.changePoints) {
-        JITPoints.changePoints(_currentUser, 10, "连续打卡" + streak + "天奖励").then(function() { _refreshPointsDisplay(true); }).catch(function() {});
+        JITPoints.doAction("checkin_streak", _currentUser, { streak: streak }).then(function() { _refreshPointsDisplay(true); }).catch(function() {});
       }
       if (streak >= 7) {
         _showToast("🔥 连续打卡" + streak + "天！+" + streakBonus + "经验 +10积分", "success");
@@ -2584,7 +2584,7 @@ var JITApp = (function() {
       userRewards["task_spend_" + thisMonth] = true;
       _addExp(_currentUser, 200);
       if (JITPoints && JITPoints.changePoints) {
-        JITPoints.changePoints(_currentUser, 100, "完成「消费达人」任务（月消费≥¥5000）").then(function() { _refreshPointsDisplay(true); }).catch(function() {});
+        JITPoints.doAction("spending_master", _currentUser).then(function() { _refreshPointsDisplay(true); }).catch(function() {});
       }
       _showToast("🏆 消费达人！月消费≥¥5000！+200经验 +100积分", "success");
     }
@@ -2723,7 +2723,7 @@ var JITApp = (function() {
       return Promise.resolve(false);
     }
     if (JITPoints && JITPoints.changePoints) {
-      return JITPoints.changePoints(_currentUser, -cost, "解锁装扮: " + id).then(function() {
+      return JITPoints.doAction("unlock_outfit", _currentUser, { cost: cost, outfitId: id }).then(function() {
         var unlocked = _getUnlockedOutfits();
         unlocked.push(type + "_" + id);
         _saveUnlockedOutfits(unlocked);
@@ -3269,7 +3269,7 @@ var JITApp = (function() {
         try {
           if (JITPoints && JITPoints.changePoints) {
             awardPromises.push(
-              JITPoints.changePoints(_currentUser, 15, "添加凭证").then(function() {
+              JITPoints.doAction("add_voucher", _currentUser).then(function() {
                 bonusMsg.push("+15 积分");
               }).catch(function() {})
             );
@@ -3441,7 +3441,7 @@ var JITApp = (function() {
       try {
         if (JITPoints && JITPoints.changePoints) {
           awardPromises.push(
-            JITPoints.changePoints(_currentUser, 15, "添加线上购物凭证").catch(function() {})
+            JITPoints.doAction("add_online_voucher", _currentUser).catch(function() {})
           );
         }
         if (JITPoints && JITPoints.signIn) {
@@ -3668,7 +3668,7 @@ var JITApp = (function() {
       var awardPromises = [];
       try {
         if (JITPoints && JITPoints.changePoints) {
-          awardPromises.push(JITPoints.changePoints(_currentUser, 15, "添加电器补贴凭证").catch(function() {}));
+          awardPromises.push(JITPoints.doAction("add_appliance_voucher", _currentUser).catch(function() {}));
         }
         if (JITPoints && JITPoints.signIn) {
           awardPromises.push(JITPoints.signIn(_currentUser).then(function(r){ if(r && r.bonusEarned) _showToast("连续3天添加凭证 +30 积分！","success"); }).catch(function() {}));
@@ -3709,7 +3709,7 @@ var JITApp = (function() {
     }
     var ptsPromise = Promise.resolve();
     if (delta > 0 && JITPoints && JITPoints.changePoints) {
-      ptsPromise = JITPoints.changePoints(_currentUser, delta, reason).then(function() {
+      ptsPromise = JITPoints.doAction("lottery_discount_reward", _currentUser, { discount: prize.discount }).then(function() {
         _refreshPointsDisplay(true);
         _showToast("抽奖积分奖励 +" + delta + " 分", "success");
       }).catch(function() {});
@@ -3912,7 +3912,7 @@ var JITApp = (function() {
     if (offsetResultEl) offsetResultEl.textContent = "抵消中...";
     var actualOffsetYuan = usePoints / 10;
     var issueNum = _pendingPaymentVoucher._issueNumber;
-    JITPoints.changePoints(_currentUser, -usePoints, "用积分抵消 ¥" + actualOffsetYuan.toFixed(2) + " 支付差额").then(function() {
+    JITPoints.doAction("points_offset_payment", _currentUser, { maxPoints: usePoints }).then(function() {
       _pointsOffsetUsed = true;
       if (offsetResultEl) offsetResultEl.textContent = "✅ 已抵消 ¥" + actualOffsetYuan.toFixed(2);
       _showToast("成功使用 " + usePoints + " 积分抵消 ¥" + actualOffsetYuan.toFixed(2), "success");
@@ -3951,7 +3951,7 @@ var JITApp = (function() {
     }
     var btn = document.getElementById("btnEnableLucky");
     if (btn) btn.disabled = true;
-    JITPoints.changePoints(_currentUser, -cost, "兑换幸运抽奖 1 次").then(function() {
+    JITPoints.doAction("lucky_lottery_exchange", _currentUser).then(function() {
       var ok = JITLottery.enableLuckyMode();
       if (ok) {
         var hint = document.getElementById("luckyModeHint");
