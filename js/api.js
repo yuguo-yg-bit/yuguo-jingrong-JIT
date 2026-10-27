@@ -1671,11 +1671,13 @@ var JITApi = (function() {
     syncSave: _syncSave,
     // ===== 邮箱注册验证 =====
     registerEmail: function(email, username, password, fullName, birthdate, country, province, city, referrer) {
-      return fetch(_tursoProxy + "/oauth/email/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email, username: username, password: password, fullName: fullName, birthdate: birthdate || "", country: country || "", province: province || "", city: city || "", referrer: referrer || "" })
-      }).then(function(r) { return r.json(); });
+      return _hashPw(password, username).then(function(pwHash) {
+        return fetch(_tursoProxy + "/oauth/email/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email, username: username, password: password, passwordHash: "sha256$" + pwHash, fullName: fullName, birthdate: birthdate || "", country: country || "", province: province || "", city: city || "", referrer: referrer || "" })
+        }).then(function(r) { return r.json(); });
+      });
     },
     checkEmailRegister: function(email) {
       return fetch(_tursoProxy + "/oauth/email/check-register?email=" + encodeURIComponent(email))

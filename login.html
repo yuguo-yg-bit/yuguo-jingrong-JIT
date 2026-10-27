@@ -716,7 +716,7 @@
           return;
         }
         _showToast("登录成功", "success");
-        setTimeout(function() { window.location.replace("/work"); }, 600);
+        setTimeout(function() { window.location.replace("index.html"); }, 600);
         return;
       }
       return JITApi.findPendingRegistration(username).then(function(pending) {
@@ -803,7 +803,7 @@
         document.getElementById("emailBindOverlay").style.display = "none";
         localStorage.setItem("jit_current_user", _emailBindUsername);
         _showToast("邮箱绑定成功，欢迎进入系统", "success");
-        setTimeout(function() { window.location.replace("/work"); }, 600);
+        setTimeout(function() { window.location.replace("index.html"); }, 600);
       } else {
         errEl.style.display = "block"; errEl.textContent = res.error || "验证码错误";
       }
@@ -1208,6 +1208,10 @@
         localStorage.setItem("jit_oauth_session", JSON.stringify(tokenData));
         localStorage.setItem("jit_oauth_token", res.oauth_token);
         localStorage.setItem("jit_username", res.username);
+        localStorage.setItem("jit_current_user", res.username);
+        localStorage.setItem("jit_session_token", res.oauth_token);
+        localStorage.setItem("jit_session_user", res.username);
+        localStorage.setItem("jit_session_role", "user");
         _showToast("验证通过，正在登录...", "success");
         setTimeout(function() { window.location.href = "index.html"; }, 500);
       } else {
@@ -1239,6 +1243,10 @@
           localStorage.setItem("jit_oauth_session", JSON.stringify(tokenData));
           localStorage.setItem("jit_oauth_token", res.oauth_token);
           localStorage.setItem("jit_username", res.username);
+          localStorage.setItem("jit_current_user", res.username);
+          localStorage.setItem("jit_session_token", res.oauth_token);
+          localStorage.setItem("jit_session_user", res.username);
+          localStorage.setItem("jit_session_role", "user");
           window.location.href = "index.html";
         }, 800);
       } else if (res.error) {
@@ -1381,7 +1389,7 @@
         if (result && result.username) {
           localStorage.setItem("jit_current_user", result.username);
           _showToast("登录成功，欢迎 " + result.username, "success");
-          setTimeout(function() { window.location.replace("/work"); }, 600);
+          setTimeout(function() { window.location.replace("index.html"); }, 600);
         }
       }).catch(function(err) {
         var errorBanner = document.getElementById("oauthErrorBanner");
@@ -1401,7 +1409,7 @@
         if (result && result.username) {
           localStorage.setItem("jit_current_user", result.username);
           _showToast("登录成功，欢迎 " + result.username, "success");
-          setTimeout(function() { window.location.replace("/work"); }, 600);
+          setTimeout(function() { window.location.replace("index.html"); }, 600);
         }
       }).catch(function(err) {
         var errorBanner = document.getElementById("oauthErrorBanner");

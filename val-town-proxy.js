@@ -1147,7 +1147,7 @@ export default async function (req) {
     // ========== Email 注册 + 验证码 ==========
     // 注册：生成 6 位验证码，存入 email_verifications，用户需发邮件到 yuguoemail@yuconemail.cc.cd 完成验证
     if (path === "/oauth/email/register" && req.method === "POST") {
-      const { email, username, password, fullName, birthdate, country, province, city, referrer } = await req.json();
+      const { email, username, password, passwordHash: clientHash, fullName, birthdate, country, province, city, referrer } = await req.json();
       if (!email || !username || !password) return jsonResponse({ error: "缺少必填字段" }, 400);
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonResponse({ error: "邮箱格式不正确" }, 400);
       if (password.length < 6) return jsonResponse({ error: "密码至少需要6位" }, 400);
@@ -1155,6 +1155,11 @@ export default async function (req) {
       const emailLower = email.toLowerCase();
       const now = new Date().toISOString();
       const code = String(Math.floor(100000 + Math.random() * 900000));
+
+      // 优先使用前端传来的密码哈希（与登录接口一致），确保注册后能正常登录
+      const passwordHash = (clientHash && String(clientHash).startsWith("sha256$"))
+        ? clientHash
+        : await hashPassword(password);
 
       // 检查用户名是否已存在（包括 users 表和 registrations 表）
       const { data: userCheck } = await execTurso("SELECT id FROM users WHERE id=?", [username]);
@@ -1165,8 +1170,6 @@ export default async function (req) {
       // 检查邮箱是否已被注册
       const { data: emailCheck } = await execTurso("SELECT id FROM users WHERE oauth_id=?", [emailLower]);
       if (emailCheck.results?.[0]?.response?.result?.rows?.length > 0) return jsonResponse({ error: "该邮箱已被注册" }, 400);
-
-      const passwordHash = await hashPassword(password);
 
       await execTurso(
         "INSERT OR REPLACE INTO email_verifications (email, username, password_hash, full_name, birthdate, country, province, city, referrer, code, status, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
