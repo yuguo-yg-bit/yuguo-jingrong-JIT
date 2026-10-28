@@ -1120,7 +1120,7 @@ export default async function (req) {
         } catch (e) { console.error("[mailtrap]", String(e).substring(0,200)); mailError = e.message || "unknown"; }
       }
 
-      return jsonResponse({ ok: true, mailSent, skipMailtrap: skipMailtrap || false, message: mailSent ? "验证码已发送到邮箱" : "邮件发送失败，请稍后重试", fallbackCode: mailSent ? null : code });
+      return jsonResponse({ ok: true, mailSent, skipMailtrap: skipMailtrap || false, message: mailSent ? "验证码已发送到邮箱" : "邮件发送失败，请稍后重试或联系管理员" });
     }
 
     // ========== 老用户绑定邮箱（验证验证码） ==========

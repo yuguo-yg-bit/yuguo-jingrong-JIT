@@ -771,13 +771,14 @@
         _emailBindResendCount = 0;
         document.getElementById("emailBindStep1").style.display = "none";
         document.getElementById("emailBindStep2").style.display = "block";
-        if (!res.mailSent && res.fallbackCode) {
-          document.getElementById("bindCode").value = res.fallbackCode;
+        if (!res.mailSent) {
           if (res.skipMailtrap) {
-            _showToast("您的邮箱（微软系域名）不支持自动投递，验证码已显示在输入框中，请查收邮箱或直接使用此验证码", "warning");
+            _showToast("您的邮箱（微软系域名）不支持自动投递，请联系管理员绑定或使用其他邮箱", "warning");
           } else {
-            _showToast("邮件发送失败，验证码已显示在输入框中: " + res.fallbackCode, "error");
+            _showToast("邮件发送失败，请稍后重试或使用其他邮箱", "error");
           }
+          document.getElementById("emailBindStep2").style.display = "none";
+          document.getElementById("emailBindStep1").style.display = "block";
         }
       } else {
         errEl.style.display = "block"; errEl.textContent = res.error || "发送失败";
@@ -827,13 +828,10 @@
           document.getElementById("bindCode").value = "";
           _showToast("新验证码已重新发送", "success");
         } else {
-          if (res.fallbackCode) {
-            document.getElementById("bindCode").value = res.fallbackCode;
-          }
           var msg = _emailBindResendCount >= 3
-            ? "已重发 " + _emailBindResendCount + " 次，自动切换为手动模式"
-            : "验证码已显示在输入框中";
-          _showToast(msg, _emailBindResendCount >= 3 ? "warning" : "success");
+            ? "已重发 " + _emailBindResendCount + " 次，仍未成功，请稍后重试或使用其他邮箱"
+            : "邮件发送失败，请稍后重试";
+          _showToast(msg, "error");
         }
       } else {
         _showToast(res.error || "发送失败", "error");
