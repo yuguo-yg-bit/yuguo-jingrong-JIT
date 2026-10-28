@@ -393,7 +393,7 @@ var JITApi = (function() {
 
   var _getAllVouchers = function() {
     return _getCachedOrFetch("allVouchers", function() {
-      return _tursoSql("SELECT * FROM vouchers WHERE user_id NOT LIKE '【%】%' AND shop_name NOT LIKE '【%】%' ORDER BY created_at DESC", []).then(function(result) {
+      return _tursoSql("SELECT * FROM vouchers WHERE user_id NOT LIKE '【%】%' AND shop_name NOT LIKE '【%】%' ORDER BY created_at DESC LIMIT 500", []).then(function(result) {
         var objs = _tursoRowsToObjects(result.columns, result.rows);
         return objs.map(_dbRowToVoucherData);
       });
@@ -694,7 +694,7 @@ var JITApi = (function() {
   // ========== 管理员端 Turso 操作 ==========
   var _getAllVoucherIssueObjects = function() {
     // 排除【积分】【注册申请】【注册用户】等系统占位行
-    return _tursoSql("SELECT * FROM vouchers WHERE user_id NOT LIKE '【%】%' AND shop_name NOT LIKE '【%】%' ORDER BY created_at DESC", []).then(function(result) {
+    return _tursoSql("SELECT * FROM vouchers WHERE user_id NOT LIKE '【%】%' AND shop_name NOT LIKE '【%】%' ORDER BY created_at DESC LIMIT 500", []).then(function(result) {
       return _tursoRowsToObjects(result.columns, result.rows).map(_voucherRowToIssue);
     });
   };

@@ -44,10 +44,10 @@ var JITApp = (function() {
     _dailyLoginBonus(); // v2.0 每日签到
     _checkExpiredTickets(); // v2.0 过期券提醒
     _initOutfits(); // v2.0 装扮初始化
-    // 每10秒自动刷新
+    // 每30秒自动刷新
     setInterval(function() {
       _loadData();
-    }, 10000);
+    }, 30000);
     // 每 30 秒刷新一下积分显示（防止管理员审核通过后用户端不同步）
     setInterval(function() {
       if (_currentUser) _refreshPointsDisplay(true);
@@ -1533,12 +1533,9 @@ var JITApp = (function() {
   };
 
   var _loadOrders = function() {
-    return JITApi.getAllVouchers().then(function(vouchers) {
-      if (_currentUser) {
-        vouchers = vouchers.filter(function(v) {
-          return v.username === _currentUser;
-        });
-      }
+    if (!_currentUser) return Promise.resolve();
+    return JITApi.getVouchers(_currentUser).then(function(vouchers) {
+      vouchers = vouchers || [];
       // 过滤掉聊天专用凭证，不显示在订单列表中
       vouchers = vouchers.filter(function(v) {
         return v.shopName !== "【聊天专用】" && v.paymentMethod !== "chat";
