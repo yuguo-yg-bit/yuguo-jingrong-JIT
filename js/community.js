@@ -87,11 +87,34 @@ var JITCommunity = (function() {
     { level: 7, name: "至尊VIP", expNeed: 10000 }
   ];
 
+  var _userLevelCache = {}; // 内存缓存，数据来源唯一是 Turso 代理
+
   var _getUserLevel = function(userId) {
-    var key = "jit_user_levels";
-    var all = {};
-    try { all = JSON.parse(localStorage.getItem(key) || "{}"); } catch (e) {}
-    return all[userId] || { level: 0, exp: 0, streak: 0 };
+    return _userLevelCache[userId] || { level: 0, exp: 0, streak: 0 };
+  };
+
+  var _refreshUserLevel = function(userId) {
+    if (!JITApi || !JITApi.getUserLevel) return Promise.resolve(_getUserLevel(userId));
+    return JITApi.getUserLevel(userId).then(function(data) {
+      if (data) {
+        _userLevelCache[userId] = {
+          level: data.level || 0,
+          exp: data.exp || 0,
+          streak: data.streak || 0,
+          bio: data.bio || "",
+          location: data.location || "",
+          joinedAt: data.joinedAt || "",
+          cover: data.cover || "",
+          avatar: data.avatar || "",
+          theme: data.theme || "default",
+          avatarFrame: data.avatarFrame || "none",
+          badges: data.badges || []
+        };
+      }
+      return _userLevelCache[userId] || { level: 0, exp: 0, streak: 0 };
+    }).catch(function() {
+      return _userLevelCache[userId] || { level: 0, exp: 0, streak: 0 };
+    });
   };
 
   var _getLevelInfo = function(level) {
@@ -121,11 +144,10 @@ var JITCommunity = (function() {
     var avatarEl = document.getElementById("profileAvatar");
     if (!avatarEl) return;
 
-    var levelData = _getUserLevel(_currentUser);
-    var levelInfo = _getLevelInfo(levelData.level);
+    var profileData = _userLevelCache[_currentUser] || {};
 
     // 封面
-    var coverSaved = localStorage.getItem("jit_cover_" + _currentUser);
+    var coverSaved = profileData.cover;
     var coverEl = document.getElementById("profileCover");
     var coverPlaceholder = document.getElementById("coverPlaceholder");
     if (coverEl) {
@@ -140,9 +162,9 @@ var JITCommunity = (function() {
       }
     }
 
-    // 头像（压在封面上）
-    var avatarSaved = localStorage.getItem("jit_avatar_" + _currentUser);
-    var frame = localStorage.getItem("jit_avatar_frame") || "none";
+    // 头像
+    var avatarSaved = profileData.avatar;
+    var frame = profileData.avatarFrame || "none";
     avatarEl.className = "profile-avatar";
     if (frame && frame !== "none") avatarEl.classList.add("frame-" + frame);
     if (avatarSaved) {
@@ -159,6 +181,8 @@ var JITCommunity = (function() {
     if (vb) vb.style.display = "inline-flex";
 
     // 等级行
+    var levelData = _getUserLevel(_currentUser);
+    var levelInfo = _getLevelInfo(levelData.level);
     var ll = document.getElementById("profileLevelLine");
     if (ll) ll.innerHTML = '<span class="level-chip">Lv' + levelData.level + " " + _escapeHtml(levelInfo.name) + "</span>";
 
@@ -176,36 +200,22 @@ var JITCommunity = (function() {
 
     // 简介
     var bioEl = document.getElementById("profileBio");
-    var bio = localStorage.getItem("jit_bio_" + _currentUser) || "";
-    if (bioEl) bioEl.textContent = bio || "这个人很懒，还没写简介";
+    if (bioEl) bioEl.textContent = profileData.bio || "这个人很懒，还没写简介";
 
     // 位置 + 加入时间
     var infoLine = document.getElementById("profileInfoLine");
     if (infoLine) {
-      var loc = localStorage.getItem("jit_location_" + _currentUser) || "";
-      var joined = localStorage.getItem("jit_joined_" + _currentUser);
+      var loc = profileData.location || "";
+      var joined = profileData.joinedAt || "";
       if (!joined) {
         var now = new Date();
         joined = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
-        localStorage.setItem("jit_joined_" + _currentUser, joined);
-        // 同步 joined_at 到 Turso
         if (typeof JITApi !== "undefined") { JITApi.updateUserLevel(_currentUser, { joinedAt: joined }).catch(function() {}); }
       }
       var parts = [];
       if (loc) parts.push("📍 " + _escapeHtml(loc));
       parts.push("📅 加入于 " + joined);
       infoLine.innerHTML = parts.join(" · ");
-    }
-
-    // 从 Turso 加载社区资料（bio/location/joined/cover）
-    if (_currentUser && typeof JITApi !== "undefined") {
-      JITApi.getUserLevel(_currentUser).then(function(ld) {
-        if (!ld) return;
-        if (ld.bio) { localStorage.setItem("jit_bio_" + _currentUser, ld.bio); if (bioEl) bioEl.textContent = ld.bio; }
-        if (ld.location) { localStorage.setItem("jit_location_" + _currentUser, ld.location); }
-        if (ld.joinedAt) { localStorage.setItem("jit_joined_" + _currentUser, ld.joinedAt); }
-        if (ld.cover) { localStorage.setItem("jit_cover_" + _currentUser, ld.cover); var ce = document.getElementById("profileCover"); var cp = document.getElementById("coverPlaceholder"); if (ce) { ce.style.backgroundImage = "url('" + ld.cover + "')"; ce.style.backgroundSize = "cover"; ce.style.backgroundPosition = "center"; if (cp) cp.style.display = "none"; } }
-      }).catch(function() {});
     }
 
     // 发布框头像
@@ -1224,19 +1234,14 @@ var JITCommunity = (function() {
 
   // ===== 经验增加 =====
   var _addExp = function(userId, exp) {
-    var key = "jit_user_levels";
-    var all = {};
-    try { all = JSON.parse(localStorage.getItem(key) || "{}"); } catch(e) {}
-    if (!all[userId]) all[userId] = { level: 0, exp: 0, streak: 0 };
-    all[userId].exp = (all[userId].exp || 0) + exp;
-    var result = { levelData: all[userId], leveledUp: false };
+    if (!_userLevelCache[userId]) _userLevelCache[userId] = { level: 0, exp: 0, streak: 0 };
+    _userLevelCache[userId].exp = (_userLevelCache[userId].exp || 0) + exp;
+    var result = { levelData: _userLevelCache[userId], leveledUp: false };
     var newLevel = 0;
-    for (var i = LEVEL_CONFIG.length - 1; i >= 0; i--) { if (all[userId].exp >= LEVEL_CONFIG[i].expNeed) { newLevel = LEVEL_CONFIG[i].level; break; } }
-    if (newLevel > all[userId].level) { all[userId].level = newLevel; result.leveledUp = true; }
-    localStorage.setItem(key, JSON.stringify(all));
-    // 同步到 Turso
+    for (var i = LEVEL_CONFIG.length - 1; i >= 0; i--) { if (_userLevelCache[userId].exp >= LEVEL_CONFIG[i].expNeed) { newLevel = LEVEL_CONFIG[i].level; break; } }
+    if (newLevel > _userLevelCache[userId].level) { _userLevelCache[userId].level = newLevel; result.leveledUp = true; }
     if (JITApi && JITApi.updateUserLevel) {
-      JITApi.updateUserLevel(userId, { level: all[userId].level, exp: all[userId].exp, streak: all[userId].streak }).catch(function() {});
+      JITApi.updateUserLevel(userId, { level: _userLevelCache[userId].level, exp: _userLevelCache[userId].exp, streak: _userLevelCache[userId].streak }).catch(function() {});
     }
     return result;
   };
@@ -1489,18 +1494,29 @@ var JITCommunity = (function() {
   var _renderWinWall = function() {
     var inner = document.getElementById("winWallInner");
     if (!inner) return;
-    var ww = JSON.parse(localStorage.getItem("jit_winwall") || "[]");
-    if (ww.length === 0) { inner.innerHTML = '<span class="win-wall-item" style="color:var(--text-dim);">暂无中奖记录，去工作台抽奖吧~</span>'; return; }
-    var h = "";
-    ww.forEach(function(item) {
-      h += '<span class="win-wall-item">🎉 <b>' + _escapeHtml(item.user) + '</b> 中了 <b style="color:var(--gold);">' + _escapeHtml(String(item.prize)) + '</b>';
-      if (item.amount && parseFloat(item.amount) > 0) h += ' 返现 <b style="color:var(--success);">¥' + item.amount + '</b>';
-      h += '</span>';
-    });
-    inner.innerHTML = h;
+    if (JITApi && JITApi.getWinWall) {
+      return JITApi.getWinWall().then(function(ww) {
+        var items = ww || [];
+        if (items.length === 0) {
+          inner.innerHTML = '<span class="win-wall-item" style="color:var(--text-dim);">暂无中奖记录，去工作台抽奖吧~</span>';
+          return;
+        }
+        var h = "";
+        items.forEach(function(item) {
+          h += '<span class="win-wall-item">🎉 <b>' + _escapeHtml(item.user_id || "") + '</b> 中了 <b style="color:var(--gold);">' + _escapeHtml(String(item.prize_name || "")) + '</b>';
+          if (item.prize_cash && parseFloat(item.prize_cash) > 0) h += ' 返现 <b style="color:var(--success);">¥' + item.prize_cash + '</b>';
+          h += '</span>';
+        });
+        inner.innerHTML = h;
+      }).catch(function() {
+        inner.innerHTML = '<span class="win-wall-item" style="color:var(--danger);">加载中奖墙失败</span>';
+      });
+    }
+    inner.innerHTML = '<span class="win-wall-item" style="color:var(--text-dim);">加载中奖墙中...</span>';
+    return Promise.resolve();
   };
 
-  // ===== 初始化 =====
+  // ===== 初始化（强制走代理，并行加载） =====
   var init = function() {
     _currentUser = localStorage.getItem("jit_current_user");
     if (!_currentUser) {
@@ -1515,16 +1531,39 @@ var JITCommunity = (function() {
     }
 
     _initParticles();
-    _loadMyVouchers().then(function() {
+    _bindEvents();
+    document.getElementById("versionWatermark").textContent = "v3.5.0";
+
+    // 预热代理：立即唤醒 Val.town 冷启动
+    if (JITApi && JITApi.warmupProxy) { JITApi.warmupProxy(); }
+
+    // 所有数据并行加载（全部走代理），加载完后统一渲染
+    var startTime = Date.now();
+    var levelPromise = _refreshUserLevel(_currentUser).catch(function(e) {
+      console.warn("[Community] 等级加载失败:", e.message);
+    });
+
+    var voucherPromise = _loadMyVouchers().catch(function(e) {
+      console.warn("[Community] 凭证加载失败:", e.message);
+      _myVouchersCache = [];
+      return [];
+    });
+
+    var statusPromise = _loadStatuses().catch(function(e) {
+      console.warn("[Community] 动态加载失败:", e.message);
+    });
+
+    Promise.all([levelPromise, voucherPromise, statusPromise]).then(function() {
       _renderProfileHeader();
       _refreshUserCenterUI();
-      _bindEvents();
-      _loadStatuses();
       _refreshLocalPoints();
       _initOutfits();
       _renderWinWall();
-    });
-    document.getElementById("versionWatermark").textContent = "v3.3.7";
+      var elapsed = Date.now() - startTime;
+      if (elapsed > 5000) {
+        console.warn("[Community] 数据加载耗时较长: " + elapsed + "ms，请检查代理服务器状态");
+      }
+    }).catch(function() {});
   };
 
   // ===== 访客农场 =====

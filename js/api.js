@@ -24,11 +24,20 @@ var JITApi = (function() {
   var _hashPw = function(password, username) {
     return _sha256hex("jit_salt_2026#" + String(username) + "#" + String(password));
   };
-  var _tursoCall = function(endpoint, body) {
+  var FETCH_TIMEOUT_MS = 12000;
+  var _fetchWithTimeout = function(url, options, timeoutMs) {
+    var ms = timeoutMs || FETCH_TIMEOUT_MS;
+    var controller = new AbortController();
+    var timer = setTimeout(function() { controller.abort(); }, ms);
+    var opts = Object.assign({}, options, { signal: controller.signal });
+    return fetch(url, opts).finally(function() { clearTimeout(timer); });
+  };
+
+  var _tursoCall = function(endpoint, body, timeoutMs) {
     var payload = body || {};
     // 统一携带操作人（审计用）
     if (!payload.operator) payload.operator = _currentOperator();
-    return fetch(_tursoProxy + endpoint, {
+    return _fetchWithTimeout(_tursoProxy + endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -36,7 +45,7 @@ var JITApi = (function() {
         "X-Session-Token": _sessionToken()
       },
       body: JSON.stringify(payload)
-    }).then(function(resp) {
+    }, timeoutMs).then(function(resp) {
       if (!resp.ok) {
         return resp.text().then(function(txt) {
           try {
@@ -67,36 +76,6 @@ var JITApi = (function() {
       });
       return obj;
     });
-  };
-
-  // ========== localStorage → Turso 双向同步辅助 ==========
-  // 读取：优先从 Turso 读，同时更新 localStorage；Turso 挂了就用 localStorage
-  var _syncLoad = function(storageKey, tursoFetcher) {
-    return tursoFetcher().then(function(tursoData) {
-      if (tursoData !== undefined && tursoData !== null) {
-        try { localStorage.setItem(storageKey, typeof tursoData === "string" ? tursoData : JSON.stringify(tursoData)); } catch(e) {}
-        return tursoData;
-      }
-      return _syncLoadLocal(storageKey);
-    }).catch(function() {
-      return _syncLoadLocal(storageKey);
-    });
-  };
-
-  var _syncLoadLocal = function(storageKey) {
-    try { return JSON.parse(localStorage.getItem(storageKey) || "null"); } catch(e) { return null; }
-  };
-
-  // 保存：同时写 Turso + localStorage，Turso 失败也写 localStorage
-  var _syncSave = function(storageKey, data, tursoSaver) {
-    try { localStorage.setItem(storageKey, typeof data === "string" ? data : JSON.stringify(data)); } catch(e) {}
-    if (tursoSaver) {
-      return tursoSaver().catch(function(err) {
-        console.warn("Turso 同步失败，localStorage 已保存:", storageKey, err.message);
-        return data;
-      });
-    }
-    return Promise.resolve(data);
   };
 
   var _getTursoHelpers = function() {
@@ -142,14 +121,14 @@ var JITApi = (function() {
       if (params) {
         Object.keys(params).forEach(function(k) { payload[k] = params[k]; });
       }
-      return fetch(_gameProxy + "/game", {
+      return _fetchWithTimeout(_gameProxy + "/game", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-Session-Token": _sessionToken()
         },
         body: JSON.stringify(payload)
-      }).then(function(resp) {
+      }, 15000).then(function(resp) {
         if (!resp.ok) {
           return resp.text().then(function(txt) {
             try { var e = JSON.parse(txt); throw new Error(e.error || "引擎错误 HTTP "+resp.status); }
@@ -163,11 +142,11 @@ var JITApi = (function() {
       });
     };
     fn.visitFarm = function(targetUserId) {
-      return fetch(_gameProxy + "/visit", {
+      return _fetchWithTimeout(_gameProxy + "/visit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetUserId: targetUserId })
-      }).then(function(resp) {
+      }, 15000).then(function(resp) {
         if (!resp.ok) {
           return resp.text().then(function(txt) {
             try { var e = JSON.parse(txt); throw new Error(e.error || "访客错误 HTTP "+resp.status); }
@@ -186,14 +165,14 @@ var JITApi = (function() {
       if (params) {
         Object.keys(params).forEach(function(k) { payload[k] = params[k]; });
       }
-      return fetch(_gameProxy + "/community", {
+      return _fetchWithTimeout(_gameProxy + "/community", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-Session-Token": _sessionToken()
         },
         body: JSON.stringify(payload)
-      }).then(function(resp) {
+      }, 10000).then(function(resp) {
         if (!resp.ok) {
           return resp.text().then(function(txt) {
             try { var e = JSON.parse(txt); throw new Error(e.error || "社区错误 HTTP "+resp.status); }
@@ -384,7 +363,7 @@ var JITApi = (function() {
 
   var _getVouchers = function(username) {
     return _getCachedOrFetch("vouchers_" + username, function() {
-      return _tursoSql("SELECT * FROM vouchers WHERE user_id=? AND user_id NOT LIKE '【%】%' AND shop_name NOT LIKE '【%】%' ORDER BY created_at DESC", [username]).then(function(result) {
+      return _tursoSql("SELECT * FROM vouchers WHERE user_id=? AND user_id NOT LIKE '【%】%' AND shop_name NOT LIKE '【%】%' ORDER BY created_at DESC LIMIT 500", [username]).then(function(result) {
         var objs = _tursoRowsToObjects(result.columns, result.rows);
         return objs.map(_dbRowToVoucherData);
       });
@@ -592,7 +571,7 @@ var JITApi = (function() {
 
   // ========== 聊天（Turso） ==========
   var _getChatMessages = function(userId) {
-    return _tursoSql("SELECT * FROM chat_messages WHERE user_id=? ORDER BY created_at ASC", [userId]).then(function(result) {
+    return _tursoSql("SELECT * FROM chat_messages WHERE user_id=? ORDER BY created_at ASC LIMIT 500", [userId]).then(function(result) {
       var objs = _tursoRowsToObjects(result.columns, result.rows);
       return objs.map(function(r) {
         return {
@@ -625,7 +604,7 @@ var JITApi = (function() {
   };
 
   var _getVoucherUsers = function() {
-    return _tursoSql("SELECT DISTINCT user_id FROM vouchers ORDER BY user_id ASC", []).then(function(result) {
+    return _tursoSql("SELECT DISTINCT user_id FROM vouchers ORDER BY user_id ASC LIMIT 1000", []).then(function(result) {
       var objs = _tursoRowsToObjects(result.columns, result.rows);
       return objs.map(function(r) { return r.user_id; });
     });
@@ -754,7 +733,7 @@ var JITApi = (function() {
   };
 
   var _getAllRegistrationIssueObjects = function() {
-    return _tursoSql("SELECT * FROM registrations ORDER BY created_at DESC", []).then(function(result) {
+    return _tursoSql("SELECT * FROM registrations ORDER BY created_at DESC LIMIT 500", []).then(function(result) {
       return _tursoRowsToObjects(result.columns, result.rows).map(_registrationRowToIssue);
     });
   };
@@ -899,7 +878,7 @@ var JITApi = (function() {
   };
 
   var _getAllNotifications = function() {
-    return _tursoSql("SELECT * FROM notifications ORDER BY created_at DESC", []).then(function(result) {
+    return _tursoSql("SELECT * FROM notifications ORDER BY created_at DESC LIMIT 200", []).then(function(result) {
       var objs = _tursoRowsToObjects(result.columns, result.rows);
       return objs.map(function(r) {
         return {
@@ -1077,7 +1056,7 @@ var JITApi = (function() {
   };
 
   var _getUrgentBlacklistRows = function() {
-    return _tursoSql("SELECT * FROM urgent_blacklist ORDER BY created_at DESC", []).then(function(result) {
+    return _tursoSql("SELECT * FROM urgent_blacklist ORDER BY created_at DESC LIMIT 500", []).then(function(result) {
       return _tursoRowsToObjects(result.columns, result.rows);
     });
   };
@@ -1096,7 +1075,7 @@ var JITApi = (function() {
   };
 
   var _getBlacklistRows = function() {
-    return _tursoSql("SELECT * FROM blacklist ORDER BY created_at DESC", []).then(function(result) {
+    return _tursoSql("SELECT * FROM blacklist ORDER BY created_at DESC LIMIT 500", []).then(function(result) {
       return _tursoRowsToObjects(result.columns, result.rows);
     });
   };
@@ -1139,7 +1118,7 @@ var JITApi = (function() {
 
   // ========== 社区监管（禁言 + 删除动态） ==========
   var _getCommunityBans = function() {
-    return _tursoSql("SELECT * FROM community_bans ORDER BY created_at DESC", []).then(function(result) {
+    return _tursoSql("SELECT * FROM community_bans ORDER BY created_at DESC LIMIT 500", []).then(function(result) {
       return _tursoRowsToObjects(result.columns, result.rows);
     });
   };
@@ -1250,7 +1229,7 @@ var JITApi = (function() {
 
   // ========== 用户等级/经验/打卡（Turso user_levels 表） ==========
   var _getUserLevels = function() {
-    return _tursoSql("SELECT * FROM user_levels", []).then(function(result) {
+    return _tursoSql("SELECT * FROM user_levels LIMIT 500", []).then(function(result) {
       var objs = _tursoRowsToObjects(result.columns, result.rows);
       var map = {};
       objs.forEach(function(r) {
@@ -1667,12 +1646,10 @@ var JITApi = (function() {
     addUserMonthlyReward: _addUserMonthlyReward,
     migrateLocalToTurso: _migrateLocalToTurso,
     hasMigratedToTurso: _hasMigratedToTurso,
-    syncLoad: _syncLoad,
-    syncSave: _syncSave,
     // ===== 邮箱注册验证 =====
     registerEmail: function(email, username, password, fullName, birthdate, country, province, city, referrer) {
       return _hashPw(password, username).then(function(pwHash) {
-        return fetch(_tursoProxy + "/oauth/email/register", {
+        return _fetchWithTimeout(_tursoProxy + "/oauth/email/register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email: email, username: username, password: password, passwordHash: "sha256$" + pwHash, fullName: fullName, birthdate: birthdate || "", country: country || "", province: province || "", city: city || "", referrer: referrer || "" })
@@ -1680,29 +1657,40 @@ var JITApi = (function() {
       });
     },
     checkEmailRegister: function(email) {
-      return fetch(_tursoProxy + "/oauth/email/check-register?email=" + encodeURIComponent(email))
+      return _fetchWithTimeout(_tursoProxy + "/oauth/email/check-register?email=" + encodeURIComponent(email), { method: "GET" })
         .then(function(r) { return r.json(); });
     },
     verifyEmailCode: function(email, code) {
-      return fetch(_tursoProxy + "/oauth/email/verify-code", {
+      return _fetchWithTimeout(_tursoProxy + "/oauth/email/verify-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email, code: code })
       }).then(function(r) { return r.json(); });
     },
     bindEmail: function(username, email) {
-      return fetch(_tursoProxy + "/oauth/email/bind", {
+      return _fetchWithTimeout(_tursoProxy + "/oauth/email/bind", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: username, email: email })
       }).then(function(r) { return r.json(); });
     },
     verifyBind: function(username, email, code) {
-      return fetch(_tursoProxy + "/oauth/email/verify-bind", {
+      return _fetchWithTimeout(_tursoProxy + "/oauth/email/verify-bind", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: username, email: email, code: code })
       }).then(function(r) { return r.json(); });
+    },
+    // 代理预热：页面加载时立即发一个轻量请求唤醒 Val.town 冷启动
+    warmupProxy: function() {
+      var warmupUrl = _tursoProxy + "/health";
+      _fetchWithTimeout(warmupUrl, { method: "GET" }, 5000).then(function(resp) {
+        if (resp.ok) console.log("[API] 代理预热成功");
+      }).catch(function() {
+        console.warn("[API] 代理预热失败，将在首次请求时自动重试");
+      });
+      // 同时预热游戏引擎
+      _fetchWithTimeout(_gameProxy + "/health", { method: "GET" }, 5000).catch(function() {});
     },
   };
 })();

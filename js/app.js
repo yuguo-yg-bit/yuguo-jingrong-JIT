@@ -1,5 +1,5 @@
 var JITApp = (function() {
-  window._JIT_APP_VERSION = "3.0.7";
+  window._JIT_APP_VERSION = "3.5.0";
 
   window._JIT_TOKEN_TAIL = (function() {
     var _a = "_GIT";
@@ -31,12 +31,18 @@ var JITApp = (function() {
 
   var _init = function() {
     _initBackgroundParticles();
+    // 预热代理：立即唤醒 Val.town 冷启动
+    if (JITApi && JITApi.warmupProxy) { JITApi.warmupProxy(); }
     _syncBlacklistFromCloud(); // 启动时先同步云端黑名单（优先级高于自动登录检测）
     _syncUrgentBlFromCloud(); // 启动时拉取加急黑名单到内存
     _syncVersionWatermark(); // 同步版本水印
     _initLogin();
     _bindEvents();
     _initWinWall(); // v2.0 中奖墙初始化
+    // 加载用户等级数据（走代理）
+    if (_currentUser && JITApi && JITApi.getUserLevel) {
+      _refreshUserLevel(_currentUser).catch(function() {});
+    }
     // 确保积分 label 存在
     if (JITPoints && JITPoints.ensureLabel) JITPoints.ensureLabel().catch(function() {});
     _loadData();
@@ -1818,24 +1824,22 @@ var JITApp = (function() {
     { level: 7, name: "至尊VIP", expNeed: 10000, perks: "所有奖品概率提升" }
   ];
 
+  var _userLevelCache = {}; // 内存缓存，数据来源唯一是 Turso 代理
+
   var _getUserLevel = function(userId) {
-    var key = "jit_user_levels";
-    var all = {};
-    try { all = JSON.parse(localStorage.getItem(key) || "{}"); } catch(e) {}
-    // 同步从 Turso 加载（非阻塞）
-    JITApi.getUserLevels().then(function(tursoLevels) {
-      if (tursoLevels && tursoLevels[userId]) {
-        var td = tursoLevels[userId];
-        var merged = all[userId] || {};
-        merged.level = Math.max(merged.level||0, td.level||0);
-        merged.exp = Math.max(merged.exp||0, td.exp||0);
-        merged.streak = Math.max(merged.streak||0, td.streak||0);
-        all[userId] = merged;
-        try { localStorage.setItem(key, JSON.stringify(all)); } catch(e) {}
+    return _userLevelCache[userId] || { level: 0, exp: 0, streak: 0 };
+  };
+
+  var _refreshUserLevel = function(userId) {
+    if (!JITApi || !JITApi.getUserLevel) return Promise.resolve(_getUserLevel(userId));
+    return JITApi.getUserLevel(userId).then(function(data) {
+      if (data) {
+        _userLevelCache[userId] = { level: data.level || 0, exp: data.exp || 0, streak: data.streak || 0 };
       }
-    }).catch(function() {});
-    var data = all[userId] || { level: 0, exp: 0, streak: 0 };
-    return data;
+      return _userLevelCache[userId] || { level: 0, exp: 0, streak: 0 };
+    }).catch(function() {
+      return _userLevelCache[userId] || { level: 0, exp: 0, streak: 0 };
+    });
   };
 
   var _getLevelInfo = function(level) {
@@ -1844,24 +1848,18 @@ var JITApp = (function() {
 
   // 增加经验值并自动升级
   var _addExp = function(userId, amount) {
-    var key = "jit_user_levels";
-    var all = {};
-    try { all = JSON.parse(localStorage.getItem(key) || "{}"); } catch(e) {}
-    var data = all[userId] || { level: 0, exp: 0, streak: 0 };
-    data.exp = (data.exp || 0) + amount;
+    if (!_userLevelCache[userId]) _userLevelCache[userId] = { level: 0, exp: 0, streak: 0 };
+    _userLevelCache[userId].exp = (_userLevelCache[userId].exp || 0) + amount;
     var leveledUp = false;
     while (true) {
-      var nextInfo = _getLevelInfo(data.level + 1);
-      if (nextInfo && data.exp >= nextInfo.expNeed) {
-        data.level++;
+      var nextInfo = _getLevelInfo(_userLevelCache[userId].level + 1);
+      if (nextInfo && _userLevelCache[userId].exp >= nextInfo.expNeed) {
+        _userLevelCache[userId].level++;
         leveledUp = true;
       } else { break; }
     }
-    all[userId] = data;
-    localStorage.setItem(key, JSON.stringify(all));
-    // 同步到 Turso
-    JITApi.updateUserLevel(userId, { level: data.level, exp: data.exp, streak: data.streak }).catch(function() {});
-    return { levelData: data, leveledUp: leveledUp };
+    JITApi.updateUserLevel(userId, { level: _userLevelCache[userId].level, exp: _userLevelCache[userId].exp, streak: _userLevelCache[userId].streak }).catch(function() {});
+    return { levelData: _userLevelCache[userId], leveledUp: leveledUp };
   };
 
   // 翻翻乐结果弹窗
