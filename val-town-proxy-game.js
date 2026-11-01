@@ -5,7 +5,7 @@
 // ============================================================
 
 export default async function (req) {
-  const ALLOW_ORIGINS = ["https://www.yuguojinrong.cc.cd","https://yuguo-yg-bit.github.io","https://yuguoygbit.github.io"];
+  const ALLOW_ORIGINS = ["https://www.yuguojinrong.cc.cd","https://yuguo-yg-bit.github.io","https://yuguoygbit.github.io","http://localhost:8080","http://localhost:3000","http://127.0.0.1:8080","http://127.0.0.1:3000"];
   const TURSO_API = process.env.TURSO_API_URL;
   const TURSO_TOKEN = process.env.TURSO_RW_TOKEN;
 
