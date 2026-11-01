@@ -356,6 +356,21 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
 
   if (!_currentUser) { alert("请先登录后再进入农场"); window.location.href = "login.html"; return; }
 
+  // 启动诊断：检查 session token
+  var _sessTok = "";
+  try { _sessTok = localStorage.getItem("jit_session_token") || ""; } catch(e) {}
+  if (!_sessTok) {
+    var diag = "⚠️ 会话缺失，请重新登录\n\n" +
+      "当前用户: " + _currentUser + "\n" +
+      "session_token: " + (_sessTok ? _sessTok.substring(0,20)+"..." : "(空)") + "\n" +
+      "session_user: " + (localStorage.getItem("jit_session_user") || "(空)") + "\n" +
+      "session_role: " + (localStorage.getItem("jit_session_role") || "(空)");
+    console.warn("[农场诊断]", diag);
+    showToast("会话已失效，请重新登录", "error");
+    setTimeout(function() { window.location.href = "login.html"; }, 1500);
+    return;
+  }
+
   function game(action, params) {
     if (typeof JITApi === "undefined" || !JITApi.getTursoHelpers) {
       return Promise.reject(new Error("API 未就绪，请刷新页面"));

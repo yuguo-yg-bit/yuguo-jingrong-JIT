@@ -989,8 +989,12 @@ var JITApi = (function() {
       if (objs.length === 0) return null;
       var r = objs[0];
       var now = Date.now();
-      var expiresAt = parseInt(r.expires_at || 0, 10);
-      if (now >= expiresAt && expiresAt > 0) {
+      var expiresAt = 0;
+      if (r.expires_at) {
+        var ms = new Date(r.expires_at).getTime();
+        if (!isNaN(ms)) expiresAt = ms;
+      }
+      if (expiresAt > 0 && now >= expiresAt) {
         return _tursoSql("DELETE FROM oauth_tokens WHERE token=?", [token]).then(function() { return null; });
       }
       return _tursoSql("UPDATE oauth_tokens SET last_used_at=? WHERE token=?", [new Date().toISOString(), token]).then(function() {
