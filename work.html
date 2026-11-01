@@ -12,94 +12,408 @@
 <title>玉国金融【全球通】</title>
 <link rel="icon" type="image/png" href="Logo.png?v=3.5.2">
 <link rel="stylesheet" href="css/style.css?v=3.5.1">
+<style>
+/* ===== Claude-Style App Layout ===== */
+:root {
+  --sidebar-w: 260px;
+  --topbar-h: 56px;
+  --bg-app: #0d1117;
+  --bg-sidebar: #0f1419;
+  --bg-card: #161b22;
+  --bg-hover: #1c2333;
+  --border-subtle: rgba(255,255,255,0.06);
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted: #6e7681;
+  --accent: #58a6ff;
+  --accent-dim: rgba(88,166,255,0.12);
+  --gold: #d4a853;
+  --gold-dim: rgba(212,168,83,0.12);
+  --green: #3fb950;
+  --green-dim: rgba(63,185,80,0.12);
+  --orange: #f0883e;
+  --orange-dim: rgba(240,136,62,0.12);
+  --purple: #a371f7;
+  --purple-dim: rgba(163,113,247,0.12);
+  --red: #f85149;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --transition-fast: 150ms ease;
+  --transition-normal: 250ms ease;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
+}
+* { box-sizing: border-box; }
+.app-shell {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  background: var(--bg-app);
+  position: relative;
+  z-index: 1;
+}
+.app-sidebar {
+  width: var(--sidebar-w);
+  min-width: var(--sidebar-w);
+  height: 100vh;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: 30;
+  transition: transform var(--transition-normal), opacity var(--transition-normal);
+}
+.app-sidebar::-webkit-scrollbar { width: 4px; }
+.app-sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+.sidebar-brand {
+  padding: 20px 20px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+.sidebar-brand img { width: 32px; height: 32px; border-radius: 8px; }
+.sidebar-brand-text { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; color: var(--text-primary); }
+.sidebar-brand-ver { font-size: 10px; color: var(--text-muted); margin-top: 1px; }
+.sidebar-nav { flex: 1; padding: 12px 10px; display: flex; flex-direction: column; gap: 2px; }
+.sidebar-section-label {
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-muted); padding: 16px 10px 6px; user-select: none;
+}
+.sidebar-section-label:first-child { padding-top: 4px; }
+.sidebar-nav-item {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  border-radius: var(--radius-sm); cursor: pointer; transition: all var(--transition-fast);
+  color: var(--text-secondary); font-size: 14px; font-weight: 500; letter-spacing: -0.01em;
+  user-select: none; border: none; background: none; width: 100%; text-align: left;
+  position: relative;
+}
+.sidebar-nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.sidebar-nav-item.active { background: var(--accent-dim); color: var(--accent); }
+.sidebar-nav-item.active::before {
+  content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 3px; height: 20px; background: var(--accent); border-radius: 0 3px 3px 0;
+}
+.sidebar-nav-item svg { width: 20px; height: 20px; flex-shrink: 0; }
+.sidebar-nav-item .nav-badge {
+  margin-left: auto; font-size: 10px; font-weight: 600; padding: 2px 8px;
+  border-radius: 10px; background: var(--accent-dim); color: var(--accent);
+}
+.sidebar-footer {
+  padding: 12px 14px; border-top: 1px solid var(--border-subtle); flex-shrink: 0;
+}
+.sidebar-footer-info { display: flex; align-items: center; gap: 10px; }
+.sidebar-footer-avatar {
+  width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), #6e40c9);
+  display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700;
+  flex-shrink: 0;
+}
+.sidebar-footer-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.sidebar-footer-role { font-size: 11px; color: var(--text-muted); }
+
+/* Main area */
+.app-main { flex: 1; display: flex; flex-direction: column; min-width: 0; height: 100vh; }
+.app-topbar {
+  height: var(--topbar-h); min-height: var(--topbar-h); display: flex; align-items: center;
+  padding: 0 24px; gap: 16px; border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-app); z-index: 20; flex-shrink: 0;
+}
+.topbar-toggle {
+  width: 36px; height: 36px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);
+  background: transparent; color: var(--text-secondary); cursor: pointer; display: flex;
+  align-items: center; justify-content: center; transition: all var(--transition-fast); flex-shrink: 0;
+}
+.topbar-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
+.topbar-toggle svg { width: 18px; height: 18px; }
+.topbar-title {
+  font-size: 15px; font-weight: 600; color: var(--text-primary); letter-spacing: -0.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.topbar-spacer { flex: 1; }
+.topbar-points {
+  display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 20px;
+  background: var(--gold-dim); border: 1px solid rgba(212,168,83,0.15); flex-shrink: 0;
+}
+.topbar-points-icon { font-size: 14px; }
+.topbar-points-val { font-size: 14px; font-weight: 700; color: var(--gold); }
+.topbar-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.topbar-action-btn {
+  width: 36px; height: 36px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);
+  background: transparent; color: var(--text-secondary); cursor: pointer; display: flex;
+  align-items: center; justify-content: center; transition: all var(--transition-fast);
+  position: relative;
+}
+.topbar-action-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.topbar-action-btn svg { width: 18px; height: 18px; }
+.topbar-notif-badge {
+  position: absolute; top: 4px; right: 4px; min-width: 8px; height: 8px;
+  background: var(--red); border-radius: 50%; border: 1.5px solid var(--bg-app);
+}
+.topbar-user {
+  display: flex; align-items: center; gap: 10px; padding: 4px 12px 4px 4px;
+  border-radius: 24px; border: 1px solid var(--border-subtle); cursor: pointer;
+  transition: all var(--transition-fast); flex-shrink: 0; background: transparent;
+}
+.topbar-user:hover { background: var(--bg-hover); }
+.topbar-user-avatar {
+  width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), #6e40c9);
+  display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700;
+  flex-shrink: 0;
+}
+.topbar-user-name { font-size: 13px; font-weight: 500; color: var(--text-primary); }
+.topbar-user-chevron { color: var(--text-muted); margin-left: 2px; }
+
+/* Page content */
+.app-content { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 24px; }
+.app-content::-webkit-scrollbar { width: 6px; }
+.app-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 6px; }
+.app-page { display: none; animation: pageFadeIn 200ms ease; }
+.app-page.active { display: block; }
+@keyframes pageFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Dashboard cards */
+.dash-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.dash-card {
+  background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+  padding: 20px; transition: all var(--transition-fast); cursor: pointer;
+}
+.dash-card:hover { border-color: rgba(255,255,255,0.12); transform: translateY(-1px); }
+.dash-card-icon {
+  width: 40px; height: 40px; border-radius: var(--radius-sm); display: flex; align-items: center;
+  justify-content: center; margin-bottom: 14px; font-size: 18px;
+}
+.dash-card-val { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 4px; }
+.dash-card-label { font-size: 13px; color: var(--text-secondary); }
+
+/* Feed */
+.feed-section { margin-bottom: 24px; }
+.feed-section-title {
+  font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px;
+  display: flex; align-items: center; gap: 8px;
+}
+.feed-section-title::after { content: ''; flex: 1; height: 1px; background: var(--border-subtle); }
+.feed-list { display: flex; flex-direction: column; gap: 8px; }
+.feed-item {
+  display: flex; align-items: flex-start; gap: 14px; padding: 14px 16px;
+  background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+}
+.feed-item:hover { border-color: rgba(255,255,255,0.1); }
+.feed-item-icon {
+  width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center;
+  justify-content: center; flex-shrink: 0; font-size: 16px;
+}
+.feed-item-body { flex: 1; min-width: 0; }
+.feed-item-title { font-size: 14px; font-weight: 500; line-height: 1.4; margin-bottom: 2px; }
+.feed-item-desc { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+.feed-item-time { font-size: 11px; color: var(--text-muted); flex-shrink: 0; white-space: nowrap; }
+
+/* Empty state */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 60px 24px; text-align: center;
+}
+.empty-state-icon { font-size: 40px; margin-bottom: 16px; opacity: 0.5; }
+.empty-state-text { font-size: 14px; color: var(--text-muted); line-height: 1.6; max-width: 320px; }
+
+/* Voucher page integration - hide original header, keep sidebar + table */
+.app-page-voucher .top-header { display: none !important; }
+.app-page-voucher .content-wrapper { padding-top: 0; }
+.app-page-voucher .sidebar { background: var(--bg-sidebar); border-right: 1px solid var(--border-subtle); }
+.app-page-voucher .main-content { background: transparent; }
+.app-page-voucher .orders-table { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); }
+.app-page-voucher .orders-table thead { background: rgba(255,255,255,0.02); }
+.app-page-voucher .orders-table th { color: var(--text-muted); font-weight: 600; font-size: 12px; }
+.app-page-voucher .orders-table td { color: var(--text-secondary); font-size: 13px; }
+.app-page-voucher .pagination { padding: 16px 0; }
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .dash-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 768px) {
+  .app-sidebar {
+    position: fixed; left: 0; top: 0; bottom: 0; z-index: 50;
+    transform: translateX(-100%); box-shadow: 4px 0 20px rgba(0,0,0,0.4);
+  }
+  .app-sidebar.open { transform: translateX(0); }
+  .sidebar-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    z-index: 40; cursor: pointer;
+  }
+  .sidebar-overlay.show { display: block; }
+  .app-topbar { padding: 0 16px; }
+  .app-content { padding: 16px; }
+  .dash-grid { grid-template-columns: 1fr; }
+  .topbar-user-name { display: none; }
+  .topbar-points-val { font-size: 13px; }
+  .topbar-title { font-size: 14px; }
+}
+@media (max-width: 480px) {
+  .topbar-points { padding: 4px 10px; gap: 4px; }
+  .topbar-points-val { font-size: 12px; }
+  .topbar-actions .topbar-action-btn { width: 32px; height: 32px; }
+}
+</style>
 </head>
 <body>
 <div class="version-watermark" id="versionWatermark">v3.5.2</div>
 <div class="bg-grid"></div>
 <div class="bg-particles" id="bgParticles"></div>
 
-<div class="main-container">
-  <header class="top-header">
-    <div class="header-left">
-      <h1 class="site-title"><img src="Logo.png?v=3.5.2" alt="玉国金融" class="site-logo">玉国金融【全球通】</h1>
-      <button class="btn-logout btn-logout-mobile" id="btnLogout">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
-        </svg>
-        <span id="logoutUserText">退出</span>
+<!-- ====== Claude-Style App Shell ====== -->
+<div class="app-shell">
+  <!-- Mobile overlay -->
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <!-- Sidebar -->
+  <nav class="app-sidebar" id="appSidebar">
+    <div class="sidebar-brand">
+      <img src="Logo.png?v=3.5.2" alt="玉国金融">
+      <div>
+        <div class="sidebar-brand-text">玉国金融【全球通】</div>
+        <div class="sidebar-brand-ver">v3.5.2</div>
+      </div>
+    </div>
+    <div class="sidebar-nav">
+      <button class="sidebar-nav-item active" data-page="dashboard" id="navDashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        首页动态
+      </button>
+      <button class="sidebar-nav-item" data-page="voucher" id="navVoucher">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        凭证管理
+      </button>
+      <button class="sidebar-nav-item" data-page="points" id="navPoints">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="12 6 14.5 11.5 20.5 11.5 15.5 15.5 17 21 12 17.5 7 21 8.5 15.5 3.5 11.5 9.5 11.5"/></svg>
+        积分中心
+      </button>
+      <button class="sidebar-nav-item" data-page="community" id="navCommunity">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+        玉国社区
+      </button>
+      <button class="sidebar-nav-item" data-page="lottery" id="navLottery">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/><line x1="12" y1="12" x2="12" y2="12.01"/></svg>
+        抽奖福利
       </button>
     </div>
-    <div class="header-center">
-      <div class="nav-group nav-group-small">
-        <button class="nav-btn-small" id="btnCustomerService" title="联系客服">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
-          </svg>
-        </button>
-        <button class="nav-btn-small" id="btnNotification" title="通知" style="position:relative;">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-          </svg>
-          <span id="notificationBadge" style="position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;line-height:16px;text-align:center;font-size:10px;font-weight:700;color:#fff;background:#f44336;border-radius:8px;padding:0 4px;display:none;"></span>
-        </button>
-        <button class="nav-btn-small" id="btnJITVip">JIT级别会员优惠券</button>
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-info">
+        <div class="sidebar-footer-avatar" id="sidebarAvatar">用</div>
+        <div>
+          <div class="sidebar-footer-name" id="sidebarUserName">用户</div>
+          <div class="sidebar-footer-role" id="sidebarMemberLevel">1级IT会员</div>
+        </div>
       </div>
-      <div class="nav-group nav-group-large">
-        <div class="nav-module" id="moduleAddVoucher">
-          <span class="module-tip">添加新优惠</span>
-          <button class="module-btn" id="btnAddVoucher">添加凭证</button>
-        </div>
-        
-        <div class="nav-module" id="moduleWriteVoucher">
-          <span class="module-tip">编辑凭证</span>
-          <button class="module-btn" id="btnWriteVoucher">编辑凭证</button>
-        </div>
-        <div class="nav-module" id="moduleAddOnline">
-          <span class="module-tip" style="color:var(--accent);">线上购物</span>
-          <button class="module-btn" id="btnAddOnlineVoucher" style="border-color:var(--accent);color:var(--accent);">添加线上购物</button>
-        </div>
-        <div class="nav-module" id="moduleElectric">
-          <span class="module-tip" style="color:#ff7043;">大额电器补贴</span>
-          <button class="module-btn" id="btnAddElectricVoucher" style="border-color:#ff7043;color:#ff7043;">🎁 电器补贴凭证</button>
-        </div>
-        <div class="nav-module" id="moduleWheelLottery">
-          <span class="module-tip" style="color:#ffd700;">积分抽奖</span>
-          <button class="module-btn" id="btnWheelLottery" style="border-color:#ffd700;color:#ffd700;">🎡 转盘抽奖</button>
-        </div>
-        <div class="nav-module" id="moduleInvite">
-          <span class="module-tip" style="color:#4caf50;">邀请好友</span>
-          <button class="module-btn" id="btnInvite" style="border-color:#4caf50;color:#4caf50;">邀请好友得积分</button>
-        </div>
-        <div class="nav-module" id="moduleFarm">
-          <span class="module-tip" style="color:#8bc34a;">我的农场</span>
-          <button class="module-btn" id="btnFarm" style="border-color:#8bc34a;color:#8bc34a;" onclick="window.location.href='/farm'">🌾 我的农场</button>
-        </div>
-        </div>
     </div>
-    <div class="header-right">
-      <div class="points-bar" id="pointsBar" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;justify-content:flex-end;">
-        <span style="font-size:12px;color:var(--text-secondary);">积分：</span>
-        <span id="pointsTotal" style="font-size:18px;font-weight:700;color:var(--gold);">0</span>
-        <button id="btnPointsHistory" title="积分明细" style="background:rgba(255,213,79,0.15);border:1px solid rgba(255,213,79,0.4);color:var(--gold);padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;">📋 明细</button>
-        <button id="btnUserCenter" title="鱼果社区" style="background:rgba(66,165,245,0.15);border:1px solid rgba(66,165,245,0.4);color:var(--accent);padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;">👤 社区</button>
+  </nav>
+
+  <!-- Main -->
+  <div class="app-main">
+    <!-- Topbar -->
+    <header class="app-topbar">
+      <button class="topbar-toggle" id="topbarToggle" title="折叠侧边栏">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <span class="topbar-title" id="topbarTitle">首页动态</span>
+      <div class="topbar-spacer"></div>
+      <div class="topbar-points">
+        <span class="topbar-points-icon">💰</span>
+        <span class="topbar-points-val" id="topbarPointsVal">0</span>
       </div>
-      <div class="member-progress" id="memberProgress">
-        <div class="progress-labels">
-          <span class="progress-label">一阶</span>
-          <span class="progress-label">1级IT会员</span>
-          <span class="progress-label">2级</span>
-          <span class="progress-label">3级</span>
-          <span class="progress-label">4级</span>
-        </div>
-        <div class="progress-bar-track">
-          <div class="progress-bar-fill" id="progressBarFill"></div>
-        </div>
-        <div class="progress-text" id="progressText"><div class="loading-brand loading-brand-sm" style="padding:0;margin-top:6px;"><svg width="15.55" height="25" viewBox="0 0 15.55 27.5" xmlns="http://www.w3.org/2000/svg" style="vertical-align:text-top;"><g stroke-linecap="round" fill="none" style="stroke:#2E8870;stroke-width:2.5px;"><path d="M5.50 25L5.50 17.82L0 6.70L2.20 6.70L6.50 16L6.60 16Q8.08 12.88 8.45 12L8.45 12L10.93 6.70L13.05 6.70L7.55 17.82L7.55 25L5.50 25Z" style="stroke-dasharray:66,68;stroke-dashoffset:67;"><animate attributeName="stroke-dashoffset" to="0" dur="1500ms" calcMode="linear" repeatCount="indefinite" begin="0ms"/></path></g></svg><svg width="15.2" height="25.325" viewBox="0 0 15.2 27.825" xmlns="http://www.w3.org/2000/svg" style="vertical-align:text-top;"><g stroke-linecap="round" fill="none" style="stroke:#2E8870;stroke-width:2.5px;"><path d="M6.28 25.32Q2.18 25.32 2.18 20.07L2.18 20.07L2.18 11.50L4.20 11.50L4.20 19.82Q4.20 21.77 4.83 22.65L4.83 22.65Q5.45 23.55 6.88 23.55L6.88 23.55Q8.72 23.55 10.68 21.18L10.68 21.18L10.68 11.50L12.70 11.50L12.70 25L11.03 25L10.85 22.85L10.78 22.85Q8.63 25.32 6.28 25.32L6.28 25.32Z" style="stroke-dasharray:70,72;stroke-dashoffset:71;"><animate attributeName="stroke-dashoffset" to="0" dur="1500ms" calcMode="linear" repeatCount="indefinite" begin="200ms"/></path></g></svg><svg width="17.725" height="25.325" viewBox="0 0 17.725 27.825" xmlns="http://www.w3.org/2000/svg" style="vertical-align:text-top;"><g stroke-linecap="round" fill="none" style="stroke:#2E8870;stroke-width:2.5px;"><path d="M9.63 25.32Q5.98 25.32 3.75 22.80L3.75 22.80Q1.48 20.23 1.48 15.85L1.48 15.85Q1.48 11.50 3.83 8.90L3.83 8.90Q6.10 6.38 9.78 6.38L9.78 6.38Q12.83 6.38 15 8.60L15 8.60L13.85 9.95Q12.20 8.20 9.83 8.20L9.83 8.20Q6.98 8.20 5.30 10.22L5.30 10.22Q3.60 12.27 3.60 15.80L3.60 15.80Q3.60 19.38 5.23 21.43L5.23 21.43Q6.88 23.50 9.83 23.50L9.83 23.50Q12.10 23.50 13.30 22.35L13.30 22.35L13.30 17.35L9.33 17.35L9.33 15.63L15.23 15.63L15.23 23.23Q13.20 25.32 9.63 25.32L9.63 25.32Z" style="stroke-dasharray:96,98;stroke-dashoffset:97;"><animate attributeName="stroke-dashoffset" to="0" dur="1500ms" calcMode="linear" repeatCount="indefinite" begin="400ms"/></path></g></svg><svg width="15.2" height="25.325" viewBox="0 0 15.2 27.825" xmlns="http://www.w3.org/2000/svg" style="vertical-align:text-top;"><g stroke-linecap="round" fill="none" style="stroke:#2E8870;stroke-width:2.5px;"><path d="M6.28 25.32Q2.18 25.32 2.18 20.07L2.18 20.07L2.18 11.50L4.20 11.50L4.20 19.82Q4.20 21.77 4.83 22.65L4.83 22.65Q5.45 23.55 6.88 23.55L6.88 23.55Q8.72 23.55 10.68 21.18L10.68 21.18L10.68 11.50L12.70 11.50L12.70 25L11.03 25L10.85 22.85L10.78 22.85Q8.63 25.32 6.28 25.32L6.28 25.32Z" style="stroke-dasharray:70,72;stroke-dashoffset:71;"><animate attributeName="stroke-dashoffset" to="0" dur="1500ms" calcMode="linear" repeatCount="indefinite" begin="600ms"/></path></g></svg><svg width="16.25" height="25.325" viewBox="0 0 16.25 27.825" xmlns="http://www.w3.org/2000/svg" style="vertical-align:text-top;"><g stroke-linecap="round" fill="none" style="stroke:#2E8870;stroke-width:2.5px;"><path d="M7.53 25.32Q4.95 25.32 3.20 23.48L3.20 23.48Q1.33 21.50 1.33 18.27L1.33 18.27Q1.33 15 3.20 13.02L3.20 13.02Q4.93 11.15 7.53 11.15L7.53 11.15Q10.13 11.15 11.88 13.02L11.88 13.02Q13.75 15 13.75 18.27L13.75 18.27Q13.75 21.50 11.88 23.48L11.88 23.48Q10.13 25.32 7.53 25.32L7.53 25.32ZM7.53 23.63Q9.35 23.63 10.50 22.15L10.50 22.15Q11.65 20.68 11.65 18.27L11.65 18.27Q11.65 15.88 10.50 14.38L10.50 14.38Q9.35 12.88 7.53 12.88L7.53 12.88Q5.70 12.88 4.58 14.38L4.58 14.38Q3.43 15.85 3.43 18.27L3.43 18.27Q3.43 20.68 4.58 22.15L4.58 22.15Q5.70 23.63 7.53 23.63L7.53 23.63Z" style="stroke-dasharray:72,74;stroke-dashoffset:73;"><animate attributeName="stroke-dashoffset" to="0" dur="1500ms" calcMode="linear" repeatCount="indefinite" begin="800ms"/></path></g></svg><svg width="15.45" height="25" viewBox="0 0 15.45 27.5" xmlns="http://www.w3.org/2000/svg" style="vertical-align:text-top;"><g stroke-linecap="round" fill="none" style="stroke:#2E8870;stroke-width:2.5px;"><path d="M2.55 25L2.55 6.70L12.95 6.70L12.95 8.45L4.63 8.45L4.63 14.90L11.68 14.90L11.68 16.65L4.63 16.65L4.63 25L2.55 25Z" style="stroke-dasharray:71,73;stroke-dashoffset:72;"><animate attributeName="stroke-dashoffset" to="0" dur="1500ms" calcMode="linear" repeatCount="indefinite" begin="1000ms"/></path></g></svg><svg width="7.375" height="25" viewBox="0 0 7.375 27.5" xmlns="http://www.w3.org/2000/svg" style="vertical-align:text-top;"><g stroke-linecap="round" fill="none" style="stroke:#2E8870;stroke-width:2.5px;"><path d="M2.38 25L2.38 11.50L4.40 11.50L4.40 25L2.38 25ZM3.40 8.60Q2.75 8.60 2.35 8.20L2.35 8.20Q1.93 7.82 1.93 7.22L1.93 7.22Q1.93 5.82 3.40 5.82L3.40 5.82Q4.03 5.82 4.45 6.20L4.45 6.20Q4.88 6.60 4.88 7.22L4.88 7.22Q4.88 7.82 4.45 8.20L4.45 8.20Q4 8.60 3.40 8.60L3.40 8.60Z" style="stroke-dasharray:40,42;stroke-dashoffset:41;"><animate attributeName="stroke-dashoffset" to="0" dur="1500ms" calcMode="linear" repeatCount="indefinite" begin="1200ms"/></path></g></svg><svg width="15.475" height="25" viewBox="0 0 15.475 27.5" xmlns="http://www.w3.org/2000/svg" style="vertical-align:text-top;"><g stroke-linecap="round" fill="none" style="stroke:#2E8870;stroke-width:2.5px;"><path d="M2.38 25L2.38 11.50L4.03 11.50L4.23 13.47L4.30 13.47Q6.68 11.15 8.85 11.15L8.85 11.15Q12.98 11.15 12.98 16.42L12.98 16.42L12.98 25L10.93 25L10.93 16.67Q10.93 12.92 8.25 12.92L8.25 12.92Q6.53 12.92 4.40 15.13L4.40 15.13L4.40 25L2.38 25Z" style="stroke-dasharray:70,72;stroke-dashoffset:71;"><animate attributeName="stroke-dashoffset" to="0" dur="1500ms" calcMode="linear" repeatCount="indefinite" begin="1400ms"/></path></g></svg></div></div>
+      <div class="topbar-actions">
+        <button class="topbar-action-btn" id="topbarCustomerService" title="联系客服">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+        </button>
+        <button class="topbar-action-btn" id="topbarNotification" title="通知">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="topbar-notif-badge" id="topbarNotifBadge" style="display:none;"></span>
+        </button>
       </div>
-      
-    </div>
-  </header>
+      <div class="topbar-user" id="topbarUser">
+        <div class="topbar-user-avatar" id="topbarUserAvatar">用</div>
+        <span class="topbar-user-name" id="topbarUserName">用户</span>
+        <svg class="topbar-user-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <div class="app-content" id="appContent">
+      <!-- Page: Dashboard -->
+      <div class="app-page active" id="pageDashboard">
+        <div class="dash-grid">
+          <div class="dash-card" onclick="document.getElementById('navVoucher').click()">
+            <div class="dash-card-icon" style="background:var(--accent-dim);color:var(--accent);">📋</div>
+            <div class="dash-card-val" id="dashVoucherCount">--</div>
+            <div class="dash-card-label">凭证订单</div>
+          </div>
+          <div class="dash-card" onclick="document.getElementById('navPoints').click()">
+            <div class="dash-card-icon" style="background:var(--gold-dim);color:var(--gold);">💰</div>
+            <div class="dash-card-val" id="dashPointsVal">0</div>
+            <div class="dash-card-label">我的积分</div>
+          </div>
+          <div class="dash-card" onclick="document.getElementById('navLottery').click()">
+            <div class="dash-card-icon" style="background:var(--orange-dim);color:var(--orange);">🎟️</div>
+            <div class="dash-card-val" id="dashLotteryCount">--</div>
+            <div class="dash-card-label">抽奖券</div>
+          </div>
+          <div class="dash-card" onclick="document.getElementById('navCommunity').click()">
+            <div class="dash-card-icon" style="background:var(--purple-dim);color:var(--purple);">👑</div>
+            <div class="dash-card-val" id="dashMemberLevel">1级IT</div>
+            <div class="dash-card-label">会员等级</div>
+          </div>
+        </div>
+
+        <div class="feed-section">
+          <div class="feed-section-title">📡 最新动态</div>
+          <div class="feed-list" id="dashboardFeed">
+            <div class="feed-item">
+              <div class="feed-item-icon" style="background:var(--accent-dim);">📋</div>
+              <div class="feed-item-body">
+                <div class="feed-item-title">欢迎来到玉国金融【全球通】</div>
+                <div class="feed-item-desc">您的综合服务平台，在这里管理凭证、积分、社区互动和福利抽奖</div>
+              </div>
+              <div class="feed-item-time">刚刚</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Page: Voucher Management -->
+      <div class="app-page app-page-voucher" id="pageVoucher">
+        <div class="main-container">
+          <header class="top-header" style="padding:0 0 20px;border-bottom:1px solid var(--border-subtle);margin-bottom:20px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+            <div class="nav-group nav-group-large" style="display:flex;flex-wrap:wrap;gap:8px;">
+              <button class="module-btn" id="btnAddVoucher" style="background:var(--bg-card);border:1px solid var(--border-subtle);color:var(--text-primary);padding:8px 16px;border-radius:8px;font-size:13px;cursor:pointer;transition:all .15s;">+ 添加凭证</button>
+              <button class="module-btn" id="btnWriteVoucher" style="background:var(--bg-card);border:1px solid var(--border-subtle);color:var(--text-primary);padding:8px 16px;border-radius:8px;font-size:13px;cursor:pointer;transition:all .15s;">✏️ 编辑凭证</button>
+              <button class="module-btn" id="btnAddOnlineVoucher" style="background:var(--bg-card);border:1px solid rgba(88,166,255,0.3);color:var(--accent);padding:8px 16px;border-radius:8px;font-size:13px;cursor:pointer;transition:all .15s;">🛒 线上购物</button>
+              <button class="module-btn" id="btnAddElectricVoucher" style="background:var(--bg-card);border:1px solid rgba(240,136,62,0.3);color:var(--orange);padding:8px 16px;border-radius:8px;font-size:13px;cursor:pointer;transition:all .15s;">🎁 电器补贴</button>
+              <button class="module-btn" id="btnWheelLottery" style="background:var(--bg-card);border:1px solid rgba(212,168,83,0.3);color:var(--gold);padding:8px 16px;border-radius:8px;font-size:13px;cursor:pointer;transition:all .15s;">🎡 转盘抽奖</button>
+              <button class="module-btn" id="btnInvite" style="background:var(--bg-card);border:1px solid rgba(63,185,80,0.3);color:var(--green);padding:8px 16px;border-radius:8px;font-size:13px;cursor:pointer;transition:all .15s;">📨 邀请好友</button>
+              <button class="module-btn" id="btnFarm" style="background:var(--bg-card);border:1px solid rgba(163,113,247,0.3);color:var(--purple);padding:8px 16px;border-radius:8px;font-size:13px;cursor:pointer;transition:all .15s;" onclick="window.location.href='/farm'">🌾 我的农场</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
+              <button id="btnJITVip" style="background:var(--bg-card);border:1px solid var(--border-subtle);color:var(--text-secondary);padding:8px 14px;border-radius:8px;font-size:12px;cursor:pointer;transition:all .15s;">JIT会员优惠券</button>
+              <button id="btnLogout" style="background:transparent;border:1px solid rgba(248,81,73,0.3);color:#f85149;padding:8px 14px;border-radius:8px;font-size:12px;cursor:pointer;transition:all .15s;"><span id="logoutUserText">退出</span></button>
+            </div>
+            <div style="display:none;">
+              <button id="btnCustomerService"></button>
+              <button id="btnNotification"></button>
+              <span id="notificationBadge"></span>
+              <span id="pointsTotal">0</span>
+              <button id="btnPointsHistory"></button>
+              <button id="btnUserCenter"></button>
+              <div id="pointsBar"></div>
+              <div id="memberProgress"><div class="progress-bar-fill" id="progressBarFill"></div><div id="progressText"></div></div>
+            </div>
+          </header>
 
   <div class="content-wrapper">
     <aside class="sidebar" id="sidebar">
@@ -151,6 +465,146 @@
     </main>
   </div>
 </div>
+      </div><!-- /pageVoucher -->
+
+      <!-- Page: Points Center -->
+      <div class="app-page" id="pagePoints">
+        <div class="dash-grid" style="grid-template-columns: repeat(3, 1fr);">
+          <div class="dash-card">
+            <div class="dash-card-icon" style="background:var(--gold-dim);color:var(--gold);">💰</div>
+            <div class="dash-card-val" id="pointsPageVal">0</div>
+            <div class="dash-card-label">当前积分</div>
+          </div>
+          <div class="dash-card">
+            <div class="dash-card-icon" style="background:var(--green-dim);color:var(--green);">📈</div>
+            <div class="dash-card-val" id="pointsPageEarned">0</div>
+            <div class="dash-card-label">累计获得</div>
+          </div>
+          <div class="dash-card">
+            <div class="dash-card-icon" style="background:var(--orange-dim);color:var(--orange);">🎡</div>
+            <div class="dash-card-val" id="pointsPageSpent">0</div>
+            <div class="dash-card-label">已消费</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+          <button id="btnPointsHistoryPage" style="background:var(--bg-card);border:1px solid var(--border-subtle);color:var(--text-primary);padding:10px 20px;border-radius:10px;font-size:13px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            积分明细
+          </button>
+          <button id="btnInvitePage" style="background:var(--bg-card);border:1px solid rgba(63,185,80,0.3);color:var(--green);padding:10px 20px;border-radius:10px;font-size:13px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+            邀请好友得积分
+          </button>
+          <button id="btnWheelLotteryPage" style="background:var(--bg-card);border:1px solid rgba(212,168,83,0.3);color:var(--gold);padding:10px 20px;border-radius:10px;font-size:13px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px;">
+            🎡 转盘抽奖
+          </button>
+        </div>
+        <div class="feed-section">
+          <div class="feed-section-title">📋 积分流水</div>
+          <div class="feed-list" id="pointsLogList">
+            <div class="feed-item">
+              <div class="feed-item-icon" style="background:var(--gold-dim);">💰</div>
+              <div class="feed-item-body">
+                <div class="feed-item-title">暂无积分流水记录</div>
+                <div class="feed-item-desc">参与社区互动、提交凭证或抽奖可获得积分</div>
+              </div>
+              <div class="feed-item-time">--</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Page: Community -->
+      <div class="app-page" id="pageCommunity">
+        <div style="display:flex;gap:12px;margin-bottom:24px;align-items:center;">
+          <h2 style="font-size:20px;font-weight:700;color:var(--text-primary);">🐟 玉国社区</h2>
+          <div class="topbar-spacer"></div>
+          <button id="btnUserCenterPage" style="background:var(--bg-card);border:1px solid var(--border-subtle);color:var(--text-primary);padding:10px 20px;border-radius:10px;font-size:13px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            个人中心
+          </button>
+        </div>
+        <div class="feed-section">
+          <div class="feed-section-title">💬 社区动态</div>
+          <div class="feed-list" id="communityFeedList">
+            <div class="feed-item">
+              <div class="feed-item-icon" style="background:var(--purple-dim);">💬</div>
+              <div class="feed-item-body">
+                <div class="feed-item-title">欢迎加入玉国社区</div>
+                <div class="feed-item-desc">在这里与大家分享购物心得、优惠讨论和互帮互助</div>
+              </div>
+              <div class="feed-item-time">刚刚</div>
+            </div>
+          </div>
+        </div>
+        <div class="feed-section" style="margin-top:24px;">
+          <div class="feed-section-title">🔥 热门话题</div>
+          <div class="feed-list" id="communityHotList">
+            <div class="feed-item">
+              <div class="feed-item-icon" style="background:var(--orange-dim);">🔥</div>
+              <div class="feed-item-body">
+                <div class="feed-item-title">大额电器补贴攻略</div>
+                <div class="feed-item-desc">了解如何申请最高500元电器补贴</div>
+              </div>
+              <div class="feed-item-time">热门</div>
+            </div>
+            <div class="feed-item">
+              <div class="feed-item-icon" style="background:var(--green-dim);">💡</div>
+              <div class="feed-item-body">
+                <div class="feed-item-title">积分获取小技巧</div>
+                <div class="feed-item-desc">每日任务、邀请好友、提交凭证均可获得积分</div>
+              </div>
+              <div class="feed-item-time">热门</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Page: Lottery & Rewards -->
+      <div class="app-page" id="pageLottery">
+        <div class="dash-grid" style="grid-template-columns: repeat(3, 1fr);">
+          <div class="dash-card" onclick="document.getElementById('btnWheelLotteryPage') && document.getElementById('btnWheelLotteryPage').click()">
+            <div class="dash-card-icon" style="background:var(--gold-dim);color:var(--gold);">🎡</div>
+            <div class="dash-card-val" id="lotteryTicketsVal">0</div>
+            <div class="dash-card-label">抽奖券数量</div>
+          </div>
+          <div class="dash-card">
+            <div class="dash-card-icon" style="background:var(--green-dim);color:var(--green);">🏆</div>
+            <div class="dash-card-val" id="lotteryWonCount">0</div>
+            <div class="dash-card-label">中奖次数</div>
+          </div>
+          <div class="dash-card">
+            <div class="dash-card-icon" style="background:var(--purple-dim);color:var(--purple);">🎁</div>
+            <div class="dash-card-val" id="lotteryRewardVal">0</div>
+            <div class="dash-card-label">累计奖励价值</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap;">
+          <button id="btnWheelLotteryPage2" style="background:linear-gradient(135deg,rgba(212,168,83,0.2),rgba(212,168,83,0.05));border:1px solid rgba(212,168,83,0.3);color:var(--gold);padding:12px 24px;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:10px;">
+            🎡 立即转盘抽奖
+          </button>
+          <button id="btnJITVipPage" style="background:var(--bg-card);border:1px solid var(--border-subtle);color:var(--text-primary);padding:12px 24px;border-radius:12px;font-size:14px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px;">
+            🎫 JIT会员优惠券
+          </button>
+        </div>
+        <div class="feed-section">
+          <div class="feed-section-title">🎰 抽奖记录</div>
+          <div class="feed-list" id="lotteryLogList">
+            <div class="feed-item">
+              <div class="feed-item-icon" style="background:var(--gold-dim);">🎰</div>
+              <div class="feed-item-body">
+                <div class="feed-item-title">暂无抽奖记录</div>
+                <div class="feed-item-desc">快去参与转盘抽奖，赢取丰富奖励！</div>
+              </div>
+              <div class="feed-item-time">--</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /app-content -->
+  </div><!-- /app-main -->
+</div><!-- /app-shell -->
 
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal-container" id="modalAddVoucher">
@@ -1031,5 +1485,182 @@
 <script src="js/lottery.js?v=3.5.1"></script>
 <script src="js/wheel.js?v=3.5.1"></script>
 <script src="js/app.js?v=3.5.1"></script>
+<script>
+(function() {
+  'use strict';
+
+  var pages = {
+    dashboard: { title: '首页动态', el: document.getElementById('pageDashboard') },
+    voucher:   { title: '凭证管理', el: document.getElementById('pageVoucher') },
+    points:    { title: '积分中心', el: document.getElementById('pagePoints') },
+    community: { title: '玉国社区', el: document.getElementById('pageCommunity') },
+    lottery:   { title: '抽奖福利', el: document.getElementById('pageLottery') }
+  };
+
+  var navItems = document.querySelectorAll('.sidebar-nav-item');
+  var topbarTitle = document.getElementById('topbarTitle');
+  var currentPage = 'dashboard';
+
+  function switchPage(pageName) {
+    if (currentPage === pageName) return;
+    Object.keys(pages).forEach(function(k) { pages[k].el.classList.remove('active'); });
+    var page = pages[pageName];
+    if (page) {
+      page.el.classList.add('active');
+      currentPage = pageName;
+      topbarTitle.textContent = page.title;
+    }
+    navItems.forEach(function(item) {
+      item.classList.toggle('active', item.getAttribute('data-page') === pageName);
+    });
+  }
+
+  navItems.forEach(function(item) {
+    item.addEventListener('click', function() {
+      var pageName = this.getAttribute('data-page');
+      switchPage(pageName);
+      var sidebar = document.getElementById('appSidebar');
+      var overlay = document.getElementById('sidebarOverlay');
+      if (window.innerWidth <= 768) {
+        sidebar.classList.remove('open');
+        if (overlay) overlay.classList.remove('show');
+      }
+    });
+  });
+
+  // Toggle sidebar
+  var toggleBtn = document.getElementById('topbarToggle');
+  var sidebar = document.getElementById('appSidebar');
+  var overlay = document.getElementById('sidebarOverlay');
+  if (toggleBtn && sidebar) {
+    toggleBtn.addEventListener('click', function() {
+      sidebar.classList.toggle('open');
+      if (overlay) overlay.classList.toggle('show');
+    });
+  }
+  if (overlay) {
+    overlay.addEventListener('click', function() {
+      sidebar.classList.remove('open');
+      overlay.classList.remove('show');
+    });
+  }
+
+  // Sync points display
+  function syncPoints() {
+    var ptsEl = document.getElementById('pointsTotal');
+    var topbarPts = document.getElementById('topbarPointsVal');
+    var dashPts = document.getElementById('dashPointsVal');
+    var pagePts = document.getElementById('pointsPageVal');
+    if (ptsEl && topbarPts) {
+      var val = ptsEl.textContent || '0';
+      topbarPts.textContent = val;
+      if (dashPts) dashPts.textContent = val;
+      if (pagePts) pagePts.textContent = val;
+    }
+  }
+  setInterval(syncPoints, 2000);
+  syncPoints();
+
+  // Sync user info
+  function syncUserInfo() {
+    var logoutText = document.getElementById('logoutUserText');
+    var sidebarName = document.getElementById('sidebarUserName');
+    var topbarName = document.getElementById('topbarUserName');
+    var sidebarAvatar = document.getElementById('sidebarAvatar');
+    var topbarAvatar = document.getElementById('topbarUserAvatar');
+    if (logoutText && sidebarName) {
+      var name = logoutText.textContent.replace('退出', '').trim() || '用户';
+      var displayName = name === '退出' ? '用户' : name;
+      sidebarName.textContent = displayName;
+      if (topbarName) topbarName.textContent = displayName;
+      var initial = displayName.charAt(0);
+      if (sidebarAvatar) sidebarAvatar.textContent = initial;
+      if (topbarAvatar) topbarAvatar.textContent = initial;
+    }
+  }
+  setInterval(syncUserInfo, 3000);
+  syncUserInfo();
+
+  // Proxy original buttons to new UI buttons
+  function proxyClick(srcId, dstId) {
+    var src = document.getElementById(srcId);
+    var dst = document.getElementById(dstId);
+    if (src && dst) {
+      dst.addEventListener('click', function() { src.click(); });
+    }
+  }
+
+  // Wait for original scripts to bind, then proxy
+  setTimeout(function() {
+    proxyClick('btnPointsHistory', 'btnPointsHistoryPage');
+    proxyClick('btnInvite', 'btnInvitePage');
+    proxyClick('btnUserCenter', 'btnUserCenterPage');
+    proxyClick('btnCustomerService', 'topbarCustomerService');
+    proxyClick('btnNotification', 'topbarNotification');
+
+    // Wheel lottery page buttons
+    var btnWheelOrig = document.getElementById('btnWheelLottery');
+    var btnWheelPage = document.getElementById('btnWheelLotteryPage');
+    var btnWheelPage2 = document.getElementById('btnWheelLotteryPage2');
+    if (btnWheelOrig) {
+      if (btnWheelPage) btnWheelPage.addEventListener('click', function() { btnWheelOrig.click(); });
+      if (btnWheelPage2) btnWheelPage2.addEventListener('click', function() { btnWheelOrig.click(); });
+    }
+
+    // JIT VIP page button
+    var btnJITOrig = document.getElementById('btnJITVip');
+    var btnJITPage = document.getElementById('btnJITVipPage');
+    if (btnJITOrig && btnJITPage) {
+      btnJITPage.addEventListener('click', function() { btnJITOrig.click(); });
+    }
+  }, 500);
+
+  // Dashboard feed population
+  function updateDashboardFeed() {
+    var feed = document.getElementById('dashboardFeed');
+    if (!feed) return;
+    // Collect recent items from voucher table
+    var tableRows = document.querySelectorAll('#ordersTableBody tr:not(.table-loading-row)');
+    var recentItems = [];
+    tableRows.forEach(function(row) {
+      var cells = row.querySelectorAll('td');
+      if (cells.length >= 5) {
+        var type = cells[0].textContent.trim();
+        var name = cells[1].textContent.trim();
+        var date = cells[2].textContent.trim();
+        var status = cells[7] ? cells[7].textContent.trim() : '';
+        recentItems.push({ type: type, name: name, date: date, status: status });
+      }
+    });
+
+    // Update voucher count
+    var voucherCount = document.getElementById('dashVoucherCount');
+    if (voucherCount) voucherCount.textContent = recentItems.length || '--';
+
+    // Build feed HTML
+    var html = '';
+    if (recentItems.length === 0) {
+      html = '<div class="feed-item"><div class="feed-item-icon" style="background:var(--accent-dim);">📋</div><div class="feed-item-body"><div class="feed-item-title">欢迎来到玉国金融【全球通】</div><div class="feed-item-desc">您的综合服务平台，在这里管理凭证、积分、社区互动和福利抽奖</div></div><div class="feed-item-time">刚刚</div></div>';
+    } else {
+      var maxItems = Math.min(recentItems.length, 6);
+      for (var i = 0; i < maxItems; i++) {
+        var item = recentItems[i];
+        var iconBg = 'var(--accent-dim)';
+        var icon = '📋';
+        if (item.type.indexOf('电器') !== -1) { iconBg = 'var(--orange-dim)'; icon = '🎁'; }
+        else if (item.type.indexOf('线上') !== -1) { iconBg = 'var(--accent-dim)'; icon = '🛒'; }
+        html += '<div class="feed-item"><div class="feed-item-icon" style="background:' + iconBg + ';">' + icon + '</div><div class="feed-item-body"><div class="feed-item-title">' + item.name + '</div><div class="feed-item-desc">' + item.type + ' · ' + item.status + '</div></div><div class="feed-item-time">' + item.date + '</div></div>';
+      }
+    }
+    feed.innerHTML = html;
+  }
+
+  // Update feed periodically
+  setInterval(updateDashboardFeed, 5000);
+  setTimeout(updateDashboardFeed, 2000);
+
+  console.log('[AppShell] Claude-style layout initialized. 5 pages ready.');
+})();
+</script>
 </body>
 </html>
