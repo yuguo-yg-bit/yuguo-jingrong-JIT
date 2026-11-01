@@ -116,6 +116,17 @@ html, body {
   text-shadow: 0 0 20px var(--ice-blue-glow), 0 0 40px rgba(66, 165, 245, 0.3);
   letter-spacing: 2px;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.site-logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .header-center {
@@ -2514,6 +2525,14 @@ html, body {
   .site-title {
     font-size: 15px;
     letter-spacing: 1px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .site-logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
   }
 
   /* 第二行：积分 + 进度条 紧凑一行 */
