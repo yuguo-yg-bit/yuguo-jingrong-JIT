@@ -224,7 +224,6 @@
 .empty-state-text { font-size: 14px; color: var(--text-muted); line-height: 1.6; max-width: 320px; }
 
 /* Voucher page integration - hide original header, keep sidebar + table */
-.app-page-voucher .top-header { display: none !important; }
 .app-page-voucher .content-wrapper { padding-top: 0; }
 .app-page-voucher .sidebar { background: var(--bg-sidebar); border-right: 1px solid var(--border-subtle); }
 .app-page-voucher .main-content { background: transparent; }
@@ -361,7 +360,7 @@
           </div>
           <div class="dash-card" onclick="document.getElementById('navLottery').click()">
             <div class="dash-card-icon" style="background:var(--orange-dim);color:var(--orange);">🎟️</div>
-            <div class="dash-card-val" id="dashLotteryCount">--</div>
+            <div class="dash-card-val" id="dashLotteryCount">0</div>
             <div class="dash-card-label">抽奖券</div>
           </div>
           <div class="dash-card" onclick="document.getElementById('navCommunity').click()">
@@ -371,16 +370,62 @@
           </div>
         </div>
 
+        <div style="display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap;">
+          <button id="dashBtnAddVoucher" style="background:var(--accent-dim);border:1px solid rgba(88,166,255,0.3);color:var(--accent);padding:10px 20px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            添加凭证
+          </button>
+          <button id="dashBtnAddOnline" style="background:var(--bg-card);border:1px solid rgba(88,166,255,0.25);color:var(--accent);padding:10px 20px;border-radius:10px;font-size:14px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px;">
+            🛒 添加线上购物
+          </button>
+          <button id="dashBtnAddElectric" style="background:var(--bg-card);border:1px solid rgba(240,136,62,0.25);color:var(--orange);padding:10px 20px;border-radius:10px;font-size:14px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px;">
+            🎁 大额电器补贴
+          </button>
+          <span style="flex:1;"></span>
+          <button id="dashBtnGotoCommunity" style="background:var(--bg-card);border:1px solid rgba(163,113,247,0.25);color:var(--purple);padding:10px 20px;border-radius:10px;font-size:14px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px;" onclick="document.getElementById('navCommunity').click()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+            进入玉国社区
+          </button>
+        </div>
+
         <div class="feed-section">
-          <div class="feed-section-title">📡 最新动态</div>
-          <div class="feed-list" id="dashboardFeed">
+          <div class="feed-section-title">📋 凭证动态</div>
+          <div class="feed-list" id="dashboardVoucherFeed">
             <div class="feed-item">
               <div class="feed-item-icon" style="background:var(--accent-dim);">📋</div>
               <div class="feed-item-body">
-                <div class="feed-item-title">欢迎来到玉国金融【全球通】</div>
-                <div class="feed-item-desc">您的综合服务平台，在这里管理凭证、积分、社区互动和福利抽奖</div>
+                <div class="feed-item-title">欢迎使用凭证管理</div>
+                <div class="feed-item-desc">在这里提交和管理您的优惠凭证，查看订单状态</div>
               </div>
               <div class="feed-item-time">刚刚</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="feed-section">
+          <div class="feed-section-title">💬 社区动态</div>
+          <div class="feed-list" id="dashboardCommunityFeed">
+            <div class="feed-item">
+              <div class="feed-item-icon" style="background:var(--purple-dim);">💬</div>
+              <div class="feed-item-body">
+                <div class="feed-item-title">还没有社区动态</div>
+                <div class="feed-item-desc">去玉国社区看看大家都在聊什么吧</div>
+              </div>
+              <div class="feed-item-time">--</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="feed-section">
+          <div class="feed-section-title">🎰 抽奖 &amp; 福利</div>
+          <div class="feed-list" id="dashboardLotteryFeed">
+            <div class="feed-item">
+              <div class="feed-item-icon" style="background:var(--gold-dim);">🎡</div>
+              <div class="feed-item-body">
+                <div class="feed-item-title">转盘抽奖等你来</div>
+                <div class="feed-item-desc">消耗积分参与转盘抽奖，赢取丰富好礼</div>
+              </div>
+              <div class="feed-item-time">--</div>
             </div>
           </div>
         </div>
@@ -1613,46 +1658,87 @@
     if (btnJITOrig && btnJITPage) {
       btnJITPage.addEventListener('click', function() { btnJITOrig.click(); });
     }
+
+    // Dashboard quick action buttons -> original hidden buttons
+    proxyClick('btnAddVoucher', 'dashBtnAddVoucher');
+    proxyClick('btnAddOnlineVoucher', 'dashBtnAddOnline');
+    proxyClick('btnAddElectricVoucher', 'dashBtnAddElectric');
   }, 500);
 
   // Dashboard feed population
   function updateDashboardFeed() {
-    var feed = document.getElementById('dashboardFeed');
-    if (!feed) return;
-    // Collect recent items from voucher table
-    var tableRows = document.querySelectorAll('#ordersTableBody tr:not(.table-loading-row)');
-    var recentItems = [];
-    tableRows.forEach(function(row) {
-      var cells = row.querySelectorAll('td');
-      if (cells.length >= 5) {
-        var type = cells[0].textContent.trim();
-        var name = cells[1].textContent.trim();
-        var date = cells[2].textContent.trim();
-        var status = cells[7] ? cells[7].textContent.trim() : '';
-        recentItems.push({ type: type, name: name, date: date, status: status });
-      }
-    });
+    var voucherFeed = document.getElementById('dashboardVoucherFeed');
+    var communityFeedEl = document.getElementById('dashboardCommunityFeed');
+    var lotteryFeedEl = document.getElementById('dashboardLotteryFeed');
+    
+    // --- Voucher feed ---
+    if (voucherFeed) {
+      var tableRows = document.querySelectorAll('#ordersTableBody tr:not(.table-loading-row)');
+      var recentItems = [];
+      tableRows.forEach(function(row) {
+        var cells = row.querySelectorAll('td');
+        if (cells.length >= 5) {
+          var type = cells[0].textContent.trim();
+          var name = cells[1].textContent.trim();
+          var date = cells[2].textContent.trim();
+          var status = cells[7] ? cells[7].textContent.trim() : '';
+          recentItems.push({ type: type, name: name, date: date, status: status });
+        }
+      });
 
-    // Update voucher count
-    var voucherCount = document.getElementById('dashVoucherCount');
-    if (voucherCount) voucherCount.textContent = recentItems.length || '--';
+      var voucherCount = document.getElementById('dashVoucherCount');
+      if (voucherCount) voucherCount.textContent = recentItems.length || 0;
 
-    // Build feed HTML
-    var html = '';
-    if (recentItems.length === 0) {
-      html = '<div class="feed-item"><div class="feed-item-icon" style="background:var(--accent-dim);">📋</div><div class="feed-item-body"><div class="feed-item-title">欢迎来到玉国金融【全球通】</div><div class="feed-item-desc">您的综合服务平台，在这里管理凭证、积分、社区互动和福利抽奖</div></div><div class="feed-item-time">刚刚</div></div>';
-    } else {
-      var maxItems = Math.min(recentItems.length, 6);
-      for (var i = 0; i < maxItems; i++) {
-        var item = recentItems[i];
-        var iconBg = 'var(--accent-dim)';
-        var icon = '📋';
-        if (item.type.indexOf('电器') !== -1) { iconBg = 'var(--orange-dim)'; icon = '🎁'; }
-        else if (item.type.indexOf('线上') !== -1) { iconBg = 'var(--accent-dim)'; icon = '🛒'; }
-        html += '<div class="feed-item"><div class="feed-item-icon" style="background:' + iconBg + ';">' + icon + '</div><div class="feed-item-body"><div class="feed-item-title">' + item.name + '</div><div class="feed-item-desc">' + item.type + ' · ' + item.status + '</div></div><div class="feed-item-time">' + item.date + '</div></div>';
+      var html = '';
+      if (recentItems.length === 0) {
+        html = '<div class="feed-item"><div class="feed-item-icon" style="background:var(--accent-dim);">📋</div><div class="feed-item-body"><div class="feed-item-title">还没有凭证</div><div class="feed-item-desc">点击上方「添加凭证」开始提交您的优惠订单</div></div><div class="feed-item-time">刚刚</div></div>';
+      } else {
+        var maxItems = Math.min(recentItems.length, 5);
+        for (var i = 0; i < maxItems; i++) {
+          var item = recentItems[i];
+          var iconBg = 'var(--accent-dim)';
+          var icon = '📋';
+          if (item.type.indexOf('电器') !== -1) { iconBg = 'var(--orange-dim)'; icon = '🎁'; }
+          else if (item.type.indexOf('线上') !== -1) { iconBg = 'var(--accent-dim)'; icon = '🛒'; }
+          html += '<div class="feed-item"><div class="feed-item-icon" style="background:' + iconBg + ';">' + icon + '</div><div class="feed-item-body"><div class="feed-item-title">' + item.name + '</div><div class="feed-item-desc">' + item.type + ' · ' + item.status + '</div></div><div class="feed-item-time">' + item.date + '</div></div>';
+        }
       }
+      voucherFeed.innerHTML = html;
     }
-    feed.innerHTML = html;
+
+    // --- Community feed (from community.js global posts if available) ---
+    if (communityFeedEl) {
+      var communityItems = [];
+      try {
+        if (typeof _communityStatusCache !== 'undefined' && Array.isArray(_communityStatusCache)) {
+          communityItems = _communityStatusCache;
+        }
+        if (communityItems.length === 0 && typeof communityPosts !== 'undefined' && Array.isArray(communityPosts)) {
+          communityItems = communityPosts;
+        }
+      } catch(e) {}
+      
+      var chtml = '';
+      if (communityItems.length === 0) {
+        chtml = '<div class="feed-item"><div class="feed-item-icon" style="background:var(--purple-dim);">💬</div><div class="feed-item-body"><div class="feed-item-title">还没有社区动态</div><div class="feed-item-desc">去玉国社区看看大家都在聊什么吧</div></div><div class="feed-item-time">--</div></div>';
+      } else {
+        var cmax = Math.min(communityItems.length, 5);
+        for (var j = 0; j < cmax; j++) {
+          var p = communityItems[j];
+          var content = (p.content || p.text || '').substring(0, 60);
+          var author = p.author || p.username || '匿名';
+          chtml += '<div class="feed-item"><div class="feed-item-icon" style="background:var(--purple-dim);">💬</div><div class="feed-item-body"><div class="feed-item-title">' + author + '</div><div class="feed-item-desc">' + (content || '发表了一条动态') + '</div></div><div class="feed-item-time">' + (p.time || p.createdAt || '刚刚') + '</div></div>';
+        }
+      }
+      communityFeedEl.innerHTML = chtml;
+    }
+
+    // --- Lottery feed placeholder ---
+    if (lotteryFeedEl) {
+      var lotteryTicket = document.getElementById('dashLotteryCount');
+      var ticketVal = lotteryTicket ? lotteryTicket.textContent : '0';
+      lotteryFeedEl.innerHTML = '<div class="feed-item"><div class="feed-item-icon" style="background:var(--gold-dim);">🎡</div><div class="feed-item-body"><div class="feed-item-title">抽奖券余额: ' + ticketVal + ' 张</div><div class="feed-item-desc">消耗积分参与转盘抽奖，赢取丰富好礼</div></div><div class="feed-item-time">--</div></div>';
+    }
   }
 
   // Update feed periodically
