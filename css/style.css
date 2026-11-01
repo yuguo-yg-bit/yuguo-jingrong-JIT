@@ -122,9 +122,8 @@ html, body {
 }
 
 .site-logo {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
+  width: 22px;
+  height: 22px;
   object-fit: contain;
   flex-shrink: 0;
 }
@@ -2530,9 +2529,8 @@ html, body {
     gap: 8px;
   }
   .site-logo {
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
+    width: 18px;
+    height: 18px;
   }
 
   /* 第二行：积分 + 进度条 紧凑一行 */
