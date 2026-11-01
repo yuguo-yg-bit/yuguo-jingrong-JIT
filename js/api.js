@@ -1552,6 +1552,7 @@ var JITApi = (function() {
 
   // ========== 导出 ==========
   return {
+    _tursoCall: _tursoCall,
     adminLogin: _adminLogin,
     getVouchers: _getVouchers,
     getAllVouchers: _getAllVouchers,
