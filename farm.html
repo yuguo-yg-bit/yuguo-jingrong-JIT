@@ -824,13 +824,11 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
 
   // ====== 初始化 ======
   function init() {
-    // 显示加载状态
     var ptsEl = document.getElementById("ptsDisplay");
     if (ptsEl) ptsEl.textContent = "加载中...";
     loadState().then(function() { render(); refreshPoints(); }).catch(function(e) {
       console.error("农场加载失败:", e);
-      showToast("游戏引擎连接失败，请检查网络后刷新", "error");
-      // 即使引擎失败，也尝试加载积分
+      showToast("加载失败：" + (e.message || "未知错误"), "error");
       refreshPoints();
     });
     setInterval(function() { doTick(); }, 30000);

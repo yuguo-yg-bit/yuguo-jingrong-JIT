@@ -5,7 +5,8 @@
 // ============================================================
 
 export default async function (req) {
-  const ALLOW_ORIGINS = ["https://www.yuguojinrong.cc.cd","https://yuguo-yg-bit.github.io","https://yuguoygbit.github.io","http://localhost:8080","http://localhost:3000","http://127.0.0.1:8080","http://127.0.0.1:3000"];
+  const MAIN_PROXY = "https://yuguoygbit--efeee912c58011f1af2f1607ee4eb77e.web.val.run";
+  const ALLOW_ORIGINS = ["https://www.yuguojinrong.cc.cd","https://yuguo-yg-bit.github.io","https://yuguoygbit.github.io"];
   const TURSO_API = process.env.TURSO_API_URL;
   const TURSO_TOKEN = process.env.TURSO_RW_TOKEN;
 
@@ -50,6 +51,7 @@ export default async function (req) {
     async function requireSession() {
       const token = (req.headers.get("x-session-token") || "").trim();
       if (!token) return { error:"缺少登录会话" };
+      // 1) 优先查自己的 Turso 库
       const q = await execTurso("SELECT username, role, expires_at FROM sessions WHERE token=?",[token]);
       const rows = q.data?.results?.[0]?.response?.result?.rows || q.data?.results?.[0]?.response?.results?.rows || [];
       if (rows.length > 0) {
@@ -67,6 +69,18 @@ export default async function (req) {
         if (expMs > 0 && Date.now() >= expMs) return { error:"OAuth 会话已过期" };
         return { username:String(username), role:"user", token };
       }
+      // 2) 兜底：调主代理验证（共享同一份会话数据）
+      try {
+        const mainRes = await fetch(MAIN_PROXY + "/session/validate", {
+          headers: { "X-Session-Token": token }
+        });
+        if (mainRes.ok) {
+          const mainData = await mainRes.json();
+          if (mainData.ok && mainData.username) {
+            return { username: String(mainData.username), role: String(mainData.role || "user"), token };
+          }
+        }
+      } catch(e) { /* 静默失败，继续返回错误 */ }
       return { error:"会话无效" };
     }
 

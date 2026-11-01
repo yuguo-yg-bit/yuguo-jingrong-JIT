@@ -10,7 +10,7 @@ import { MailtrapClient } from "npm:mailtrap";
 export default async function (req) {
   // ========== HTTP 代理 ==========
 
-  const ALLOW_ORIGINS = ["https://www.yuguojinrong.cc.cd", "https://yuguo-yg-bit.github.io", "https://yuguoygbit.github.io", "http://localhost:8080", "http://localhost:3000", "http://127.0.0.1:8080", "http://127.0.0.1:3000"];
+  const ALLOW_ORIGINS = ["https://www.yuguojinrong.cc.cd", "https://yuguo-yg-bit.github.io", "https://yuguoygbit.github.io"];
   const TURSO_API = process.env.TURSO_API_URL;
   const TURSO_TOKEN = process.env.TURSO_RW_TOKEN;
   const Github_TOKEN = process.env.GitHub_API_TOKEN;
@@ -323,6 +323,13 @@ export default async function (req) {
 
       logAudit("LOGIN_SUCCESS", dbUser.username, "sessions", token, "登录成功（" + dbUser.role + "）" + (emailOk ? "" : " [需绑定邮箱]"), "/login", "", "ok");
       return jsonResponse({ ok: true, token, username: dbUser.username, role: dbUser.role, expiresAt, emailBindingRequired: !emailOk });
+    }
+
+    // ========== 会话校验（供游戏引擎/社区代理调用） ==========
+    if (path === "/session/validate" && req.method === "GET") {
+      const sess = await requireSession();
+      if (sess.error) return jsonResponse({ error: sess.error }, 401);
+      return jsonResponse({ ok: true, username: sess.username, role: sess.role });
     }
 
     // ========== 邮箱状态检查（已登录用户） ==========
