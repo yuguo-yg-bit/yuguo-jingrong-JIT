@@ -36,13 +36,12 @@ var JITApp = (function() {
     _syncUrgentBlFromCloud();
     _syncVersionWatermark();
 
-    // v4.0: 初始化客户端路由
-    if (typeof JITRouter !== "undefined" && JITRouter.init) {
-      JITRouter.init();
-      _setupRouteCallbacks();
-    }
-
+    // v4.0: 先初始化登录再初始化路由（路由回调依赖 _currentUser）
     _initLogin();
+    if (typeof JITRouter !== "undefined" && JITRouter.init) {
+      _setupRouteCallbacks();
+      JITRouter.init();
+    }
     _bindEvents();
     _initWinWall();
     if (_currentUser && JITApi && JITApi.getUserLevel) {
@@ -306,22 +305,30 @@ var JITApp = (function() {
     // 积分中心
     JITRouter.onRoute("/points", function() {
       if (_currentUser) {
-        _refreshPointsDisplay(true);
-        // 同步积分显示
-        setTimeout(function() {
+        _refreshPointsDisplay(true).then(function() {
+          // 同步积分到页面卡片
           var p = document.getElementById("pointsTotal");
           var pc = document.getElementById("pointsTotalCard");
           if (p && pc) pc.textContent = p.textContent;
           var l = document.getElementById("luckyCurrentPoints");
-          var lc = document.getElementById("pointsTotalCard");
-          if (l && lc && !lc.textContent.match(/^-/)) l.textContent = lc.textContent;
-        }, 500);
+          if (l && p) l.textContent = p.textContent;
+        });
+        // 更新会员进度到积分页的进度条
+        setTimeout(function() { _updateProgress(); }, 800);
       }
     });
 
-    // 活动广场
+    // 活动广场（静态内容，刷新积分显示即可）
     JITRouter.onRoute("/activity", function() {
-      // 已通过 _bindEvents 绑定
+      if (_currentUser) {
+        _refreshPointsDisplay(true);
+        // 活动页需要知道当前积分
+        setTimeout(function() {
+          var p = document.getElementById("pointsTotal");
+          var l = document.getElementById("luckyCurrentPoints");
+          if (p && l) l.textContent = p.textContent;
+        }, 500);
+      }
     });
 
     // 邀请与农场
@@ -329,14 +336,14 @@ var JITApp = (function() {
       _loadReferralData();
     });
 
-    // 社区
+    // 社区（含快捷入口按钮，无需动态加载）
     JITRouter.onRoute("/community", function() {
-      // 通过按钮跳转到 community.html
+      // 社区页静态内容，按钮跳转 community.html
     });
 
     // 个人设置
     JITRouter.onRoute("/profile", function() {
-      _loadProfileData();
+      if (_currentUser) _loadProfileData();
     });
   };
 
@@ -379,8 +386,8 @@ var JITApp = (function() {
       )).then(function(r) { if (r && r[0]) statPending.textContent = r[0].cnt; }).catch(function() { statPending.textContent = "-"; });
     }
 
-    // 动态信息流
-    feed.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:24px;">欢迎使用玉国金融 v4.0</div>';
+    // 动态信息流 - 显示加载动画
+    feed.innerHTML = window._JIT_LOADING_HTML;
 
     if (JITApi && JITApi._tursoCall) {
       JITApi._tursoCall("/sql?q=" + encodeURIComponent(
@@ -431,9 +438,9 @@ var JITApp = (function() {
           return;
         }
         list.innerHTML = rows.map(function(r) {
-          return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-subtle);">' +
+          return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-dim, rgba(33,147,241,0.12));">' +
             '<span>' + r.username + '</span>' +
-            '<span style="color:var(--brand-gold);font-weight:600;">+50 积分</span></div>';
+            '<span style="color:var(--ice-blue);font-weight:600;">+50 积分</span></div>';
         }).join("");
       }).catch(function() {});
     }
@@ -696,7 +703,7 @@ var JITApp = (function() {
       '<div class="modal-header"><h3 class="modal-title">邀请好友得积分</h3><button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">&times;</button></div>' +
       '<div class="modal-body">' +
       '<div style="text-align:center;margin-bottom:16px;">' +
-      '<div style="font-size:36px;font-weight:bold;color:var(--accent);">+' + JITPoints.RULES.INVITE_REWARD + '</div>' +
+      '<div style="font-size:36px;font-weight:bold;color:var(--ice-blue);">+' + JITPoints.RULES.INVITE_REWARD + '</div>' +
       '<div style="font-size:13px;color:var(--text-secondary);">好友注册成功，双方各得' + JITPoints.RULES.INVITE_REWARD + '积分</div>' +
       '</div>' +
       '<div class="form-group"><label class="form-label">我的专属邀请链接</label>' +
@@ -4566,7 +4573,7 @@ var JITApp = (function() {
       html += '<div style="font-size:11px;color:var(--text-muted);display:flex;justify-content:space-between;align-items:center;">';
       html += '<span>' + _escapeHtml(n.sendTime || "") + '</span>';
       if (n.comments && n.comments > 0) {
-        html += '<span style="color:var(--accent);">💬 ' + n.comments + ' 条回复</span>';
+        html += '<span style="color:var(--ice-blue);">💬 ' + n.comments + ' 条回复</span>';
       }
       html += '</div>';
       html += '</div>';

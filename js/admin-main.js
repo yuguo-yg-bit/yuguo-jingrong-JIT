@@ -2573,7 +2573,7 @@ var JITAdmin = (function() {
       bodyHtml += '<div style="white-space:pre-wrap;line-height:1.7;">' + _escapeHtml(n.content) + '</div>';
       bodyHtml += '</div>';
       document.getElementById("notifDetailBody").innerHTML = bodyHtml;
-      document.getElementById("notifRepliesList").innerHTML = '<div style="text-align:center;color:#999;padding:20px;">加载回复中...</div>';
+      document.getElementById("notifRepliesList").innerHTML = (window._JIT_LOADING_HTML || '<div style="text-align:center;color:#999;padding:20px;">加载回复中...</div>');
       document.getElementById("notifDetailOverlay").style.display = "flex";
       // 加载回复
       JITApi.getNotificationReplies(issueNumber).then(function(replies) {
