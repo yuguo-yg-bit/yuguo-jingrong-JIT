@@ -1023,6 +1023,31 @@ var JITApi = (function() {
   });
 
   // ===== 积分+装扮+社区迁移（确保 users/user_levels 有新列） =====
+  // ===== 管理员系统配置 =====
+  var _getAdminConfig = function(key) {
+    return _tursoSql("SELECT value FROM admin_config WHERE key=?", [key]).then(function(result) {
+      var objs = _tursoRowsToObjects(result.columns, result.rows);
+      return objs.length > 0 ? objs[0].value : null;
+    });
+  };
+
+  var _setAdminConfig = function(key, value) {
+    var now = new Date().toISOString();
+    return _tursoSql(
+      "INSERT OR REPLACE INTO admin_config (key, value, updated_at) VALUES (?,?,?)",
+      [key, value, now]
+    );
+  };
+
+  var _getAllAdminConfig = function() {
+    return _tursoSql("SELECT key, value FROM admin_config", []).then(function(result) {
+      var objs = _tursoRowsToObjects(result.columns, result.rows);
+      var cfg = {};
+      objs.forEach(function(o) { cfg[o.key] = o.value; });
+      return cfg;
+    });
+  };
+
   var _runPointsMigration = function() {
     var chain = Promise.resolve();
     var migrateCol = function(table, col, def) {
@@ -1648,6 +1673,10 @@ var JITApi = (function() {
     getRiskBudget: _getRiskBudget,
     updateRiskBudget: _updateRiskBudget,
     spendRiskBudget: _spendRiskBudget,
+    // 管理员系统配置
+    getAdminConfig: _getAdminConfig,
+    setAdminConfig: _setAdminConfig,
+    getAllAdminConfig: _getAllAdminConfig,
     getUserMonthlyReward: _getUserMonthlyReward,
     addUserMonthlyReward: _addUserMonthlyReward,
     migrateLocalToTurso: _migrateLocalToTurso,

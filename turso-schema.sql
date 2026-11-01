@@ -299,6 +299,13 @@ ALTER TABLE user_levels ADD COLUMN joined_at TEXT DEFAULT '';
 ALTER TABLE user_levels ADD COLUMN cover TEXT DEFAULT '';
 ALTER TABLE user_levels ADD COLUMN last_wheel_free TEXT DEFAULT '';
 ALTER TABLE user_levels ADD COLUMN discount_backup TEXT DEFAULT '[]';
+
+-- 管理员系统配置
+CREATE TABLE IF NOT EXISTS admin_config (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT DEFAULT ''
+);
 ALTER TABLE users ADD COLUMN oauth_id TEXT DEFAULT '';
 ALTER TABLE registrations ADD COLUMN oauth_provider TEXT DEFAULT '';
 ALTER TABLE registrations ADD COLUMN oauth_id TEXT DEFAULT '';

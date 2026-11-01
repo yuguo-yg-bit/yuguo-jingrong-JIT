@@ -1477,6 +1477,10 @@ var JITAdmin = (function() {
       JITLottery.updatePrizeConfig(config);
     }
     localStorage.setItem("jit_lottery_prizes", JSON.stringify(config));
+    // 同步抽奖奖品配置到 Turso
+    if (typeof JITApi !== "undefined" && JITApi.setAdminConfig) {
+      JITApi.setAdminConfig("jit_lottery_prizes", JSON.stringify(config)).catch(function() {});
+    }
     _showToast("抽奖配置已保存！");
   };
 
@@ -1776,15 +1780,35 @@ var JITAdmin = (function() {
     document.getElementById("settingRefreshInterval").value = localStorage.getItem("jit_refresh_interval") || "10";
     document.getElementById("settingAllowRepeatLottery").value = localStorage.getItem("jit_allow_repeat_lottery") || "false";
     document.getElementById("settingRevealThreshold").value = localStorage.getItem("jit_reveal_threshold") || "0.4";
+    // 从 Turso 加载管理员设置
+    if (typeof JITApi !== "undefined" && JITApi.getAllAdminConfig) {
+      JITApi.getAllAdminConfig().then(function(cfg) {
+        if (cfg["jit_per_page"]) { document.getElementById("settingPerPage").value = cfg["jit_per_page"]; localStorage.setItem("jit_per_page", cfg["jit_per_page"]); }
+        if (cfg["jit_refresh_interval"]) { document.getElementById("settingRefreshInterval").value = cfg["jit_refresh_interval"]; localStorage.setItem("jit_refresh_interval", cfg["jit_refresh_interval"]); }
+        if (cfg["jit_allow_repeat_lottery"]) { document.getElementById("settingAllowRepeatLottery").value = cfg["jit_allow_repeat_lottery"]; localStorage.setItem("jit_allow_repeat_lottery", cfg["jit_allow_repeat_lottery"]); }
+        if (cfg["jit_reveal_threshold"]) { document.getElementById("settingRevealThreshold").value = cfg["jit_reveal_threshold"]; localStorage.setItem("jit_reveal_threshold", cfg["jit_reveal_threshold"]); }
+      }).catch(function() {});
+    }
   };
 
   var saveSettings = function() {
-    localStorage.setItem("jit_per_page", document.getElementById("settingPerPage").value);
-    localStorage.setItem("jit_refresh_interval", document.getElementById("settingRefreshInterval").value);
-    localStorage.setItem("jit_allow_repeat_lottery", document.getElementById("settingAllowRepeatLottery").value);
-    localStorage.setItem("jit_reveal_threshold", document.getElementById("settingRevealThreshold").value);
+    var perPage = document.getElementById("settingPerPage").value;
+    var refreshInterval = document.getElementById("settingRefreshInterval").value;
+    var allowRepeat = document.getElementById("settingAllowRepeatLottery").value;
+    var revealThreshold = document.getElementById("settingRevealThreshold").value;
+    localStorage.setItem("jit_per_page", perPage);
+    localStorage.setItem("jit_refresh_interval", refreshInterval);
+    localStorage.setItem("jit_allow_repeat_lottery", allowRepeat);
+    localStorage.setItem("jit_reveal_threshold", revealThreshold);
+    // 同步到 Turso
+    if (typeof JITApi !== "undefined" && JITApi.setAdminConfig) {
+      JITApi.setAdminConfig("jit_per_page", perPage).catch(function() {});
+      JITApi.setAdminConfig("jit_refresh_interval", refreshInterval).catch(function() {});
+      JITApi.setAdminConfig("jit_allow_repeat_lottery", allowRepeat).catch(function() {});
+      JITApi.setAdminConfig("jit_reveal_threshold", revealThreshold).catch(function() {});
+    }
     if (JITLottery.setThreshold) {
-      JITLottery.setThreshold(parseFloat(document.getElementById("settingRevealThreshold").value));
+      JITLottery.setThreshold(parseFloat(revealThreshold));
     }
     _showToast("设置已保存！");
   };

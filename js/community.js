@@ -1212,6 +1212,23 @@ var JITCommunity = (function() {
     riskRemain.style.color = remain < budget * 0.2 ? "#f44336" : remain < budget * 0.5 ? "#ff9800" : "#4caf50";
     var rBar = document.getElementById("riskBarFill");
     if (rBar) rBar.style.width = Math.min(100, (monthSpent / budget) * 100) + "%";
+    // 从 Turso 同步风控预算
+    if (typeof JITApi !== "undefined" && JITApi.getRiskBudget) {
+      JITApi.getRiskBudget().then(function(tursoRisk) {
+        if (tursoRisk && tursoRisk.budget !== undefined) {
+          localStorage.setItem("jit_risk_budget", String(tursoRisk.budget));
+          // 重新计算并更新
+          var newBudget = tursoRisk.budget;
+          var newRemain = Math.max(0, newBudget - monthSpent);
+          if (rBudget) rBudget.textContent = "¥" + newBudget;
+          if (riskRemain) {
+            riskRemain.textContent = "¥" + newRemain.toFixed(2);
+            riskRemain.style.color = newRemain < newBudget * 0.2 ? "#f44336" : newRemain < newBudget * 0.5 ? "#ff9800" : "#4caf50";
+          }
+          if (rBar) rBar.style.width = Math.min(100, (monthSpent / newBudget) * 100) + "%";
+        }
+      }).catch(function() {});
+    }
   };
 
   // ===== 抽奖券数量 =====

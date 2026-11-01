@@ -356,7 +356,12 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
 
   if (!_currentUser) { alert("请先登录后再进入农场"); window.location.href = "/login"; return; }
 
-  function game(action, params) { return JITApi.getTursoHelpers().gameAction(_currentUser, action, params); }
+  function game(action, params) {
+    if (typeof JITApi === "undefined" || !JITApi.getTursoHelpers) {
+      return Promise.reject(new Error("API 未就绪，请刷新页面"));
+    }
+    return JITApi.getTursoHelpers().gameAction(_currentUser, action, params);
+  }
 
   function refreshPoints() {
     var p;
@@ -819,8 +824,14 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
 
   // ====== 初始化 ======
   function init() {
+    // 显示加载状态
+    var ptsEl = document.getElementById("ptsDisplay");
+    if (ptsEl) ptsEl.textContent = "加载中...";
     loadState().then(function() { render(); refreshPoints(); }).catch(function(e) {
-      showToast("加载失败，请刷新页面重试", "error"); console.error(e);
+      console.error("农场加载失败:", e);
+      showToast("游戏引擎连接失败，请检查网络后刷新", "error");
+      // 即使引擎失败，也尝试加载积分
+      refreshPoints();
     });
     setInterval(function() { doTick(); }, 30000);
   }
