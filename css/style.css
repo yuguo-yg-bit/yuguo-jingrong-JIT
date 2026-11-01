@@ -563,6 +563,23 @@ html, body {
   animation-delay: 1.7s;
 }
 
+.loading-brand.loading-brand-sm {
+  gap: 1px;
+  padding: 4px 0;
+  transform: scale(0.65);
+  transform-origin: center center;
+}
+
+.loading-brand-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  transform: scale(0.55);
+  transform-origin: left center;
+  vertical-align: middle;
+  opacity: 0.85;
+}
+
 @keyframes loadingBrandPulse {
   0%, 100% { opacity: 0.85; }
   50% { opacity: 0.45; }

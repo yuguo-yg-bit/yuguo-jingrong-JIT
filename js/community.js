@@ -819,7 +819,7 @@ var JITCommunity = (function() {
     }
     _commentsLoading[statusId] = true;
     var listEl = document.getElementById("feed-comments-list-" + statusId);
-    if (listEl) listEl.innerHTML = '<div class="feed-comments-loading">加载中...</div>';
+    if (listEl) listEl.innerHTML = window._JIT_LOADING_HTML;
     if (!JITApi || !JITApi.getTursoHelpers) { _commentsLoading[statusId] = false; return; }
     JITApi.getTursoHelpers().communityCall("load_comments", { statusId: statusId }).then(function(data) {
       _commentsCache[statusId] = data.comments || [];
@@ -1263,7 +1263,7 @@ var JITCommunity = (function() {
     var plf = document.getElementById("profileLevelFill");
     var pe = document.getElementById("profileExp");
     if (pn) pn.textContent = _currentUser;
-    if (prn) prn.textContent = "真实姓名: 加载中...";
+    if (prn) prn.innerHTML = '<span style="display:inline-flex;align-items:center;gap:4px;">真实姓名: <span class="loading-brand-inline">' + window._JIT_LOADING_SVG + '</span></span>';
     JITApi.getUserProfile(_currentUser).then(function(p) { if (prn) prn.textContent = p && p.fullName ? "真实姓名: " + p.fullName : "真实姓名: —"; }).catch(function() { if (prn) prn.textContent = "真实姓名: —"; });
     if (plb) plb.textContent = "Lv" + levelData.level + " " + levelInfo.name;
     if (plf) plf.style.width = expPct + "%";
@@ -1582,7 +1582,7 @@ var JITCommunity = (function() {
     if (avatarSaved) { avatarEl.innerHTML = '<img src="' + avatarSaved + '" alt="">'; avatarEl.style.background = "none"; }
     else { avatarEl.innerHTML = _getInitial(targetUsername); avatarEl.style.background = _getAvatarColor(targetUsername); }
     nameEl.textContent = targetUsername;
-    bodyEl.innerHTML = '<div class="feed-loading">加载中...</div>';
+    bodyEl.innerHTML = window._JIT_LOADING_HTML;
     overlay.classList.add("active");
     JITApi.getTursoHelpers().visitFarm(targetUsername).then(function(data) {
       _renderVisitFarm(data);

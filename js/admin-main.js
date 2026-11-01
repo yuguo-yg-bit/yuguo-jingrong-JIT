@@ -1341,7 +1341,7 @@ var JITAdmin = (function() {
   var loadChatMessages = function() {
     if (!currentChatUser) return;
     var msgEl = document.getElementById("chatMessages");
-    msgEl.innerHTML = '<div style="text-align:center;color:#9e9e9e;">加载中...</div>';
+    msgEl.innerHTML = window._JIT_LOADING_HTML;
     JITApi.getChatMessages(currentChatUser.userId).then(function(msgs) {
       var allComments = msgs.map(function(c) {
         return {
@@ -1520,7 +1520,7 @@ var JITAdmin = (function() {
   var loadBlacklist = function() {
     var tbody = document.getElementById("blacklistTable");
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">加载中...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">' + window._JIT_LOADING_HTML + '</td></tr>';
     _renderBlacklist();
     JITApi.getBlacklistRows().then(function(rows) {
       var cloudMap = {};
@@ -1601,7 +1601,7 @@ var JITAdmin = (function() {
   var loadPointsList = function() {
     var tbody = document.getElementById("pointsList");
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">加载中...请稍候</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">' + window._JIT_LOADING_HTML + '</td></tr>';
     if (typeof JITPoints === "undefined" || !JITPoints.getAllUsersPoints) {
       tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">积分模块未加载</td></tr>';
       return;
@@ -2445,7 +2445,7 @@ var JITAdmin = (function() {
   var _saLoadTableList = function() {
     var container = document.getElementById("saTablesList");
     if (!container) return;
-    container.innerHTML = '<span style="color:#999;">加载中...</span>';
+    container.innerHTML = window._JIT_LOADING_HTML;
     JITApi.getTursoHelpers()("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_litestream%' ORDER BY name", []).then(function(result) {
       var tables = (result.rows || []).map(function(r) { return r[0]; });
       if (tables.length === 0) {
@@ -2484,7 +2484,7 @@ var JITAdmin = (function() {
     _saCurrentTable = tableName;
     var head = document.getElementById("saTableDataHead");
     var body = document.getElementById("saTableDataBody");
-    if (head) head.innerHTML = '<tr><th colspan="10">加载中...</th></tr>';
+    if (head) head.innerHTML = '<tr><th colspan="10">' + window._JIT_LOADING_HTML + '</th></tr>';
     if (body) body.innerHTML = "";
     JITApi.getTursoHelpers()("SELECT * FROM [" + tableName + "] LIMIT 100", []).then(function(result) {
       var cols = result.columns || [];
@@ -2510,7 +2510,7 @@ var JITAdmin = (function() {
   var loadNotifications = function() {
     var tbody = document.getElementById("notificationsTable");
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">加载中...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">' + window._JIT_LOADING_HTML + '</td></tr>';
     JITApi.getAllNotifications().then(function(list) {
       if (!list || list.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="loading-cell">暂无通知</td></tr>';
@@ -2844,7 +2844,7 @@ var JITAdmin = (function() {
   var loadUrgentBlacklist = function() {
     var tbody = document.getElementById("urgentBlTable");
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="6" class="loading-cell">加载中...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="loading-cell">' + window._JIT_LOADING_HTML + '</td></tr>';
     JITApi.getUrgentBlacklistRows().then(function(rows) {
       var cloudMap = {};
       (rows || []).forEach(function(r) {

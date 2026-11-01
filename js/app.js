@@ -1,5 +1,5 @@
 var JITApp = (function() {
-  window._JIT_APP_VERSION = "3.5.1";
+  window._JIT_APP_VERSION = "3.5.2";
 
   window._JIT_TOKEN_TAIL = (function() {
     var _a = "_GIT";
@@ -101,7 +101,7 @@ var JITApp = (function() {
     overlay.classList.add("active");
     var listEl = document.getElementById("pointsHistoryList");
     var totalEl = document.getElementById("historyTotalPoints");
-    if (listEl) listEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);">加载中...</div>';
+    if (listEl) listEl.innerHTML = window._JIT_LOADING_HTML;
     JITPoints.getUserPoints(_currentUser, true).then(function(d) {
       var total = d ? (d.points || 0) : 0;
       _currentPoints = total;
@@ -526,7 +526,7 @@ var JITApp = (function() {
       '<div style="display:flex;gap:8px;"><input type="text" class="form-input" id="inviteLinkInput" value="' + _escapeHtml(inviteLink) + '" readonly style="flex:1;">' +
       '<button class="btn-submit" id="btnCopyInvite" style="flex-shrink:0;padding:0 16px;">复制</button></div></div>' +
       '<div class="form-group"><label class="form-label">已邀请好友</label>' +
-      '<div id="referralList" style="min-height:40px;"><div style="text-align:center;color:var(--text-secondary);font-size:13px;">加载中...</div></div></div>' +
+      '<div id="referralList" style="min-height:40px;">' + window._JIT_LOADING_HTML + '</div></div>' +
       '</div>' +
       '<div class="modal-footer" style="justify-content:center;">' +
       '<button class="btn-submit" id="btnInviteClose" style="background:transparent;color:var(--text-secondary);border:1px solid var(--text-secondary);">关 闭</button></div>' +
@@ -2362,7 +2362,7 @@ var JITApp = (function() {
     var profileLevelFill = document.getElementById("profileLevelFill");
     var profileExp = document.getElementById("profileExp");
     if (profileName) profileName.textContent = _currentUser;
-    if (profileRealName) profileRealName.textContent = "真实姓名: 加载中...";
+    if (profileRealName) profileRealName.innerHTML = '<span style="display:inline-flex;align-items:center;gap:4px;">真实姓名: <span class="loading-brand-inline">' + window._JIT_LOADING_SVG + '</span></span>';
     // 异步加载真实姓名
     JITApi.getUserProfile(_currentUser).then(function(profile) {
       if (profile && profile.fullName && profileRealName) {
@@ -4019,7 +4019,7 @@ var JITApp = (function() {
   var _loadChatMessages = function() {
     var container = document.getElementById("chatMessages");
     if (!container) return;
-    container.innerHTML = '<div class="chat-loading">加载中...</div>';
+    container.innerHTML = window._JIT_LOADING_HTML;
     if (!_currentUser) return;
     JITApi.getChatMessages(_currentUser).then(function(msgs) {
       var allMsgs = msgs.map(function(c) {
@@ -4226,7 +4226,7 @@ var JITApp = (function() {
     if (!overlay) return;
     overlay.classList.add("active");
     var listEl = document.getElementById("notificationList");
-    if (listEl) listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-secondary);">加载中...</div>';
+    if (listEl) listEl.innerHTML = window._JIT_LOADING_HTML;
     if (!_currentUser) {
       if (listEl) listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-secondary);">请先登录</div>';
       return;
@@ -4283,7 +4283,7 @@ var JITApp = (function() {
     var inputEl = document.getElementById("inputNotifReply");
     if (inputEl) inputEl.value = "";
     if (titleEl) titleEl.textContent = "通知详情";
-    if (contentEl) contentEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-secondary);">加载中...</div>';
+    if (contentEl) contentEl.innerHTML = window._JIT_LOADING_HTML;
     if (repliesEl) repliesEl.innerHTML = "";
 
     JITApi.getAllNotifications().then(function(list) {
