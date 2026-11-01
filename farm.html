@@ -354,7 +354,7 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
   var _audioCtx = null;
   var _musicGain = null;
 
-  if (!_currentUser) { alert("请先登录后再进入农场"); window.location.href = "/login"; return; }
+  if (!_currentUser) { alert("请先登录后再进入农场"); window.location.href = "login.html"; return; }
 
   function game(action, params) {
     if (typeof JITApi === "undefined" || !JITApi.getTursoHelpers) {
