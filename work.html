@@ -64,10 +64,7 @@
   border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
-  overflow-x: hidden;
-  z-index: 30;
-  transition: transform var(--transition-normal), opacity var(--transition-normal);
+  transition: width .2s ease, min-width .2s ease, transform var(--transition-normal), opacity var(--transition-normal);
 }
 .app-sidebar::-webkit-scrollbar { width: 4px; }
 .app-sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
@@ -118,7 +115,7 @@
 .sidebar-footer-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
 .sidebar-footer-role { font-size: 11px; color: var(--text-muted); }
 
-.app-sidebar.collapsed { width: 68px; }
+.app-sidebar.collapsed { width: 68px; min-width: 68px; }
 .app-sidebar.collapsed .sidebar-brand-text,
 .app-sidebar.collapsed .sidebar-nav-item span,
 .app-sidebar.collapsed .sidebar-footer-name,
@@ -173,6 +170,7 @@
   display: flex; align-items: center; gap: 10px; padding: 4px 12px 4px 4px;
   border-radius: 24px; border: 1px solid var(--border-subtle); cursor: pointer;
   transition: all var(--transition-fast); flex-shrink: 0; background: transparent;
+  position: relative;
 }
 .topbar-user:hover { background: var(--bg-hover); }
 .topbar-user-avatar {
