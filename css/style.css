@@ -552,6 +552,22 @@ html, body {
   font-size: 14px;
 }
 
+.loading-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 16px 0;
+  opacity: 0.85;
+  animation: loadingBrandPulse 2.4s ease-in-out infinite;
+  animation-delay: 1.7s;
+}
+
+@keyframes loadingBrandPulse {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 0.45; }
+}
+
 .pagination {
   display: flex;
   align-items: center;
