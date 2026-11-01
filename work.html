@@ -312,9 +312,17 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="12 6 14.5 11.5 20.5 11.5 15.5 15.5 17 21 12 17.5 7 21 8.5 15.5 3.5 11.5 9.5 11.5"/></svg>
         积分中心
       </button>
+      <button class="sidebar-nav-item" data-page="profile" id="navProfile">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        个人中心
+      </button>
       <button class="sidebar-nav-item" data-page="community" id="navCommunity">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
         玉国社区
+      </button>
+      <button class="sidebar-nav-item" data-page="farm" id="navFarm">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22V10"/><path d="M12 10c0-4 3-6 7-6 0 4-3 6-7 6"/><path d="M12 14c0-3-2-5-5-5 0 3 2 5 5 5"/><path d="M3 22h18"/></svg>
+        我的农场
       </button>
       <button class="sidebar-nav-item" data-page="lottery" id="navLottery">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/><line x1="12" y1="12" x2="12" y2="12.01"/></svg>
@@ -573,52 +581,17 @@
         </div>
       </div>
 
-      <!-- Page: Community -->
+      <!-- Page: Profile（片段懒加载：partials/profile.html） -->
+      <div class="app-page" id="pageProfile">
+        <div id="profileMount">
+          <div class="feed-loading">加载个人中心中...</div>
+        </div>
+      </div>
+
+      <!-- Page: Community（片段懒加载：partials/community.html） -->
       <div class="app-page" id="pageCommunity">
-        <div style="display:flex;gap:12px;margin-bottom:24px;align-items:center;">
-          <h2 style="font-size:20px;font-weight:700;color:var(--text-primary);">🐟 玉国社区</h2>
-          <div class="topbar-spacer"></div>
-          <button id="btnUserCenterPage" style="background:var(--bg-card);border:1px solid var(--border-subtle);color:var(--text-primary);padding:10px 20px;border-radius:10px;font-size:13px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            个人中心
-          </button>
-          <button id="btnFarm" style="background:var(--bg-card);border:1px solid rgba(163,113,247,0.3);color:var(--purple);padding:10px 20px;border-radius:10px;font-size:13px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px;" onclick="window.location.href='/farm'">
-            🌾 我的农场
-          </button>
-        </div>
-        <div class="feed-section">
-          <div class="feed-section-title">💬 社区动态</div>
-          <div class="feed-list" id="communityFeedList">
-            <div class="feed-item">
-              <div class="feed-item-icon" style="background:var(--purple-dim);">💬</div>
-              <div class="feed-item-body">
-                <div class="feed-item-title">欢迎加入玉国社区</div>
-                <div class="feed-item-desc">在这里与大家分享购物心得、优惠讨论和互帮互助</div>
-              </div>
-              <div class="feed-item-time">刚刚</div>
-            </div>
-          </div>
-        </div>
-        <div class="feed-section" style="margin-top:24px;">
-          <div class="feed-section-title">🔥 热门话题</div>
-          <div class="feed-list" id="communityHotList">
-            <div class="feed-item">
-              <div class="feed-item-icon" style="background:var(--orange-dim);">🔥</div>
-              <div class="feed-item-body">
-                <div class="feed-item-title">大额电器补贴攻略</div>
-                <div class="feed-item-desc">了解如何申请最高500元电器补贴</div>
-              </div>
-              <div class="feed-item-time">热门</div>
-            </div>
-            <div class="feed-item">
-              <div class="feed-item-icon" style="background:var(--green-dim);">💡</div>
-              <div class="feed-item-body">
-                <div class="feed-item-title">积分获取小技巧</div>
-                <div class="feed-item-desc">每日任务、邀请好友、提交凭证均可获得积分</div>
-              </div>
-              <div class="feed-item-time">热门</div>
-            </div>
-          </div>
+        <div id="communityMount">
+          <div class="feed-loading">加载社区动态中...</div>
         </div>
       </div>
 
@@ -1551,6 +1524,8 @@
 <script src="js/lottery.js?v=3.5.1"></script>
 <script src="js/wheel.js?v=3.5.1"></script>
 <script src="js/app.js?v=3.5.1"></script>
+<script src="js/community.js?v=3.5.1"></script>
+<script src="js/community-loader.js?v=3.5.1"></script>
 <script>
 (function() {
   'use strict';
@@ -1559,6 +1534,7 @@
     dashboard: { title: '首页动态', el: document.getElementById('pageDashboard') },
     voucher:   { title: '凭证管理', el: document.getElementById('pageVoucher') },
     points:    { title: '积分中心', el: document.getElementById('pagePoints') },
+    profile:   { title: '个人中心', el: document.getElementById('pageProfile') },
     community: { title: '玉国社区', el: document.getElementById('pageCommunity') },
     lottery:   { title: '抽奖福利', el: document.getElementById('pageLottery') }
   };
@@ -1568,18 +1544,30 @@
   var currentPage = 'dashboard';
 
   function switchPage(pageName) {
-    if (currentPage === pageName) return;
-    Object.keys(pages).forEach(function(k) { pages[k].el.classList.remove('active'); });
-    var page = pages[pageName];
-    if (page) {
-      page.el.classList.add('active');
-      currentPage = pageName;
-      topbarTitle.textContent = page.title;
+    // 我的农场仍是独立页面，保持原跳转
+    if (pageName === 'farm') { window.location.href = '/farm'; return; }
+    if (!pages[pageName]) return;
+
+    // 个人中心 / 社区：片段懒加载后内嵌，不跳页
+    if ((pageName === 'profile' || pageName === 'community') && window.JITCommunityLoader) {
+      window.JITCommunityLoader.mount().catch(function() {
+        var mount = document.getElementById(pageName === 'profile' ? 'profileMount' : 'communityMount');
+        if (mount) mount.innerHTML = '<div class="feed-loading">内容加载失败，请刷新页面重试</div>';
+      });
     }
+
+    Object.keys(pages).forEach(function(k) { pages[k].el.classList.remove('active'); });
+    pages[pageName].el.classList.add('active');
+    currentPage = pageName;
+    topbarTitle.textContent = pages[pageName].title;
+
     navItems.forEach(function(item) {
       item.classList.toggle('active', item.getAttribute('data-page') === pageName);
     });
   }
+
+  // 暴露给其它模块（app.js / 社区脚本）用于内嵌切页
+  window.JITShell = { go: switchPage, current: function() { return currentPage; } };
 
   navItems.forEach(function(item) {
     item.addEventListener('click', function() {
@@ -1637,14 +1625,13 @@
       }
     });
   }
-  // Dropdown: 个人中心
+  // Dropdown: 个人中心（内嵌切页，不跳转）
   var dropdownUC = document.getElementById('dropdownUserCenter');
   if (dropdownUC) {
     dropdownUC.addEventListener('click', function(e) {
       e.stopPropagation();
       userDropdown.classList.remove('show');
-      var btn = document.getElementById('btnUserCenter');
-      if (btn) btn.click();
+      if (window.JITShell) window.JITShell.go('profile');
     });
   }
   // Dropdown: 退出登录
@@ -1714,7 +1701,6 @@
   setTimeout(function() {
     proxyClick('btnPointsHistory', 'btnPointsHistoryPage');
     proxyClick('btnInvite', 'btnInvitePage');
-    proxyClick('btnUserCenter', 'btnUserCenterPage');
     proxyClick('btnCustomerService', 'topbarCustomerService');
     proxyClick('btnNotification', 'topbarNotification');
 

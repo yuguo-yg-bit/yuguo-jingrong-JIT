@@ -1517,12 +1517,19 @@ var JITCommunity = (function() {
   };
 
   // ===== 初始化（强制走代理，并行加载） =====
+  var _inited = false;
   var init = function() {
+    // 幂等：内嵌到 SPA 时可能被多次触发
+    if (_inited) return;
+    // 片段尚未注入（非社区页面）时不初始化
+    if (!document.getElementById("communityFeed")) return;
+
     _currentUser = localStorage.getItem("jit_current_user");
     if (!_currentUser) {
-      window.location.href = "work.html";
+      window.location.href = "/login";
       return;
     }
+    _inited = true;
 
     _TURSO = JITApi.getTursoHelpers();
     if (!_TURSO) {
@@ -1532,7 +1539,6 @@ var JITCommunity = (function() {
 
     _initParticles();
     _bindEvents();
-    document.getElementById("versionWatermark").textContent = "v3.5.0";
 
     // 预热代理：立即唤醒 Val.town 冷启动
     if (JITApi && JITApi.warmupProxy) { JITApi.warmupProxy(); }
@@ -1657,5 +1663,8 @@ var JITCommunity = (function() {
 })();
 
 document.addEventListener("DOMContentLoaded", function() {
-  JITCommunity.init();
+  // 独立 community.html 页面才自动初始化；内嵌到 work.html 时由 loader 调用
+  if (document.getElementById("communityFeed") && !window.JITCommunityLoader) {
+    JITCommunity.init();
+  }
 });

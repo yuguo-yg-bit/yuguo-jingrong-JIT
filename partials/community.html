@@ -1,0 +1,47 @@
+<div class="community-container">
+  <!-- ===== ③ 发布框：说自己的话 ===== -->
+  <div class="community-composer" id="communityComposer">
+    <div class="composer-avatar" id="composerAvatar">用</div>
+    <div class="composer-input-area">
+      <div class="composer-type-tabs">
+        <button class="composer-type-tab active" data-type="chat" id="tabChat">💬 发聊天</button>
+        <button class="composer-type-tab" data-type="voucher" id="tabVoucher">🧾 分享凭证</button>
+      </div>
+      <textarea class="composer-textarea" id="statusTextarea" placeholder="分享你的状态..." maxlength="500"></textarea>
+      <div class="voucher-picker" id="voucherPicker" style="display:none;"></div>
+      <!-- 自选附件：图片 / 位置 / 凭证 -->
+      <div class="composer-attachments" id="composerAttachments">
+        <div class="composer-image-preview" id="composerImagePreview"></div>
+        <div class="composer-location-row" id="composerLocationRow" style="display:none;">
+          <input class="composer-location-input" id="statusLocationInput" maxlength="40" placeholder="输入地点名称，如：珠海市香洲区">
+          <button class="composer-loc-btn" id="btnLocateMe" type="button">📍 自动定位</button>
+          <button class="composer-loc-remove" id="btnRemoveLocation" type="button">✕</button>
+        </div>
+        <div class="composer-toolbar">
+          <button class="composer-tool-btn" id="btnAddImages" type="button">📷 图片</button>
+          <button class="composer-tool-btn" id="btnAddLocation" type="button">📍 位置</button>
+          <button class="composer-tool-btn" id="btnPickVoucher" type="button">🧾 凭证</button>
+          <input type="file" accept="image/*" multiple id="statusImageInput" style="display:none;">
+        </div>
+      </div>
+      <div class="composer-actions">
+        <span class="composer-char-count" id="composerCharCount">0/500</span>
+        <button class="composer-submit-btn" id="btnPostStatus">发布</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== ④ 实时中奖动态墙：自己和别人之间的连接 ===== -->
+  <div class="win-wall" id="winWall">
+    <div class="win-wall-header" id="winWallHeader">
+      <span class="win-wall-title">🎉 实时中奖动态</span>
+      <span class="win-wall-toggle" id="winWallToggle">收起 ▴</span>
+    </div>
+    <div class="win-wall-scroll" id="winWallScroll"><div class="win-wall-inner" id="winWallInner"></div></div>
+  </div>
+
+  <!-- ===== ⑤ 社区动态流：往下拉是其他人 ===== -->
+  <div class="community-feed" id="communityFeed">
+    <div class="feed-loading">加载动态中...</div>
+  </div>
+</div>

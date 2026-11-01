@@ -866,7 +866,8 @@ var JITApp = (function() {
     // 顶部头像/用户中心入口
     var btnUserCenter = document.getElementById("btnUserCenter");
     if (btnUserCenter) btnUserCenter.addEventListener("click", function() {
-      window.location.href = "community.html";
+      if (window.JITShell && window.JITShell.go) window.JITShell.go("profile");
+      else window.location.href = "community.html";
     });
 
     // v2.0 装扮选择器（主题+头像框事件绑定）
@@ -2333,9 +2334,10 @@ var JITApp = (function() {
     inner.innerHTML = html;
   };
 
-  // 用户中心（已迁移至社区页面）
+  // 用户中心（已内嵌至 SPA 的个人中心页）
   var _openUserCenter = function() {
-    window.location.href = "community.html";
+    if (window.JITShell && window.JITShell.go) window.JITShell.go("profile");
+    else window.location.href = "community.html";
   };
 
   var _closeUserCenter = function() {};
