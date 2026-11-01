@@ -1,5 +1,5 @@
 var JITApp = (function() {
-  window._JIT_APP_VERSION = "4.0.0";
+  window._JIT_APP_VERSION = "3.5.2";
 
   window._JIT_TOKEN_TAIL = (function() {
     var _a = "_GIT";
@@ -31,34 +31,34 @@ var JITApp = (function() {
 
   var _init = function() {
     _initBackgroundParticles();
+    // 预热代理：立即唤醒 Val.town 冷启动
     if (JITApi && JITApi.warmupProxy) { JITApi.warmupProxy(); }
-    _syncBlacklistFromCloud();
-    _syncUrgentBlFromCloud();
-    _syncVersionWatermark();
-
-    // v4.0: 先初始化登录再初始化路由（路由回调依赖 _currentUser）
+    _syncBlacklistFromCloud(); // 启动时先同步云端黑名单（优先级高于自动登录检测）
+    _syncUrgentBlFromCloud(); // 启动时拉取加急黑名单到内存
+    _syncVersionWatermark(); // 同步版本水印
     _initLogin();
-    if (typeof JITRouter !== "undefined" && JITRouter.init) {
-      _setupRouteCallbacks();
-      JITRouter.init();
-    }
     _bindEvents();
-    _initWinWall();
+    _initWinWall(); // v2.0 中奖墙初始化
+    // 加载用户等级数据（走代理）
     if (_currentUser && JITApi && JITApi.getUserLevel) {
       _refreshUserLevel(_currentUser).catch(function() {});
     }
+    // 确保积分 label 存在
     if (JITPoints && JITPoints.ensureLabel) JITPoints.ensureLabel().catch(function() {});
     _loadData();
     _refreshPointsDisplay();
-    _dailyLoginBonus();
-    _checkExpiredTickets();
-    _initOutfits();
+    _dailyLoginBonus(); // v2.0 每日签到
+    _checkExpiredTickets(); // v2.0 过期券提醒
+    _initOutfits(); // v2.0 装扮初始化
+    // 每30秒自动刷新
     setInterval(function() {
       _loadData();
     }, 30000);
+    // 每 30 秒刷新一下积分显示（防止管理员审核通过后用户端不同步）
     setInterval(function() {
       if (_currentUser) _refreshPointsDisplay(true);
     }, 30000);
+    // 每 60 秒拉取一次通知，更新铃铛未读数
     setInterval(function() {
       if (_currentUser) _loadNotifications();
     }, 60000);
@@ -80,15 +80,14 @@ var JITApp = (function() {
       _currentPoints = d ? (d.points || 0) : 0;
       _currentFrozen = !!(d && d.frozen);
       el.textContent = _currentPoints;
+      // 冻结状态提示
       el.style.color = _currentFrozen ? "#2196f3" : "";
       el.title = _currentFrozen ? "积分账户已冻结" : "";
+      // 同步更新幸运抽奖条上的积分显示
       var luckyEl = document.getElementById("luckyCurrentPoints");
       if (luckyEl) luckyEl.textContent = String(_currentPoints);
       var offsetEl = document.getElementById("offsetCurrentPoints");
       if (offsetEl) offsetEl.textContent = String(_currentPoints);
-      // v4.0: 同步积分到积分中心卡片
-      var ptsCard = document.getElementById("pointsTotalCard");
-      if (ptsCard) ptsCard.textContent = String(_currentPoints);
       return d;
     }).catch(function() {
       return null;
@@ -280,189 +279,6 @@ var JITApp = (function() {
 
   var _showLoginPrompt = function() {
     _redirectToLogin();
-  };
-
-  // v4.0: 路由回调 - 页面切换时加载对应内容
-  var _setupRouteCallbacks = function() {
-    if (typeof JITRouter === "undefined") return;
-
-    // 首页动态
-    JITRouter.onRoute("/home", function() {
-      _loadHomeFeed();
-    });
-
-    // 凭证申请页
-    JITRouter.onRoute("/voucher/apply", function() {
-      // 初始化签名画布（modal 内的 canvas）
-      setTimeout(function() { _initSignatureCanvas(); _initOnlineSignatureCanvas(); _initElectricSignatureCanvas(); }, 300);
-    });
-
-    // 凭证订单页
-    JITRouter.onRoute("/voucher/list", function() {
-      if (_currentUser) _loadOrders();
-    });
-
-    // 积分中心
-    JITRouter.onRoute("/points", function() {
-      if (_currentUser) {
-        _refreshPointsDisplay(true).then(function() {
-          // 同步积分到页面卡片
-          var p = document.getElementById("pointsTotal");
-          var pc = document.getElementById("pointsTotalCard");
-          if (p && pc) pc.textContent = p.textContent;
-          var l = document.getElementById("luckyCurrentPoints");
-          if (l && p) l.textContent = p.textContent;
-        });
-        // 更新会员进度到积分页的进度条
-        setTimeout(function() { _updateProgress(); }, 800);
-      }
-    });
-
-    // 活动广场（静态内容，刷新积分显示即可）
-    JITRouter.onRoute("/activity", function() {
-      if (_currentUser) {
-        _refreshPointsDisplay(true);
-        // 活动页需要知道当前积分
-        setTimeout(function() {
-          var p = document.getElementById("pointsTotal");
-          var l = document.getElementById("luckyCurrentPoints");
-          if (p && l) l.textContent = p.textContent;
-        }, 500);
-      }
-    });
-
-    // 邀请与农场
-    JITRouter.onRoute("/invite", function() {
-      _loadReferralData();
-    });
-
-    // 社区（含快捷入口按钮，无需动态加载）
-    JITRouter.onRoute("/community", function() {
-      // 社区页静态内容，按钮跳转 community.html
-    });
-
-    // 个人设置
-    JITRouter.onRoute("/profile", function() {
-      if (_currentUser) _loadProfileData();
-    });
-  };
-
-  // v4.0: 加载首页动态信息流
-  var _loadHomeFeed = function() {
-    if (!_currentUser) return;
-    var feed = document.getElementById("homeFeed");
-    if (!feed) return;
-
-    // 统计
-    var statTotal = document.getElementById("homeStatTotal");
-    var statPts = document.getElementById("homeStatPoints");
-    var statLevel = document.getElementById("homeStatLevel");
-    var statPending = document.getElementById("homeStatPending");
-
-    // 加载订单总数
-    if (statTotal && JITApi && JITApi._tursoCall) {
-      JITApi._tursoCall("/sql?q=" + encodeURIComponent(
-        "SELECT COUNT(*) as cnt FROM orders WHERE username='" + _currentUser.replace(/'/g, "''") + "' AND deleted=0"
-      )).then(function(r) { if (r && r[0]) statTotal.textContent = r[0].cnt; }).catch(function() { statTotal.textContent = "-"; });
-    }
-
-    // 积分
-    if (statPts) {
-      var p = document.getElementById("pointsTotal");
-      statPts.textContent = p ? p.textContent : "0";
-    }
-
-    // 会员等级
-    if (statLevel) {
-      JITApi._tursoCall("/user-levels/" + encodeURIComponent(_currentUser)).then(function(r) {
-        statLevel.textContent = r && r.level ? r.level : "-";
-      }).catch(function() { statLevel.textContent = "-"; });
-    }
-
-    // 待审核数
-    if (statPending && JITApi && JITApi._tursoCall) {
-      JITApi._tursoCall("/sql?q=" + encodeURIComponent(
-        "SELECT COUNT(*) as cnt FROM orders WHERE username='" + _currentUser.replace(/'/g, "''") + "' AND status='审核中' AND deleted=0"
-      )).then(function(r) { if (r && r[0]) statPending.textContent = r[0].cnt; }).catch(function() { statPending.textContent = "-"; });
-    }
-
-    // 动态信息流 - 显示加载动画
-    feed.innerHTML = window._JIT_LOADING_HTML;
-
-    if (JITApi && JITApi._tursoCall) {
-      JITApi._tursoCall("/sql?q=" + encodeURIComponent(
-        "SELECT type,name,date,status,lucky_result FROM orders WHERE username='" + _currentUser.replace(/'/g, "''") + "' AND deleted=0 ORDER BY date DESC LIMIT 20"
-      )).then(function(rows) {
-        if (!rows || !rows.length) {
-          feed.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:32px;">暂无动态</div>';
-          return;
-        }
-        var html = "";
-        rows.forEach(function(row) {
-          var icon = row.type && row.type.indexOf("电器") >= 0 ? "🎁" :
-                     row.type && row.type.indexOf("线上") >= 0 ? "🛒" : "📋";
-          html += '<div class="feed-item">' +
-            '<div class="feed-icon">' + icon + '</div>' +
-            '<div class="feed-body">' +
-              '<div class="feed-title">' + (row.name || "未知凭证") + '</div>' +
-              '<div class="feed-meta">' + (row.status || "审核中") +
-                (row.lucky_result ? " · 中奖: " + row.lucky_result : "") + '</div>' +
-            '</div>' +
-            '<div class="feed-time">' + (row.date || "") + '</div>' +
-          '</div>';
-        });
-        feed.innerHTML = html;
-      }).catch(function() {
-        feed.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:24px;">加载动态失败</div>';
-      });
-    }
-  };
-
-  // v4.0: 加载邀请数据
-  var _loadReferralData = function() {
-    if (!_currentUser) return;
-    if (JITApi && JITApi._tursoCall) {
-      JITApi._tursoCall("/sql?q=" + encodeURIComponent(
-        "SELECT COUNT(*) as cnt FROM users WHERE referrer='" + _currentUser.replace(/'/g, "''") + "'"
-      )).then(function(r) {
-        var cnt = document.getElementById("referralCount");
-        if (cnt && r && r[0]) cnt.textContent = r[0].cnt;
-      }).catch(function() {});
-      JITApi._tursoCall("/sql?q=" + encodeURIComponent(
-        "SELECT username FROM users WHERE referrer='" + _currentUser.replace(/'/g, "''") + "' LIMIT 50"
-      )).then(function(rows) {
-        var list = document.getElementById("referralList");
-        if (!list) return;
-        if (!rows || !rows.length) {
-          list.innerHTML = '<div style="color:var(--text-dim);font-size:13px;">暂无邀请好友</div>';
-          return;
-        }
-        list.innerHTML = rows.map(function(r) {
-          return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-dim, rgba(33,147,241,0.12));">' +
-            '<span>' + r.username + '</span>' +
-            '<span style="color:var(--ice-blue);font-weight:600;">+50 积分</span></div>';
-        }).join("");
-      }).catch(function() {});
-    }
-  };
-
-  // v4.0: 加载个人设置页数据
-  var _loadProfileData = function() {
-    if (!_currentUser) return;
-    if (JITApi && JITApi._tursoCall) {
-      JITApi._tursoCall("/sql?q=" + encodeURIComponent(
-        "SELECT realname,dianpu FROM users WHERE username='" + _currentUser.replace(/'/g, "''") + "' LIMIT 1"
-      )).then(function(r) {
-        var prn = document.getElementById("profileRealName");
-        var pdp = document.getElementById("profileDianpu");
-        if (prn && r && r[0]) prn.textContent = "真实姓名: " + (r[0].realname || "未设置");
-        if (pdp && r && r[0]) pdp.textContent = "店铺: " + (r[0].dianpu || "未设置");
-      }).catch(function() {});
-    }
-    JITApi._tursoCall("/user-levels/" + encodeURIComponent(_currentUser)).then(function(r) {
-      var pl = document.getElementById("profileLevel");
-      if (pl && r) pl.textContent = r.level || "普通用户";
-    }).catch(function() {});
   };
 
   // ======= 内置常用国家/省份/城市（避免外网API返回对象导致 [object Object]） =======
@@ -703,7 +519,7 @@ var JITApp = (function() {
       '<div class="modal-header"><h3 class="modal-title">邀请好友得积分</h3><button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">&times;</button></div>' +
       '<div class="modal-body">' +
       '<div style="text-align:center;margin-bottom:16px;">' +
-      '<div style="font-size:36px;font-weight:bold;color:var(--ice-blue);">+' + JITPoints.RULES.INVITE_REWARD + '</div>' +
+      '<div style="font-size:36px;font-weight:bold;color:var(--accent);">+' + JITPoints.RULES.INVITE_REWARD + '</div>' +
       '<div style="font-size:13px;color:var(--text-secondary);">好友注册成功，双方各得' + JITPoints.RULES.INVITE_REWARD + '积分</div>' +
       '</div>' +
       '<div class="form-group"><label class="form-label">我的专属邀请链接</label>' +
@@ -867,23 +683,6 @@ var JITApp = (function() {
     if (el && _currentUser) {
       el.textContent = _currentUser + " 退出";
     }
-    // v4.0: 同步更新侧边栏和顶栏的用户信息
-    var sidebarName = document.getElementById("sidebarUserName");
-    if (sidebarName) sidebarName.textContent = _currentUser || "未登录";
-    var sidebarAvatar = document.getElementById("sidebarUserAvatar");
-    if (sidebarAvatar && _currentUser) sidebarAvatar.textContent = _currentUser.charAt(0);
-    var topbarName = document.getElementById("topbarUserNameDisplay");
-    if (topbarName) topbarName.textContent = _currentUser || "用户";
-    var topbarAvatar = document.getElementById("topbarUserAvatar");
-    if (topbarAvatar && _currentUser) topbarAvatar.textContent = _currentUser.charAt(0);
-    var profileName = document.getElementById("profileName");
-    if (profileName) profileName.textContent = _currentUser || "";
-    var profileAvatar = document.getElementById("profileAvatar");
-    if (profileAvatar && _currentUser) profileAvatar.textContent = _currentUser.charAt(0);
-    // 同步积分到顶栏
-    var ptsTotalEl = document.getElementById("pointsTotal");
-    var ptsCard = document.getElementById("pointsTotalCard");
-    if (ptsTotalEl && ptsCard) ptsTotalEl.textContent = ptsCard.textContent;
   };
 
   var _bindEvents = function() {
@@ -1273,69 +1072,6 @@ var JITApp = (function() {
     if (btnSubmitOnline) {
       btnSubmitOnline.addEventListener("click", _submitOnlineVoucherForm);
     }
-
-    // ===== v4.0 新布局按钮绑定 =====
-    // 活动广场 - 翻翻乐卡片
-    var btnLotteryOpen = document.getElementById("btnLotteryOpen");
-    if (btnLotteryOpen) btnLotteryOpen.addEventListener("click", function() {
-      if (_currentUser) {
-        var latestVoucher = _allVouchers && _allVouchers.length > 0 ? _allVouchers[0] : null;
-        _openLotteryModal(latestVoucher);
-      }
-    });
-    // 活动广场 - 电器补贴卡片
-    var btnElectricActivity = document.getElementById("btnElectricActivity");
-    if (btnElectricActivity) btnElectricActivity.addEventListener("click", _openAddElectricModal);
-    // 顶栏用户菜单按钮 → 个人设置页
-    var btnUserMenu = document.getElementById("btnUserMenu");
-    if (btnUserMenu) btnUserMenu.addEventListener("click", function() {
-      if (typeof JITRouter !== "undefined") JITRouter.navigate("/profile");
-    });
-    // 顶栏搜索
-    var topbarSearch = document.getElementById("topbarSearchInput");
-    if (topbarSearch) {
-      topbarSearch.addEventListener("keydown", function(e) {
-        if (e.key === "Enter") {
-          var query = this.value.trim();
-          if (query) {
-            if (typeof JITRouter !== "undefined") JITRouter.navigate("/voucher/list");
-            setTimeout(function() {
-              if (typeof _filterVouchers === "function") _filterVouchers(query);
-            }, 300);
-          }
-        }
-      });
-    }
-    // 首页筛选
-    var homeFilterBar = document.getElementById("homeFilterBar");
-    if (homeFilterBar) {
-      homeFilterBar.addEventListener("click", function(e) {
-        var pill = e.target.closest(".filter-pill");
-        if (!pill) return;
-        homeFilterBar.querySelectorAll(".filter-pill").forEach(function(p) { p.classList.remove("active"); });
-        pill.classList.add("active");
-        var filter = pill.getAttribute("data-filter");
-        if (typeof _filterHomeFeed === "function") _filterHomeFeed(filter);
-      });
-    }
-    // 凭证订单二级筛选
-    var voucherFilterBar = document.getElementById("voucherFilterBar");
-    if (voucherFilterBar) {
-      voucherFilterBar.addEventListener("click", function(e) {
-        var pill = e.target.closest(".filter-pill");
-        if (!pill) return;
-        voucherFilterBar.querySelectorAll(".filter-pill").forEach(function(p) { p.classList.remove("active"); });
-        pill.classList.add("active");
-        var status = pill.getAttribute("data-status");
-        if (typeof _filterOrdersByStatus === "function") _filterOrdersByStatus(status);
-      });
-    }
-    // btnWriteVoucher → 现在重定向到订单页去编辑
-    var btnWriteVoucher2 = document.getElementById("btnWriteVoucher2");
-    if (btnWriteVoucher2) btnWriteVoucher2.addEventListener("click", function() {
-      if (typeof JITRouter !== "undefined") JITRouter.navigate("/voucher/list");
-      _showToast("从订单列表中选择要编辑的凭证", "");
-    });
   };
 
   var _initUploadListeners = function() {
@@ -1811,7 +1547,6 @@ var JITApp = (function() {
         return v.shopName !== "【聊天专用】" && v.paymentMethod !== "chat";
       });
       _allVouchers = vouchers;
-      _allVouchersOriginal = vouchers.slice();
       _totalVouchers = vouchers.length;
       _currentPage = 1;
       _renderOrders();
@@ -1950,42 +1685,6 @@ var JITApp = (function() {
       html += '</div>';
     });
     list.innerHTML = html;
-  };
-
-  // v4.0: 订单状态筛选
-  var _allVouchersOriginal = [];
-  var _filterOrdersByStatus = function(status) {
-    if (!status || status === "all") {
-      if (_allVouchersOriginal.length > 0) {
-        _allVouchers = _allVouchersOriginal.slice();
-      }
-      _renderOrders();
-      return;
-    }
-    if (_allVouchersOriginal.length === 0) {
-      _allVouchersOriginal = _allVouchers.slice();
-    }
-    var filtered = _allVouchersOriginal.filter(function(v) {
-      return v.statusType === status;
-    });
-    _allVouchers = filtered;
-    _currentPage = 1;
-    _renderOrders();
-  };
-
-  // v4.0: 首页动态流筛选
-  var _filterHomeFeed = function(filter) {
-    var feedEl = document.getElementById("homeFeedList");
-    if (!feedEl) return;
-    var cards = feedEl.querySelectorAll(".home-card");
-    cards.forEach(function(card) {
-      if (filter === "all") {
-        card.style.display = "";
-      } else {
-        var cardType = card.getAttribute("data-feed-type");
-        card.style.display = (cardType === filter) ? "" : "none";
-      }
-    });
   };
 
   var _updateProgress = function(total, approved) {
@@ -4274,20 +3973,7 @@ var JITApp = (function() {
 
   var _showToast = function(msg, type) {
     var toast = document.getElementById("toast");
-    if (!toast) {
-      // v4.0: 尝试新的 toast 容器
-      var container = document.getElementById("toastContainer");
-      if (container) {
-        var t = document.createElement("div");
-        t.textContent = msg;
-        t.className = "toast " + (type || "");
-        container.appendChild(t);
-        setTimeout(function() {
-          if (t.parentNode) t.parentNode.removeChild(t);
-        }, 3000);
-      }
-      return;
-    }
+    if (!toast) return;
     toast.textContent = msg;
     toast.className = "toast " + (type || "");
     toast.classList.add("show");
@@ -4573,7 +4259,7 @@ var JITApp = (function() {
       html += '<div style="font-size:11px;color:var(--text-muted);display:flex;justify-content:space-between;align-items:center;">';
       html += '<span>' + _escapeHtml(n.sendTime || "") + '</span>';
       if (n.comments && n.comments > 0) {
-        html += '<span style="color:var(--ice-blue);">💬 ' + n.comments + ' 条回复</span>';
+        html += '<span style="color:var(--accent);">💬 ' + n.comments + ' 条回复</span>';
       }
       html += '</div>';
       html += '</div>';

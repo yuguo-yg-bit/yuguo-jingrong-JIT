@@ -329,7 +329,7 @@ var JITCommunity = (function() {
   // ===== 社区状态 CRUD（Turso） =====
   var _loadStatuses = function() {
     var feed = document.getElementById("communityFeed");
-    if (feed) feed.innerHTML = window._JIT_LOADING_HTML || '<div class="feed-loading">...</div>';
+    if (feed) feed.innerHTML = '<div class="feed-loading">加载动态中...</div>';
 
     return _TURSO("SELECT rowid, * FROM community_statuses ORDER BY created_at DESC LIMIT 200", []).then(function(result) {
       var rows = _TURSO.rowsToObjects(result.columns, result.rows);
@@ -518,7 +518,7 @@ var JITCommunity = (function() {
   var _renderVoucherPicker = function() {
     var picker = document.getElementById("voucherPicker");
     if (!picker) return;
-    picker.innerHTML = '<div class="voucher-picker-empty">' + (window._JIT_LOADING_SVG || '') + '</div>';
+    picker.innerHTML = '<div class="voucher-picker-empty">加载凭证中...</div>';
     JITApi.getVouchers(_currentUser).then(function(vouchers) {
       var mine = (vouchers || []).filter(function(v) {
         return v.shopName && v.shopName !== "【聊天专用】" && v.paymentMethod !== "chat";
@@ -1512,7 +1512,7 @@ var JITCommunity = (function() {
         inner.innerHTML = '<span class="win-wall-item" style="color:var(--danger);">加载中奖墙失败</span>';
       });
     }
-    inner.innerHTML = '<span class="win-wall-item">' + (window._JIT_LOADING_HTML || '加载中...') + '</span>';
+    inner.innerHTML = '<span class="win-wall-item" style="color:var(--text-dim);">加载中奖墙中...</span>';
     return Promise.resolve();
   };
 
