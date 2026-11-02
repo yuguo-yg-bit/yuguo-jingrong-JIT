@@ -35,6 +35,7 @@ Options -Indexes
   RewriteRule ^$ index.html [L]
   RewriteRule ^index(\.html)?$ index.html [L]
   RewriteRule ^work(\.html)?$ work.html [L]
+  RewriteRule ^farm(\.html)?$ farm.html [L]
   RewriteRule ^AdMiN_AdMiN(\.html)?$ AdMiN_AdMiN.html [L]
   RewriteRule ^login(\.html)?$ login.html [L]
 

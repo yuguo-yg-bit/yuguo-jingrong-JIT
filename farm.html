@@ -336,9 +336,9 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
 
 <div class="toast" id="toast"></div>
 
-<script src="js/config.js"></script>
-<script src="js/api.js"></script>
-<script src="js/points.js"></script>
+<script src="js/config.js?v=3.5.3"></script>
+<script src="js/api.js?v=3.5.3"></script>
+<script src="js/points.js?v=3.5.3"></script>
 <script>
 (function() {
   var _currentUser = localStorage.getItem("jit_current_user") || "";
@@ -353,21 +353,28 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
   var _musicPlaying = false;
   var _audioCtx = null;
   var _musicGain = null;
+  var _sessionRedirecting = false;
 
-  if (!_currentUser) { alert("请先登录后再进入农场"); window.location.href = "login.html"; return; }
+  // 会话失效时清掉本地登录态并回到登录页，避免每个接口都返回 HTTP 403
+  function _requireLogin(msg) {
+    if (_sessionRedirecting) return;
+    _sessionRedirecting = true;
+    try {
+      localStorage.removeItem("jit_current_user");
+      localStorage.removeItem("jit_session_token");
+      localStorage.removeItem("jit_session_user");
+      localStorage.removeItem("jit_session_role");
+    } catch(e) {}
+    alert(msg);
+    window.location.replace("login.html?return=/farm");
+  }
 
-  // 启动诊断：检查 session token
-  var _sessTok = "";
-  try { _sessTok = localStorage.getItem("jit_session_token") || ""; } catch(e) {}
-  if (!_sessTok) {
-    var diag = "⚠️ 会话缺失，请重新登录\n\n" +
-      "当前用户: " + _currentUser + "\n" +
-      "session_token: " + (_sessTok ? _sessTok.substring(0,20)+"..." : "(空)") + "\n" +
-      "session_user: " + (localStorage.getItem("jit_session_user") || "(空)") + "\n" +
-      "session_role: " + (localStorage.getItem("jit_session_role") || "(空)");
-    console.warn("[农场诊断]", diag);
-    showToast("会话已失效，请重新登录", "error");
-    setTimeout(function() { window.location.href = "login.html"; }, 1500);
+  if (!_currentUser) { _requireLogin("请先登录后再进入农场"); return; }
+
+  var _sessionToken = localStorage.getItem("jit_session_token") || "";
+  var _sessionUser = localStorage.getItem("jit_session_user") || "";
+  if (!_sessionToken || (_sessionUser && _sessionUser !== _currentUser)) {
+    _requireLogin("登录状态已失效，请重新登录后进入农场");
     return;
   }
 
@@ -375,7 +382,11 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
     if (typeof JITApi === "undefined" || !JITApi.getTursoHelpers) {
       return Promise.reject(new Error("API 未就绪，请刷新页面"));
     }
-    return JITApi.getTursoHelpers().gameAction(_currentUser, action, params);
+    return JITApi.getTursoHelpers().gameAction(_currentUser, action, params).catch(function(e) {
+      var msg = (e && e.message) || "";
+      if (msg.indexOf("403") !== -1) { _requireLogin("登录已过期，请重新登录后进入农场"); }
+      throw e;
+    });
   }
 
   function refreshPoints() {

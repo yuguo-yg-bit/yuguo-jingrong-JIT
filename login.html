@@ -679,6 +679,16 @@
     el._t = setTimeout(function() { el.style.opacity = "0"; }, 3000);
   };
 
+  // 登录成功后的落地页（仅允许本站安全路径，防止开放重定向）
+  var _postLoginUrl = function() {
+    try {
+      var r = new URLSearchParams(window.location.search).get("return") || "";
+      var allowed = ["/", "/index.html", "/work", "/work.html", "/farm", "/farm.html"];
+      if (allowed.indexOf(r) !== -1) return r;
+    } catch (e) {}
+    return "index.html";
+  };
+
   // ========= 登录逻辑 =========
   document.getElementById("btnLogin").addEventListener("click", function() {
     var username = document.getElementById("loginUsername").value.trim();
@@ -717,7 +727,7 @@
           return;
         }
         _showToast("登录成功", "success");
-        setTimeout(function() { window.location.replace("index.html"); }, 600);
+        setTimeout(function() { window.location.replace(_postLoginUrl()); }, 600);
         return;
       }
       return JITApi.findPendingRegistration(username).then(function(pending) {
@@ -805,7 +815,7 @@
         document.getElementById("emailBindOverlay").style.display = "none";
         localStorage.setItem("jit_current_user", _emailBindUsername);
         _showToast("邮箱绑定成功，欢迎进入系统", "success");
-        setTimeout(function() { window.location.replace("index.html"); }, 600);
+        setTimeout(function() { window.location.replace(_postLoginUrl()); }, 600);
       } else {
         errEl.style.display = "block"; errEl.textContent = res.error || "验证码错误";
       }
@@ -1212,7 +1222,7 @@
         localStorage.setItem("jit_session_user", res.username);
         localStorage.setItem("jit_session_role", "user");
         _showToast("验证通过，正在登录...", "success");
-        setTimeout(function() { window.location.href = "index.html"; }, 500);
+        setTimeout(function() { window.location.href = _postLoginUrl(); }, 500);
       } else {
         _showToast(res.error || "验证码错误", "error");
         btn.disabled = false;
@@ -1246,7 +1256,7 @@
           localStorage.setItem("jit_session_token", res.oauth_token);
           localStorage.setItem("jit_session_user", res.username);
           localStorage.setItem("jit_session_role", "user");
-          window.location.href = "index.html";
+          window.location.href = _postLoginUrl();
         }, 800);
       } else if (res.error) {
         statusEl.textContent = "错误: " + res.error;
@@ -1388,7 +1398,7 @@
         if (result && result.username) {
           localStorage.setItem("jit_current_user", result.username);
           _showToast("登录成功，欢迎 " + result.username, "success");
-          setTimeout(function() { window.location.replace("index.html"); }, 600);
+          setTimeout(function() { window.location.replace(_postLoginUrl()); }, 600);
         }
       }).catch(function(err) {
         var errorBanner = document.getElementById("oauthErrorBanner");
@@ -1408,7 +1418,7 @@
         if (result && result.username) {
           localStorage.setItem("jit_current_user", result.username);
           _showToast("登录成功，欢迎 " + result.username, "success");
-          setTimeout(function() { window.location.replace("index.html"); }, 600);
+          setTimeout(function() { window.location.replace(_postLoginUrl()); }, 600);
         }
       }).catch(function(err) {
         var errorBanner = document.getElementById("oauthErrorBanner");

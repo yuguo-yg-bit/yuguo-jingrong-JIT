@@ -224,14 +224,17 @@ var JITApp = (function() {
     } catch (e) {}
 
     var savedUser = localStorage.getItem("jit_current_user");
-    // 会话 token 只能属于当前登录账号，否则代理会判定“会话与操作用户不一致”
-    // （典型场景：在管理员页登录过，退出时没清 token，再用普通账号操作积分就 403）
+    // 会话 token 必须存在且属于当前账号，否则后续受保护接口会统一返回 403
+    // （典型场景：管理员页登录过、token 已过期、老版本未存 token）
     try {
+      var tok = localStorage.getItem("jit_session_token") || "";
       var tokUser = localStorage.getItem("jit_session_user") || "";
-      if (tokUser && savedUser && tokUser !== savedUser) {
+      if (savedUser && (!tok || (tokUser && tokUser !== savedUser))) {
+        localStorage.removeItem("jit_current_user");
         localStorage.removeItem("jit_session_token");
         localStorage.removeItem("jit_session_user");
         localStorage.removeItem("jit_session_role");
+        savedUser = null;
       }
     } catch (e) {}
     if (savedUser) {

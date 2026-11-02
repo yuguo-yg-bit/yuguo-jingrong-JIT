@@ -64,7 +64,8 @@
   border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  transition: width .2s ease, min-width .2s ease, transform var(--transition-normal), opacity var(--transition-normal);
+  overflow: hidden;
+  transition: width .22s ease, min-width .22s ease, opacity .18s ease, visibility .22s;
 }
 .app-sidebar::-webkit-scrollbar { width: 4px; }
 .app-sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
@@ -115,18 +116,12 @@
 .sidebar-footer-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
 .sidebar-footer-role { font-size: 11px; color: var(--text-muted); }
 
-.app-sidebar.collapsed { width: 68px; min-width: 68px; }
-.app-sidebar.collapsed .sidebar-brand-text,
-.app-sidebar.collapsed .sidebar-nav-item span,
-.app-sidebar.collapsed .sidebar-footer-name,
-.app-sidebar.collapsed .sidebar-footer-role,
-.app-sidebar.collapsed .sidebar-upgrade-box { display: none; }
-.app-sidebar.collapsed .sidebar-nav-item { justify-content: center; padding: 10px; }
-.app-sidebar.collapsed .sidebar-nav-item svg { margin: 0; width: 22px; height: 22px; }
-.app-sidebar.collapsed .sidebar-footer { justify-content: center; }
-.app-sidebar.collapsed .sidebar-footer-info { justify-content: center; }
-.app-sidebar.collapsed .sidebar-brand { justify-content: center; padding: 20px 12px; }
-.app-sidebar.collapsed .sidebar-brand svg { margin-right: 0; }
+/* 完全收起：宽度归零并隐藏，汉堡按钮留在顶栏始终可见 */
+.app-sidebar.collapsed {
+  width: 0; min-width: 0; flex-basis: 0;
+  border-right: 0; opacity: 0; visibility: hidden;
+  pointer-events: none;
+}
 
 /* Main area */
 .app-main { flex: 1; display: flex; flex-direction: column; min-width: 0; height: 100vh; }
@@ -257,13 +252,19 @@
 }
 @media (max-width: 768px) {
   .app-sidebar {
-    position: fixed; left: 0; top: 0; bottom: 0; z-index: 50;
+    position: fixed; left: 0; top: var(--topbar-h); bottom: 0; height: auto; z-index: 50;
     transform: translateX(-100%); box-shadow: 4px 0 20px rgba(0,0,0,0.4);
+  }
+  /* 移动端始终保持抽屉宽度，collapsed 只作用于桌面端 */
+  .app-sidebar.collapsed {
+    width: var(--sidebar-w); min-width: var(--sidebar-w); flex-basis: auto;
+    border-right: 1px solid var(--border-subtle); opacity: 1; visibility: visible;
+    pointer-events: auto;
   }
   .app-sidebar.open { transform: translateX(0); }
   .sidebar-overlay {
-    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
-    z-index: 40; cursor: pointer;
+    display: none; position: fixed; left: 0; right: 0; top: var(--topbar-h); bottom: 0;
+    background: rgba(0,0,0,0.5); z-index: 40; cursor: pointer;
   }
   .sidebar-overlay.show { display: block; }
   .app-topbar { padding: 0 16px; }
@@ -1523,7 +1524,7 @@
 <script src="js/points.js?v=3.5.1"></script>
 <script src="js/lottery.js?v=3.5.1"></script>
 <script src="js/wheel.js?v=3.5.1"></script>
-<script src="js/app.js?v=3.5.1"></script>
+<script src="js/app.js?v=3.5.3"></script>
 <script src="js/community.js?v=3.5.1"></script>
 <script src="js/community-loader.js?v=3.5.1"></script>
 <script>
@@ -1578,14 +1579,23 @@
       if (window.innerWidth <= 768) {
         sidebar.classList.remove('open');
         if (overlay) overlay.classList.remove('show');
+        syncSidebarToggle();
       }
     });
   });
 
-  // Toggle sidebar
+  // Toggle sidebar（桌面端完全收起；汉堡按钮始终在顶栏可见）
   var toggleBtn = document.getElementById('topbarToggle');
   var sidebar = document.getElementById('appSidebar');
   var overlay = document.getElementById('sidebarOverlay');
+  function syncSidebarToggle() {
+    if (!toggleBtn || !sidebar) return;
+    var mobile = window.innerWidth <= 768;
+    var expanded = mobile ? sidebar.classList.contains('open') : !sidebar.classList.contains('collapsed');
+    toggleBtn.title = expanded ? '收起侧边栏' : '展开侧边栏';
+    toggleBtn.setAttribute('aria-label', toggleBtn.title);
+    toggleBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  }
   if (toggleBtn && sidebar) {
     toggleBtn.addEventListener('click', function() {
       if (window.innerWidth <= 768) {
@@ -1594,12 +1604,16 @@
       } else {
         sidebar.classList.toggle('collapsed');
       }
+      syncSidebarToggle();
     });
+    window.addEventListener('resize', syncSidebarToggle);
+    syncSidebarToggle();
   }
   if (overlay) {
     overlay.addEventListener('click', function() {
       sidebar.classList.remove('open');
       overlay.classList.remove('show');
+      syncSidebarToggle();
     });
   }
 
