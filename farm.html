@@ -384,7 +384,9 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
     }
     return JITApi.getTursoHelpers().gameAction(_currentUser, action, params).catch(function(e) {
       var msg = (e && e.message) || "";
-      if (msg.indexOf("403") !== -1) { _requireLogin("登录已过期，请重新登录后进入农场"); }
+      if (msg.indexOf("403") !== -1 || msg.indexOf("会话") !== -1 || msg.indexOf("禁止操作") !== -1) {
+        _requireLogin("登录已过期，请重新登录后进入农场");
+      }
       throw e;
     });
   }
