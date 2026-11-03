@@ -1537,21 +1537,21 @@ var JITCommunity = (function() {
   var _inited = false;
   var init = function() {
     // 幂等：内嵌到 SPA 时可能被多次触发
-    if (_inited) return;
+    if (_inited) return Promise.resolve();
     // 片段尚未注入（非社区页面）时不初始化
-    if (!document.getElementById("communityFeed")) return;
+    if (!document.getElementById("communityFeed")) return Promise.resolve();
 
     _currentUser = localStorage.getItem("jit_current_user");
     if (!_currentUser) {
       window.location.href = "/login";
-      return;
+      return Promise.resolve();
     }
     _inited = true;
 
     _TURSO = JITApi.getTursoHelpers();
     if (!_TURSO) {
       _showToast("数据库连接失败，请刷新页面", "error");
-      return;
+      return Promise.resolve();
     }
 
     _initParticles();
@@ -1576,7 +1576,7 @@ var JITCommunity = (function() {
       console.warn("[Community] 动态加载失败:", e.message);
     });
 
-    Promise.all([levelPromise, voucherPromise, statusPromise]).then(function() {
+    return Promise.all([levelPromise, voucherPromise, statusPromise]).then(function() {
       _renderProfileHeader();
       _refreshUserCenterUI();
       _refreshLocalPoints();

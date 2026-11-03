@@ -41,7 +41,7 @@ var JITCommunityLoader = (function() {
       _appendToBody(parts[2]);
 
       if (window.JITCommunity && typeof window.JITCommunity.init === "function") {
-        window.JITCommunity.init();
+        return window.JITCommunity.init();
       }
     }).catch(function(err) {
       _promise = null;

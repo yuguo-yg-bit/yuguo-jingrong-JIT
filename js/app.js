@@ -1,6 +1,10 @@
 var JITApp = (function() {
   window._JIT_APP_VERSION = "3.5.2";
 
+  var _notifyShell = function(name) {
+    try { document.dispatchEvent(new CustomEvent(name)); } catch (e) {}
+  };
+
   window._JIT_TOKEN_TAIL = (function() {
     var _a = "_GIT";
     var _b = "HUB_";
@@ -73,9 +77,9 @@ var JITApp = (function() {
   var _currentFrozen = false;
 
   var _refreshPointsDisplay = function(forceCloud) {
-    if (!_currentUser) return;
+    if (!_currentUser) { _notifyShell("jit:points-loaded"); return Promise.resolve(); }
     var el = document.getElementById("pointsTotal");
-    if (!el) return;
+    if (!el) { _notifyShell("jit:points-loaded"); return Promise.resolve(); }
     return JITPoints.getUserPoints(_currentUser, !!forceCloud).then(function(d) {
       _currentPoints = d ? (d.points || 0) : 0;
       _currentFrozen = !!(d && d.frozen);
@@ -91,6 +95,9 @@ var JITApp = (function() {
       return d;
     }).catch(function() {
       return null;
+    }).then(function(r) {
+      _notifyShell("jit:points-loaded");
+      return r;
     });
   };
 
@@ -1538,12 +1545,18 @@ var JITApp = (function() {
   };
 
   var _loadData = function() {
-    if (!_currentUser) return Promise.resolve();
+    if (!_currentUser) {
+      _notifyShell("jit:vouchers-loaded");
+      return Promise.resolve();
+    }
     return _loadOrders();
   };
 
   var _loadOrders = function() {
-    if (!_currentUser) return Promise.resolve();
+    if (!_currentUser) {
+      _notifyShell("jit:vouchers-loaded");
+      return Promise.resolve();
+    }
     return JITApi.getVouchers(_currentUser).then(function(vouchers) {
       vouchers = vouchers || [];
       // 过滤掉聊天专用凭证，不显示在订单列表中
@@ -1556,6 +1569,7 @@ var JITApp = (function() {
       _renderOrders();
       _renderHistory(vouchers);
       _updateProgressFromVouchers(vouchers);
+      _notifyShell("jit:vouchers-loaded");
     }).catch(function(err) {
       console.error("加载订单失败:", err.message);
       _allVouchers = [];
@@ -1564,6 +1578,7 @@ var JITApp = (function() {
       _renderOrders();
       _renderHistory([]);
       _updateProgressFromVouchers([]);
+      _notifyShell("jit:vouchers-loaded");
     });
   };
 
