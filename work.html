@@ -176,8 +176,9 @@
 .topbar-user-name { font-size: 13px; font-weight: 500; color: var(--text-primary); }
 .topbar-user-chevron { color: var(--text-muted); margin-left: 2px; }
 
-.topbar-user-dropdown { position: absolute; top: 100%; right: 0; margin-top: 6px; min-width: 180px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.35); opacity: 0; visibility: hidden; transform: translateY(-4px); transition: all .15s; z-index: 200; overflow: hidden; }
-.topbar-user-dropdown.show { opacity: 1; visibility: visible; transform: translateY(0); }
+.topbar-user-dropdown { position: absolute; top: 100%; right: 0; margin-top: 6px; min-width: 180px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.35); opacity: 0; visibility: hidden; transform: translateY(-4px); transition: all .15s; z-index: 999; overflow: hidden; }
+.topbar-user:hover .topbar-user-dropdown,
+.topbar-user-dropdown.show { opacity: 1; visibility: visible; transform: translateY(0); pointer-events: auto; }
 .dropdown-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; font-size: 13px; color: var(--text-primary); cursor: pointer; transition: background .12s; }
 .dropdown-item:hover { background: var(--bg-hover); }
 .dropdown-item:first-child { padding-top: 12px; }
@@ -1520,7 +1521,7 @@
 })();
 </script>
 <script src="js/config.js?v=3.5.1"></script>
-<script src="js/api.js?v=3.5.1"></script>
+<script src="js/api.js?v=3.5.4"></script>
 <script src="js/points.js?v=3.5.1"></script>
 <script src="js/lottery.js?v=3.5.1"></script>
 <script src="js/wheel.js?v=3.5.1"></script>

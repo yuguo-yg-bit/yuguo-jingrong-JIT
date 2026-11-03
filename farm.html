@@ -337,7 +337,7 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
 <div class="toast" id="toast"></div>
 
 <script src="js/config.js?v=3.5.3"></script>
-<script src="js/api.js?v=3.5.3"></script>
+<script src="js/api.js?v=3.5.4"></script>
 <script src="js/points.js?v=3.5.3"></script>
 <script>
 (function() {
@@ -449,11 +449,19 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
   }
 
   // ====== 数据加载 ======
-  function loadState() {
+  function loadState(isRetry) {
     return game("tick").then(function(r) {
       _state = r.state; _shop = r.shop; _farm = (r.farm || []).slice(0,6);
       if (r.pointsChange && r.pointsChange !== 0) { refreshPoints(); }
       return r;
+    }).catch(function(e) {
+      var msg = (e && e.message) || "";
+      // 引擎冷启动偶发 5xx，自动重试一次
+      if (!isRetry && /HTTP 5\d\d/.test(msg)) {
+        showToast("服务器繁忙，正在重试…", "info");
+        return new Promise(function(res){ setTimeout(res, 1200); }).then(function(){ return loadState(true); });
+      }
+      throw e;
     });
   }
 
@@ -752,7 +760,11 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
     game("restock", { itemId: itemId, quantity: qty }).then(function(r) {
       _shop = r.shop; closeModal("restockModal"); refreshPoints(); render();
       showToast("进货成功！", "success");
-    }).catch(function(e){ showToast("进货失败: "+(e.message||""), "error"); })
+    }).catch(function(e){
+      var m = (e && e.message) || "";
+      if (m.indexOf("积分操作失败") !== -1) m = "服务器繁忙，请稍后重试";
+      showToast("进货失败: " + m, "error");
+    })
     .finally(function(){
       if (btn) { btn.disabled = false; btn.textContent = "确认进货"; }
     });

@@ -219,18 +219,40 @@ export default async function (req) {
         var bn = bizNo || ("gpts_"+Date.now().toString(36)+Math.random().toString(36).slice(2,7));
         var mkArg = function(v) { return { type:"text", value:String(v) }; };
         var lid = "ld_"+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+        var spend = Number(delta) < 0;
+        // 扣款时原子校验余额：余额不足则不写流水，避免扣成负数
+        var guard = spend ? " AND ((SELECT COALESCE(points,0) FROM users WHERE id=?) + ?) >= 0" : "";
+        var insArgs = [lid,bn,uid,delta,uid,delta,reason||"","","engine",now,bn];
+        if (spend) insArgs.push(uid, delta);
         var treq = {
           requests: [
-            { type:"execute", stmt:{ sql:"INSERT INTO ledger (id,biz_no,user_id,amount,balance_after,reason,ref_id,operator,created_at) SELECT ?,?,?,?,(SELECT COALESCE(points,0) FROM users WHERE id=?)+?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)", args:[lid,bn,uid,delta,uid,delta,reason||"","","engine",now,bn].map(mkArg) } },
+            { type:"execute", stmt:{ sql:"INSERT INTO ledger (id,biz_no,user_id,amount,balance_after,reason,ref_id,operator,created_at) SELECT ?,?,?,?,(SELECT COALESCE(points,0) FROM users WHERE id=?)+?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)"+guard, args:insArgs.map(mkArg) } },
             { type:"execute", stmt:{ sql:"UPDATE users SET points=(SELECT COALESCE(SUM(amount),0) FROM ledger WHERE user_id=?), updated_at=? WHERE id=? AND EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)", args:[uid,now,uid,bn].map(mkArg) } },
-            { type:"execute", stmt:{ sql:"SELECT COALESCE(points,0) AS p FROM users WHERE id=?", args:[uid].map(mkArg) } }
+            { type:"execute", stmt:{ sql:"SELECT COALESCE(points,0) AS p FROM users WHERE id=?", args:[uid].map(mkArg) } },
+            { type:"execute", stmt:{ sql:"SELECT COUNT(*) AS c FROM ledger WHERE biz_no=?", args:[bn].map(mkArg) } }
           ]
         };
-        var tres = await fetch(TURSO_API, { method:"POST", headers:{ Authorization:"Bearer "+TURSO_TOKEN, "Content-Type":"application/json" }, body:JSON.stringify(treq) });
-        var tData = await tres.json();
-        if (!tres.ok) throw new Error("积分操作失败");
+        var tres = null, tData = null;
+        // 流水按 biz_no 幂等，网络/5xx 时重试一次是安全的
+        for (var attempt = 0; attempt < 2; attempt++) {
+          tres = await fetch(TURSO_API, { method:"POST", headers:{ Authorization:"Bearer "+TURSO_TOKEN, "Content-Type":"application/json" }, body:JSON.stringify(treq) });
+          tData = await tres.json().catch(function(){ return {}; });
+          if (tres.ok) break;
+          if (attempt === 0) await new Promise(function(r){ setTimeout(r, 800); });
+        }
+        if (!tres.ok) throw new Error("账务繁忙，请稍后重试");
         var bal = null;
         try { bal = tData.results?.[2]?.response?.result?.rows?.[0]?.[0]?.value ?? tData.results?.[2]?.response?.result?.rows?.[0]?.[0]; } catch(e) {}
+        var insertedRows = 0;
+        try {
+          var firstRes = tData.results?.[0]?.response?.result || tData.results?.[0]?.response?.results || tData.results?.[0];
+          insertedRows = firstRes ? (firstRes.rows_affected ?? firstRes.row_count ?? firstRes.rows_written ?? 0) : 0;
+        } catch(e) {}
+        if (insertedRows === 0) {
+          var existed = 0;
+          try { existed = Number(tData.results?.[3]?.response?.result?.rows?.[0]?.[0]?.value ?? tData.results?.[3]?.response?.result?.rows?.[0]?.[0] ?? 0); } catch(e) {}
+          if (spend && existed === 0) throw new Error("积分不足");
+        }
         return { ok:true, balance:bal };
       };
 
@@ -387,7 +409,8 @@ export default async function (req) {
         try {
           await gamePointsChange(userId, -totalCost, "进货: "+itemId+" x"+qty, bn);
         } catch(e) {
-          return jsonResponse({ error:"积分不足: "+e.message }, 400);
+          if (String(e && e.message) === "积分不足") return jsonResponse({ error:"积分不足" }, 400);
+          return jsonResponse({ error:"账务繁忙，请稍后重试" }, 503);
         }
         await execTurso("INSERT INTO game_shop_stock (user_id,item_id,quantity) VALUES (?,?,?) ON CONFLICT(user_id,item_id) DO UPDATE SET quantity=quantity+?",[userId,itemId,qty,qty]);
         var st = await getEngineState(userId);
@@ -527,7 +550,8 @@ export default async function (req) {
         try {
           await gamePointsChange(userId, -sellPrice, "购买用户["+targetUserId+"]的"+itemName, bn);
         } catch(e) {
-          return jsonResponse({ error:"积分不足: "+e.message }, 400);
+          if (String(e && e.message) === "积分不足") return jsonResponse({ error:"积分不足" }, 400);
+          return jsonResponse({ error:"账务繁忙，请稍后重试" }, 503);
         }
         var bn2 = "sell_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,6);
         try {

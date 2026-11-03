@@ -120,6 +120,16 @@ var JITApi = (function() {
     fn.saveFarmData = function(username, data) {
       return _tursoCall("/farm-save", { userId: username, data: data });
     };
+    function _httpError(resp, tag) {
+      return resp.text().then(function(txt) {
+        var msg = tag + "错误 (HTTP " + resp.status + ")";
+        try {
+          var e = JSON.parse(txt);
+          if (e && (e.error || e.message)) msg = (e.error || e.message) + " (HTTP " + resp.status + ")";
+        } catch (p) {}
+        throw new Error(msg);
+      });
+    }
     // 游戏引擎：统一接口
     fn.gameAction = function(username, action, params) {
       var payload = { userId: username, action: action };
@@ -133,13 +143,8 @@ var JITApi = (function() {
           "X-Session-Token": _sessionToken()
         },
         body: JSON.stringify(payload)
-      }, 15000).then(function(resp) {
-        if (!resp.ok) {
-          return resp.text().then(function(txt) {
-            try { var e = JSON.parse(txt); throw new Error(e.error || "引擎错误 HTTP "+resp.status); }
-            catch(p) { if (p.message.indexOf("引擎错误 HTTP")===0) throw p; throw new Error("引擎错误 HTTP "+resp.status); }
-          });
-        }
+      }, 20000).then(function(resp) {
+        if (!resp.ok) return _httpError(resp, "引擎");
         return resp.json();
       }).then(function(data) {
         if (data.error) throw new Error(data.error);
@@ -152,12 +157,7 @@ var JITApi = (function() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetUserId: targetUserId })
       }, 15000).then(function(resp) {
-        if (!resp.ok) {
-          return resp.text().then(function(txt) {
-            try { var e = JSON.parse(txt); throw new Error(e.error || "访客错误 HTTP "+resp.status); }
-            catch(p) { if (p.message.indexOf("访客错误 HTTP")===0) throw p; throw new Error("访客错误 HTTP "+resp.status); }
-          });
-        }
+        if (!resp.ok) return _httpError(resp, "访客");
         return resp.json();
       }).then(function(data) {
         if (data.error) throw new Error(data.error);
@@ -178,12 +178,7 @@ var JITApi = (function() {
         },
         body: JSON.stringify(payload)
       }, 10000).then(function(resp) {
-        if (!resp.ok) {
-          return resp.text().then(function(txt) {
-            try { var e = JSON.parse(txt); throw new Error(e.error || "社区错误 HTTP "+resp.status); }
-            catch(p) { if (p.message.indexOf("社区错误 HTTP")===0) throw p; throw new Error("社区错误 HTTP "+resp.status); }
-          });
-        }
+        if (!resp.ok) return _httpError(resp, "社区");
         return resp.json();
       }).then(function(data) {
         if (data.error) throw new Error(data.error);
