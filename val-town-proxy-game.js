@@ -227,8 +227,8 @@ export default async function (req) {
         var treq = {
           requests: [
             { type:"execute", stmt:{ sql:"INSERT INTO ledger (id,biz_no,user_id,amount,balance_after,reason,ref_id,operator,created_at) SELECT ?,?,?,?,(SELECT COALESCE(points,0) FROM users WHERE id=?)+?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)"+guard, args:insArgs.map(mkArg) } },
-            { type:"execute", stmt:{ sql:"UPDATE users SET points=(SELECT COALESCE(SUM(amount),0) FROM ledger WHERE user_id=?), updated_at=? WHERE id=? AND EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)", args:[uid,now,uid,bn].map(mkArg) } },
-            { type:"execute", stmt:{ sql:"SELECT COALESCE(points,0) AS p FROM users WHERE id=?", args:[uid].map(mkArg) } },
+            { type:"execute", stmt:{ sql:"UPDATE users SET points=MAX(0,(SELECT COALESCE(SUM(amount),0) FROM ledger WHERE user_id=?)), updated_at=? WHERE id=? AND EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)", args:[uid,now,uid,bn].map(mkArg) } },
+            { type:"execute", stmt:{ sql:"SELECT MAX(0,COALESCE(points,0)) AS p FROM users WHERE id=?", args:[uid].map(mkArg) } },
             { type:"execute", stmt:{ sql:"SELECT COUNT(*) AS c FROM ledger WHERE biz_no=?", args:[bn].map(mkArg) } }
           ]
         };

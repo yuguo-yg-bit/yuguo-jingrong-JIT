@@ -169,9 +169,23 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
   0%, 100% { box-shadow: 0 0 15px rgba(255,215,0,0.4); }
   50% { box-shadow: 0 0 30px rgba(255,215,0,0.8); }
 }
+
+/* 进农场先显示 SVG 加载动画，数据就绪后再显示页面 */
+.farm-loader {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  background: var(--bg);
+  transition: opacity .25s ease, visibility .25s ease;
+}
+.farm-loader.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+.farm-loader-text { font-size: 13px; color: var(--text-dim); letter-spacing: .5px; }
 </style>
 </head>
 <body>
+<div class="farm-loader" id="farmLoader" aria-busy="true">
+  <div id="farmLoaderBrand"></div>
+  <div class="farm-loader-text">正在加载农场数据…</div>
+</div>
 <div class="farm-container" id="app">
   <div class="top-bar">
     <span class="top-title">🌾 我的农场</span>
@@ -338,7 +352,7 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
 
 <script src="js/config.js?v=3.5.3"></script>
 <script src="js/api.js?v=3.5.5"></script>
-<script src="js/points.js?v=3.5.3"></script>
+<script src="js/points.js?v=3.5.4"></script>
 <script>
 (function() {
   var _currentUser = localStorage.getItem("jit_current_user") || "";
@@ -395,7 +409,7 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
     var p;
     if (typeof JITPoints !== "undefined" && JITPoints.getUserPoints) { p = JITPoints.getUserPoints(_currentUser, true); }
     else { p = Promise.resolve({ points: 0 }); }
-    p.then(function(r) { _currentPoints = r.points || 0; document.getElementById("ptsDisplay").textContent = _currentPoints; }).catch(function(){ document.getElementById("ptsDisplay").textContent = "---"; });
+    return p.then(function(r) { _currentPoints = Math.max(0, Number(r.points) || 0); document.getElementById("ptsDisplay").textContent = _currentPoints; }).catch(function(){ document.getElementById("ptsDisplay").textContent = "---"; });
   }
 
   function showToast(msg, type) {
@@ -863,13 +877,26 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
   }
 
   // ====== 初始化 ======
+  function hideFarmLoader() {
+    var el = document.getElementById("farmLoader");
+    if (!el || el.classList.contains("hidden")) return;
+    el.classList.add("hidden");
+    el.setAttribute("aria-busy", "false");
+  }
   function init() {
+    var brand = document.getElementById("farmLoaderBrand");
+    if (brand && window._JIT_LOADING_SVG) brand.innerHTML = window._JIT_LOADING_SVG;
+    // 兜底：接口异常时不要永久挡住页面
+    setTimeout(hideFarmLoader, 20000);
     var ptsEl = document.getElementById("ptsDisplay");
     if (ptsEl) ptsEl.textContent = "加载中...";
-    loadState().then(function() { render(); refreshPoints(); }).catch(function(e) {
+    loadState().then(function() { render(); return refreshPoints(); }).then(function() {
+      hideFarmLoader();
+    }).catch(function(e) {
       console.error("农场加载失败:", e);
       showToast("加载失败：" + (e.message || "未知错误"), "error");
       refreshPoints();
+      hideFarmLoader();
     });
     setInterval(function() { doTick(); }, 30000);
   }

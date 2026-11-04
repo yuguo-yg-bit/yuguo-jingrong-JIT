@@ -515,7 +515,7 @@ export default async function (req) {
       const mkArg = (v) => ({ type: "text", value: String(v) });
       const requests = [
         { type: "execute", stmt: { sql: "INSERT INTO ledger (id, biz_no, user_id, amount, balance_after, reason, ref_id, operator, created_at) SELECT ?,?,?,?,(SELECT COALESCE(points,0) FROM users WHERE id=?)+?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)", args: [lid, bizNo, userId, result.delta, userId, result.delta, result.reason, action, "engine", now, bizNo].map(mkArg) } },
-        { type: "execute", stmt: { sql: "UPDATE users SET points=(SELECT COALESCE(SUM(amount),0) FROM ledger WHERE user_id=?), updated_at=? WHERE id=? AND EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)", args: [userId, now, userId, bizNo].map(mkArg) } },
+        { type: "execute", stmt: { sql: "UPDATE users SET points=MAX(0,(SELECT COALESCE(SUM(amount),0) FROM ledger WHERE user_id=?)), updated_at=? WHERE id=? AND EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)", args: [userId, now, userId, bizNo].map(mkArg) } },
         { type: "execute", stmt: { sql: "SELECT COALESCE(points,0) AS p FROM users WHERE id=?", args: [userId].map(mkArg) } }
       ];
       const tres = await fetch(TURSO_API, { method:"POST", headers:{ Authorization:"Bearer "+TURSO_TOKEN, "Content-Type":"application/json" }, body:JSON.stringify({ requests }) });
@@ -591,7 +591,7 @@ export default async function (req) {
         {
           type: "execute",
           stmt: {
-            sql: "UPDATE users SET points = (SELECT COALESCE(SUM(amount),0) FROM ledger WHERE user_id=?), updated_at=? WHERE id=? AND EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)",
+            sql: "UPDATE users SET points = MAX(0,(SELECT COALESCE(SUM(amount),0) FROM ledger WHERE user_id=?)), updated_at=? WHERE id=? AND EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)",
             args: [userId, now, userId, bizNo].map(mkArg)
           }
         },
@@ -645,7 +645,7 @@ export default async function (req) {
         logAudit("BALANCE_QUERY_BLOCKED", sess.username, "users", userId, "越权查询他人余额被拒绝", "/balance", "", "blocked");
         return jsonResponse({ error: "禁止查询他人余额" }, 403);
       }
-      const q = await execTurso("SELECT COALESCE(points,0) AS p FROM users WHERE id=?", [userId]);
+      const q = await execTurso("SELECT MAX(0,COALESCE(points,0)) AS p FROM users WHERE id=?", [userId]);
       let points = null;
       try {
         const inner = q.data.results?.[0]?.response?.result || q.data.results?.[0]?.response?.results || q.data;

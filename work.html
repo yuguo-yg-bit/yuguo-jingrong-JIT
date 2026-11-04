@@ -1540,11 +1540,11 @@
 </script>
 <script src="js/config.js?v=3.5.1"></script>
 <script src="js/api.js?v=3.5.5"></script>
-<script src="js/points.js?v=3.5.1"></script>
+<script src="js/points.js?v=3.5.2"></script>
 <script src="js/lottery.js?v=3.5.1"></script>
 <script src="js/wheel.js?v=3.5.1"></script>
-<script src="js/app.js?v=3.5.4"></script>
-<script src="js/community.js?v=3.5.2"></script>
+<script src="js/app.js?v=3.5.5"></script>
+<script src="js/community.js?v=3.5.3"></script>
 <script src="js/community-loader.js?v=3.5.2"></script>
 <script>
 (function() {
@@ -1806,6 +1806,34 @@
   }, 500);
 
   // Dashboard feed population
+  var _dashCommunity = null;
+
+  function _escHtml(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function _statusText(content) {
+    try {
+      var o = JSON.parse(content);
+      if (o && typeof o === 'object') {
+        if (o.text) return o.text;
+        if (o.voucher && o.voucher.shop) return '分享了凭证：' + o.voucher.shop;
+      }
+    } catch(e) {}
+    return String(content || '');
+  }
+  // 首页社区动态：从数据库读取真实动态（原来读的全局变量从未被赋值）
+  function loadDashCommunity() {
+    if (!window.JITApi || !JITApi.getTursoHelpers) return;
+    var help = JITApi.getTursoHelpers();
+    help("SELECT username, content, created_at FROM community_statuses ORDER BY created_at DESC LIMIT 5", []).then(function(r) {
+      var rows = help.rowsToObjects(r.columns, r.rows);
+      _dashCommunity = rows || [];
+      updateDashboardFeed();
+    }).catch(function() {});
+  }
+  loadDashCommunity();
+  setInterval(loadDashCommunity, 60000);
+
   function updateDashboardFeed() {
     var voucherFeed = document.getElementById('dashboardVoucherFeed');
     var communityFeedEl = document.getElementById('dashboardCommunityFeed');
@@ -1846,28 +1874,19 @@
       voucherFeed.innerHTML = html;
     }
 
-    // --- Community feed (from community.js global posts if available) ---
+    // --- Community feed (真实数据) ---
     if (communityFeedEl) {
-      var communityItems = [];
-      try {
-        if (typeof _communityStatusCache !== 'undefined' && Array.isArray(_communityStatusCache)) {
-          communityItems = _communityStatusCache;
-        }
-        if (communityItems.length === 0 && typeof communityPosts !== 'undefined' && Array.isArray(communityPosts)) {
-          communityItems = communityPosts;
-        }
-      } catch(e) {}
-      
+      var communityItems = (_dashCommunity && _dashCommunity.length) ? _dashCommunity : [];
       var chtml = '';
       if (communityItems.length === 0) {
         chtml = '<div class="feed-item"><div class="feed-item-icon" style="background:var(--purple-dim);">💬</div><div class="feed-item-body"><div class="feed-item-title">还没有社区动态</div><div class="feed-item-desc">去玉国社区看看大家都在聊什么吧</div></div><div class="feed-item-time">--</div></div>';
       } else {
-        var cmax = Math.min(communityItems.length, 5);
-        for (var j = 0; j < cmax; j++) {
+        for (var j = 0; j < communityItems.length; j++) {
           var p = communityItems[j];
-          var content = (p.content || p.text || '').substring(0, 60);
-          var author = p.author || p.username || '匿名';
-          chtml += '<div class="feed-item"><div class="feed-item-icon" style="background:var(--purple-dim);">💬</div><div class="feed-item-body"><div class="feed-item-title">' + author + '</div><div class="feed-item-desc">' + (content || '发表了一条动态') + '</div></div><div class="feed-item-time">' + (p.time || p.createdAt || '刚刚') + '</div></div>';
+          var content = _statusText(p.content).substring(0, 60);
+          var author = p.username || '匿名';
+          var t = String(p.created_at || '').replace('T', ' ').substring(0, 16);
+          chtml += '<div class="feed-item" onclick="if(window.JITShell)JITShell.go(\'community\')" style="cursor:pointer;"><div class="feed-item-icon" style="background:var(--purple-dim);">💬</div><div class="feed-item-body"><div class="feed-item-title">' + _escHtml(author) + '</div><div class="feed-item-desc">' + _escHtml(content || '发表了一条动态') + '</div></div><div class="feed-item-time">' + _escHtml(t) + '</div></div>';
         }
       }
       communityFeedEl.innerHTML = chtml;

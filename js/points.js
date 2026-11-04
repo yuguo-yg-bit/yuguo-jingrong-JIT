@@ -150,6 +150,23 @@ var JITPoints = (function() {
     );
   };
 
+  // ------- 负积分自动归零（补对冲流水，保证重算后仍为 0） -------
+  var _repairNegative = function(username, rawPts) {
+    if (!username || !(rawPts < 0)) return;
+    var helper = (typeof JITApi !== "undefined" && JITApi.getTursoHelpers) ? JITApi.getTursoHelpers() : null;
+    if (!helper || !helper.postPoints) return;
+    var delta = Math.abs(Math.round(rawPts));
+    if (!delta) return;
+    var day = new Date().toISOString().slice(0, 10);
+    helper.postPoints({
+      bizNo: "biz_clamp_" + username + "_" + delta + "_" + day,
+      userId: username,
+      delta: delta,
+      reason: "负积分自动归零",
+      operator: "system"
+    }).catch(function() {});
+  };
+
   // ------- 对外：获取用户积分（余额走 /balance 只查自己） -------
   var _getUserPoints = function(username, forceCloud) {
     var cached = _loadLocal(username);
@@ -163,6 +180,13 @@ var JITPoints = (function() {
         ? helper.getBalance(username).then(function(r) { return r.points; }).catch(function() { return account.points || 0; })
         : Promise.resolve(account.points || 0);
       return ptsP.then(function(pts) {
+        var rawPts = _num(pts);
+        if (rawPts < 0) {
+          // 负积分自动归零（补一笔对冲流水，保证后续重算不会回到负数）
+          _repairNegative(username, rawPts);
+          rawPts = 0;
+        }
+        pts = rawPts;
         return _getAllLogs(username).then(function(logs) {
           var result = {
             username: username,
@@ -198,6 +222,7 @@ var JITPoints = (function() {
         var amt = Number(res.delta || 0);
         var reason = res.reason || action;
         var newPoints = (res.balance != null && res.balance !== "") ? Number(res.balance) : Math.max(0, _num(account.points) + amt);
+        if (!isFinite(newPoints) || newPoints < 0) newPoints = 0;
         var now = new Date().toISOString();
         // 流水落 points_records 供展示（权威流水在 ledger，幂等跳过时不重复记）
         if (res.inserted !== false) {

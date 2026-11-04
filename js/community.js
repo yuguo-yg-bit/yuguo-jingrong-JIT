@@ -331,11 +331,11 @@ var JITCommunity = (function() {
     var feed = document.getElementById("communityFeed");
     if (feed) feed.innerHTML = '<div class="feed-loading">加载动态中...</div>';
 
-    return _TURSO("SELECT rowid, * FROM community_statuses ORDER BY created_at DESC LIMIT 200", []).then(function(result) {
+    return _TURSO("SELECT rowid AS rid, * FROM community_statuses ORDER BY created_at DESC LIMIT 200", []).then(function(result) {
       var rows = _TURSO.rowsToObjects(result.columns, result.rows);
       _statuses = rows.map(function(r) {
         return {
-          id: r.rowid || "",
+          id: r.rid || r.rowid || r.id || "",
           username: r.username || "",
           content: r.content || "",
           time: r.created_at || "",

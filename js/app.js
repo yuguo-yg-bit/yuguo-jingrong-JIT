@@ -81,7 +81,7 @@ var JITApp = (function() {
     var el = document.getElementById("pointsTotal");
     if (!el) { _notifyShell("jit:points-loaded"); return Promise.resolve(); }
     return JITPoints.getUserPoints(_currentUser, !!forceCloud).then(function(d) {
-      _currentPoints = d ? (d.points || 0) : 0;
+      _currentPoints = d ? Math.max(0, Number(d.points) || 0) : 0;
       _currentFrozen = !!(d && d.frozen);
       el.textContent = _currentPoints;
       // 冻结状态提示
