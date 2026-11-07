@@ -1903,7 +1903,7 @@ var JITAdmin = (function() {
 
     // ===== Cloudflare Turnstile（管理员登录同样需要人机验证） =====
     var TURNSTILE_SITE_KEY = "0x4AAAAAAAF3fQeXnYcJMaVzx";
-    var TURNSTILE_REQUIRED = true; // 紧急开关：密钥异常时可临时改为 false
+    var TURNSTILE_REQUIRED = false; // 密钥校验通过后改回 true
     var _tsWidget = null;
     var _tsErrorCode = "";
     var _renderAdminTurnstile = function() {
