@@ -1715,6 +1715,11 @@ var JITApi = (function() {
         body: JSON.stringify({ username: username, email: email, code: code })
       }).then(function(r) { return r.json(); });
     },
+    // 转发验证模式：轮询邮箱触发器的验证结果
+    checkBind: function(username, email) {
+      return _fetchWithTimeout(_tursoProxy + "/oauth/email/check-bind?username=" + encodeURIComponent(username) + "&email=" + encodeURIComponent(email), { method: "GET" })
+        .then(function(r) { return r.json(); });
+    },
     // 代理预热：页面加载时立即发一个轻量请求唤醒 Val.town 冷启动
     warmupProxy: function() {
       var warmupUrl = _tursoProxy + "/health";

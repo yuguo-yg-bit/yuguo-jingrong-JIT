@@ -531,16 +531,19 @@
             <br>
             <button class="btn-submit" id="btnEmailVerifyCode" style="width:200px;margin-top:10px;background:var(--success);">确认验证</button>
           </div>
-          <!-- 状态B: 手动模式，显示验证码 -->
-          <div id="emailCodeBox" style="background:rgba(45,190,255,0.1);border:1px solid var(--ice-blue);border-radius:12px;padding:16px;margin-top:12px;text-align:center;">
-            <p style="margin:0 0 8px 0;font-size:13px;color:var(--text-secondary);">您的验证码</p>
-            <p style="margin:0 0 12px 0;font-size:28px;font-weight:700;color:var(--gold-primary);letter-spacing:6px;font-family:monospace;" id="emailVerifyCode">------</p>
-            <p style="margin:0 0 4px 0;font-size:12px;color:var(--pale-cyan);line-height:1.6;">
-              请将此 <strong>6位验证码</strong> 发送到<br>
-              <strong style="font-size:13px;color:var(--text-primary);">yuguoemail@yuconemail.cc.cd</strong>
+          <!-- 状态B: 转发验证模式（邮箱无法自动接收时自动降级，不下发验证码） -->
+          <div id="emailCodeBox" style="background:rgba(45,190,255,0.1);border:1px solid var(--ice-blue);border-radius:12px;padding:18px;margin-top:12px;text-align:center;">
+            <p style="margin:0 0 10px 0;font-size:14px;font-weight:600;color:var(--ice-blue);">请用您的邮箱完成转发验证</p>
+            <p style="margin:0 0 6px 0;font-size:13px;color:var(--text-primary);line-height:1.8;">
+              无需验证码，请使用该邮箱发送一封邮件<br>
+              （或转发系统邮件）至：
             </p>
-            <p style="margin:8px 0 0 0;font-size:11px;color:var(--text-secondary);">邮件正文只写验证码即可</p>
-            <a href="#" id="btnEmailMailto" target="_blank" style="display:inline-block;margin-top:12px;padding:10px 24px;background:var(--gold-primary);color:#fff;text-decoration:none;border-radius:8px;font-size:13px;font-weight:600;">📧 一键发送邮件</a>
+            <p style="margin:0 0 10px 0;font-size:16px;font-weight:700;color:var(--gold-primary);word-break:break-all;">yuguoemail@yuconemail.cc.cd</p>
+            <p style="margin:0;font-size:12px;color:var(--text-secondary);line-height:1.7;">
+              邮件正文请保留这一行：<br>
+              <span style="color:var(--text-primary);">请将本邮件转发至 yuguoemail@yuconemail.cc.cd 完成玉国金融邮箱验证</span>
+            </p>
+            <a href="#" id="btnEmailMailto" target="_blank" style="display:inline-block;margin-top:14px;padding:10px 24px;background:var(--gold-primary);color:#fff;text-decoration:none;border-radius:8px;font-size:13px;font-weight:600;">📧 一键写邮件</a>
           </div>
           <div id="emailPollStatus" style="text-align:center;margin-top:10px;font-size:13px;color:var(--text-secondary);">
             请发送邮件后点击下方「刷新验证状态」
@@ -566,10 +569,25 @@
           <p id="bindError1" style="font-size:12px;color:#f44336;margin:6px 0 0 0;display:none;"></p>
         </div>
         <div id="emailBindStep2" style="display:none;">
-          <p style="font-size:13px;color:var(--success);margin:0 0 12px 0;">验证码已发送，请查收邮箱</p>
-          <input type="text" class="form-input" id="bindCode" placeholder="输入 6 位验证码" maxlength="6" style="width:200px;text-align:center;font-size:24px;letter-spacing:8px;font-family:monospace;">
-          <p id="bindError2" style="font-size:12px;color:#f44336;margin:6px 0 0 0;display:none;"></p>
-          <button class="btn-submit" id="btnVerifyBind" style="width:200px;margin-top:12px;background:var(--success);">确认绑定</button>
+          <div id="bindCodeMode">
+            <p style="font-size:13px;color:var(--success);margin:0 0 12px 0;">验证码已发送，请查收邮箱</p>
+            <input type="text" class="form-input" id="bindCode" placeholder="输入 6 位验证码" maxlength="6" style="width:200px;text-align:center;font-size:24px;letter-spacing:8px;font-family:monospace;">
+            <p id="bindError2" style="font-size:12px;color:#f44336;margin:6px 0 0 0;display:none;"></p>
+            <button class="btn-submit" id="btnVerifyBind" style="width:200px;margin-top:12px;background:var(--success);">确认绑定</button>
+          </div>
+          <!-- 自动降级：邮箱无法自动接收时，用本人邮箱发送/转发邮件完成绑定 -->
+          <div id="bindManualMode" style="display:none;">
+            <p style="font-size:13px;color:var(--gold-primary);margin:0 0 10px 0;font-weight:600;">已切换为转发验证模式</p>
+            <p style="font-size:13px;color:var(--text-secondary);line-height:1.8;margin:0 0 8px 0;">
+              无需验证码，请用该邮箱发送一封邮件<br>（或转发系统邮件）至：
+            </p>
+            <p style="font-size:15px;font-weight:700;color:var(--gold-primary);margin:0 0 10px 0;word-break:break-all;">yuguoemail@yuconemail.cc.cd</p>
+            <p style="font-size:12px;color:var(--text-secondary);line-height:1.7;margin:0;">
+              正文请保留：请将本邮件转发至 yuguoemail@yuconemail.cc.cd 完成玉国金融邮箱验证
+            </p>
+            <a href="#" id="btnBindMailto" target="_blank" style="display:inline-block;margin-top:12px;padding:10px 24px;background:var(--gold-primary);color:#fff;text-decoration:none;border-radius:8px;font-size:13px;font-weight:600;">📧 一键写邮件</a>
+            <button class="btn-submit" id="btnBindCheck" style="width:200px;margin-top:12px;background:var(--ice-blue);">刷新验证状态</button>
+          </div>
           <br>
           <a href="#" id="btnResendBind" style="font-size:12px;color:var(--ice-blue);margin-top:8px;display:inline-block;">重新发送</a>
         </div>
@@ -680,13 +698,14 @@
   };
 
   // 登录成功后的落地页（仅允许本站安全路径，防止开放重定向）
+  // 默认直接进入工作台，避免先落到介绍页还要再点一次「进入工作台」
   var _postLoginUrl = function() {
     try {
       var r = new URLSearchParams(window.location.search).get("return") || "";
       var allowed = ["/", "/index.html", "/work", "/work.html", "/farm", "/farm.html"];
       if (allowed.indexOf(r) !== -1) return r;
     } catch (e) {}
-    return "index.html";
+    return "work.html";
   };
 
   // ========= 登录逻辑 =========
@@ -765,6 +784,31 @@
     document.getElementById("bindCode").value = "";
     document.getElementById("bindError1").style.display = "none";
     document.getElementById("bindError2").style.display = "none";
+    document.getElementById("bindCodeMode").style.display = "block";
+    document.getElementById("bindManualMode").style.display = "none";
+  }
+
+  // 按后端返回的模式切换：code=直接收验证码；forward=自动降级为本邮箱发送/转发
+  function _applyBindMode(res, email) {
+    var isCodeMode = (res.mode === "code") || (!res.mode && res.mailSent);
+    document.getElementById("bindCodeMode").style.display = isCodeMode ? "block" : "none";
+    document.getElementById("bindManualMode").style.display = isCodeMode ? "none" : "block";
+    if (!isCodeMode) {
+      document.getElementById("btnBindMailto").href = "mailto:" + (res.forwardTo || "yuguoemail@yuconemail.cc.cd") +
+        "?subject=" + encodeURIComponent("玉国金融邮箱绑定 - " + _emailBindUsername) +
+        "&body=" + encodeURIComponent("请将本邮件转发至 yuguoemail@yuconemail.cc.cd 完成玉国金融邮箱验证\n\n用户名：" + _emailBindUsername + "\n绑定邮箱：" + email);
+      _showToast(res.message || "已切换为转发验证模式", "warning");
+    } else {
+      document.getElementById("bindCode").value = "";
+      _showToast("验证码已发送到 " + email, "success");
+    }
+  }
+
+  function _finishBind() {
+    document.getElementById("emailBindOverlay").style.display = "none";
+    localStorage.setItem("jit_current_user", _emailBindUsername);
+    _showToast("邮箱绑定成功，正在进入系统", "success");
+    setTimeout(function() { window.location.replace(_postLoginUrl()); }, 600);
   }
 
   document.getElementById("btnSendBindCode").addEventListener("click", function() {
@@ -782,15 +826,8 @@
         _emailBindResendCount = 0;
         document.getElementById("emailBindStep1").style.display = "none";
         document.getElementById("emailBindStep2").style.display = "block";
-        if (!res.mailSent) {
-          if (res.skipMailtrap) {
-            _showToast("您的邮箱（微软系域名）不支持自动投递，请联系管理员绑定或使用其他邮箱", "warning");
-          } else {
-            _showToast("邮件发送失败，请稍后重试或使用其他邮箱", "error");
-          }
-          document.getElementById("emailBindStep2").style.display = "none";
-          document.getElementById("emailBindStep1").style.display = "block";
-        }
+        // 无论是否自动投递成功，都自动降级到可用的验证方式，不再要求联系管理员
+        _applyBindMode(res, email);
       } else {
         errEl.style.display = "block"; errEl.textContent = res.error || "发送失败";
       }
@@ -798,6 +835,20 @@
       errEl.style.display = "block"; errEl.textContent = "网络错误: " + err.message;
     }).finally(function() {
       btn.disabled = false; btn.textContent = "发送验证码";
+    });
+  });
+
+  // 转发模式：查询邮箱触发器的验证结果
+  document.getElementById("btnBindCheck").addEventListener("click", function() {
+    var btn = document.getElementById("btnBindCheck");
+    btn.disabled = true; btn.textContent = "查询中...";
+    JITApi.checkBind(_emailBindUsername, _emailBindEmail).then(function(res) {
+      if (res && res.verified) { _finishBind(); }
+      else { _showToast("暂未收到验证邮件，请确认已发送后再刷新", "warning"); }
+    }).catch(function(err) {
+      _showToast("网络错误: " + (err.message || ""), "error");
+    }).finally(function() {
+      btn.disabled = false; btn.textContent = "刷新验证状态";
     });
   });
 
@@ -812,10 +863,7 @@
     btn.disabled = true; btn.textContent = "验证中...";
     JITApi.verifyBind(_emailBindUsername, _emailBindEmail, code).then(function(res) {
       if (res.verified) {
-        document.getElementById("emailBindOverlay").style.display = "none";
-        localStorage.setItem("jit_current_user", _emailBindUsername);
-        _showToast("邮箱绑定成功，欢迎进入系统", "success");
-        setTimeout(function() { window.location.replace(_postLoginUrl()); }, 600);
+        _finishBind();
       } else {
         errEl.style.display = "block"; errEl.textContent = res.error || "验证码错误";
       }
@@ -835,15 +883,7 @@
     btn.textContent = "发送中...";
     JITApi.bindEmail(_emailBindUsername, _emailBindEmail).then(function(res) {
       if (res.ok) {
-        if (res.mailSent && _emailBindResendCount < 3) {
-          document.getElementById("bindCode").value = "";
-          _showToast("新验证码已重新发送", "success");
-        } else {
-          var msg = _emailBindResendCount >= 3
-            ? "已重发 " + _emailBindResendCount + " 次，仍未成功，请稍后重试或使用其他邮箱"
-            : "邮件发送失败，请稍后重试";
-          _showToast(msg, "error");
-        }
+        _applyBindMode(res, _emailBindEmail);
       } else {
         _showToast(res.error || "发送失败", "error");
       }
@@ -852,7 +892,7 @@
     }).finally(function() {
       btn.style.pointerEvents = "";
       btn.style.opacity = "";
-      btn.textContent = _emailBindResendCount >= 3 ? "重新发送（手动模式）" : "重新发送";
+      btn.textContent = "重新发送";
     });
   });
 
@@ -1172,7 +1212,8 @@
       _emailRegResendCount = 0;
       document.getElementById("emailVerifySection").style.display = "block";
       btn.style.display = "none";
-      if (res.mailSent) {
+      var isCodeMode = (res.mode === "code") || (!res.mode && res.mailSent);
+      if (isCodeMode) {
         document.getElementById("emailSentBox").style.display = "block";
         document.getElementById("emailCodeBox").style.display = "none";
         document.getElementById("emailSentAddr").textContent = _emailRegEmail;
@@ -1180,16 +1221,15 @@
         document.getElementById("emailPollStatus").style.color = "var(--text-secondary)";
         _showToast("验证码已发送到 " + _emailRegEmail, "success");
       } else {
+        // 自动降级：邮箱不支持自动接收时，改为「用本人邮箱发送/转发邮件」验证，不下发验证码
         document.getElementById("emailSentBox").style.display = "none";
         document.getElementById("emailCodeBox").style.display = "block";
-        document.getElementById("emailVerifyCode").textContent = res.code;
-        document.getElementById("btnEmailMailto").href = "mailto:yuguoemail@yuconemail.cc.cd?subject=" + encodeURIComponent("玉国金融邮箱验证") + "&body=" + encodeURIComponent(res.code);
-        var statusText = res.skipMailtrap
-          ? "您的邮箱（微软系域名）不支持自动投递，请手动发送邮件后点击下方「刷新验证状态」"
-          : "请发送邮件后点击下方「刷新验证状态」";
-        document.getElementById("emailPollStatus").textContent = statusText;
-        document.getElementById("emailPollStatus").style.color = res.skipMailtrap ? "var(--gold-primary)" : "var(--text-secondary)";
-        _showToast(res.message || "验证码已生成，请发送邮件后点击刷新", res.mailError ? "warning" : "success");
+        document.getElementById("btnEmailMailto").href = "mailto:" + (res.forwardTo || "yuguoemail@yuconemail.cc.cd") +
+          "?subject=" + encodeURIComponent("玉国金融邮箱验证 - " + username) +
+          "&body=" + encodeURIComponent("请将本邮件转发至 yuguoemail@yuconemail.cc.cd 完成玉国金融邮箱验证\n\n用户名：" + username + "\n注册邮箱：" + _emailRegEmail);
+        document.getElementById("emailPollStatus").textContent = "请发送邮件后点击下方「刷新验证状态」";
+        document.getElementById("emailPollStatus").style.color = "var(--gold-primary)";
+        _showToast(res.message || "请用您的邮箱发送验证邮件", "warning");
       }
     }).catch(function(err) {
       errorEl.style.display = "block";
@@ -1301,9 +1341,10 @@
         return;
       }
       _emailRegEmail = res.email || email;
-      // 3 次以上重新发送 → 强制降级为手动模式
+      // 3 次以上重新发送 → 强制降级为转发验证模式
       var forceManual = _emailRegResendCount >= 3;
-      if (res.mailSent && !forceManual) {
+      var isCodeMode = ((res.mode === "code") || (!res.mode && res.mailSent)) && !forceManual;
+      if (isCodeMode) {
         document.getElementById("emailSentBox").style.display = "block";
         document.getElementById("emailCodeBox").style.display = "none";
         document.getElementById("emailSentAddr").textContent = _emailRegEmail;
@@ -1313,14 +1354,15 @@
       } else {
         document.getElementById("emailSentBox").style.display = "none";
         document.getElementById("emailCodeBox").style.display = "block";
-        document.getElementById("emailVerifyCode").textContent = res.code;
-        document.getElementById("btnEmailMailto").href = "mailto:yuguoemail@yuconemail.cc.cd?subject=" + encodeURIComponent("玉国金融邮箱验证") + "&body=" + encodeURIComponent(res.code);
+        document.getElementById("btnEmailMailto").href = "mailto:" + (res.forwardTo || "yuguoemail@yuconemail.cc.cd") +
+          "?subject=" + encodeURIComponent("玉国金融邮箱验证 - " + username) +
+          "&body=" + encodeURIComponent("请将本邮件转发至 yuguoemail@yuconemail.cc.cd 完成玉国金融邮箱验证\n\n用户名：" + username + "\n注册邮箱：" + _emailRegEmail);
         var statusText = forceManual
-          ? "已重发 " + _emailRegResendCount + " 次，自动切换为手动发送模式。请发送邮件后点击下方「刷新验证状态」"
-          : (res.skipMailtrap ? "您的邮箱（微软系域名）不支持自动投递，请手动发送邮件后点击下方「刷新验证状态」" : "请发送邮件后点击下方「刷新验证状态」");
+          ? "已重发 " + _emailRegResendCount + " 次，已自动切换为转发验证模式。请发送邮件后点击下方「刷新验证状态」"
+          : "请用您的邮箱发送验证邮件后点击下方「刷新验证状态」";
         document.getElementById("emailPollStatus").textContent = statusText;
-        document.getElementById("emailPollStatus").style.color = forceManual ? "var(--gold-primary)" : (res.skipMailtrap ? "var(--gold-primary)" : "var(--text-secondary)");
-        _showToast(forceManual ? "自动发送已达上限，已切换为手动模式" : "已生成新验证码，请用新码发送邮件", forceManual ? "warning" : "success");
+        document.getElementById("emailPollStatus").style.color = "var(--gold-primary)";
+        _showToast(forceManual ? "自动发送已达上限，已切换为转发验证模式" : "请用您的邮箱发送验证邮件", "warning");
       }
     }).catch(function(err) {
       _showToast("网络错误: " + (err.message || ""), "error");

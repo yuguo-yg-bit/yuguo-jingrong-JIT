@@ -1007,6 +1007,70 @@ export default async function (req) {
       return msDomains.some(function(d) { return domain === d || domain.endsWith("." + d); });
     }
 
+    // ========== 验证邮件模板 ==========
+    const FORWARD_MAILBOX = "yuguoemail@yuconemail.cc.cd";
+    const MAIL_FROM = { email: "hello@yuguojinrongemail.cc.cd", name: "玉国金融" };
+    const mailShell = function(title, subtitle, inner) {
+      return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>' +
+        '<body style="margin:0;padding:0;background:#f5f0e8;">' +
+        '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:36px 12px;">' +
+        '<tr><td align="center">' +
+        '<table width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 6px 28px rgba(0,0,0,0.10);">' +
+        '<tr><td style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);padding:30px 32px;text-align:center;">' +
+        '<div style="font-size:26px;font-weight:700;color:#c9a227;letter-spacing:2px;">玉国金融</div>' +
+        '<div style="font-size:12px;color:#8b95a7;margin-top:6px;letter-spacing:1.5px;">YUGUO FINANCE</div>' +
+        '</td></tr>' +
+        '<tr><td style="padding:32px 32px 24px;">' +
+        '<p style="font-size:17px;color:#222;margin:0 0 6px;font-weight:600;">' + title + '</p>' +
+        '<p style="font-size:13px;color:#777;line-height:1.8;margin:0 0 24px;">' + subtitle + '</p>' +
+        inner +
+        '</td></tr>' +
+        '<tr><td style="background:#fafafa;padding:16px 32px;text-align:center;border-top:1px solid #eee;">' +
+        '<div style="font-size:11px;color:#aaa;line-height:1.7;">此邮件由系统自动发送，请勿直接回复<br>玉国金融 © ' + new Date().getFullYear() + '</div>' +
+        '</td></tr>' +
+        '</table></td></tr></table></body></html>';
+    };
+    // 模式一：直接下发 6 位验证码（不放任何“转发到某邮箱”的提示）
+    const buildCodeEmail = function(code, username, purpose) {
+      const inner =
+        '<table width="100%" cellpadding="0" cellspacing="0" style="background:#faf8f3;border:2px dashed #c9a227;border-radius:12px;margin:0 0 22px;">' +
+        '<tr><td style="padding:22px 16px;text-align:center;">' +
+        '<div style="font-size:12px;color:#999;letter-spacing:2px;margin-bottom:10px;">' + (purpose || "邮箱验证码") + '</div>' +
+        '<div style="font-size:42px;font-weight:700;color:#b8860b;letter-spacing:12px;font-family:\'Courier New\',Consolas,monospace;">' + code + '</div>' +
+        '<div style="font-size:12px;color:#999;margin-top:10px;">30 分钟内有效 · 请勿转发给他人</div>' +
+        '</td></tr></table>' +
+        '<p style="font-size:13px;color:#666;line-height:1.8;margin:0;">请在网页中输入这 6 位验证码完成验证。如非本人操作，请忽略本邮件。</p>';
+      return mailShell("您好，" + (username || "新用户"), "我们收到了您的验证请求，请使用下方验证码继续。", inner);
+    };
+    // 模式二：邮箱无法直接投递时，引导用户用本人邮箱转发/发送到收件邮箱（不含正常验证码）
+    const buildForwardEmail = function(username, email) {
+      const inner =
+        '<table width="100%" cellpadding="0" cellspacing="0" style="background:#eef6ff;border:1px solid #9ec5fe;border-radius:12px;margin:0 0 22px;">' +
+        '<tr><td style="padding:18px 20px;font-size:13px;color:#1b4b82;line-height:1.9;">' +
+        '<strong>您的邮箱（' + email + '）暂不支持自动接收验证码。</strong><br>' +
+        '请直接使用该邮箱发送一封邮件，或把本邮件转发至：<br>' +
+        '<span style="font-size:15px;font-weight:700;color:#0b3d75;">' + FORWARD_MAILBOX + '</span>' +
+        '</td></tr></table>' +
+        '<p style="font-size:13px;color:#666;line-height:1.9;margin:0 0 6px;">操作步骤：</p>' +
+        '<p style="font-size:13px;color:#666;line-height:1.9;margin:0;">1. 在邮件正文保留下面这一行：<br>' +
+        '<span style="display:inline-block;margin:6px 0;padding:8px 12px;background:#f7f7f7;border-radius:6px;color:#333;">请将本邮件转发至 ' + FORWARD_MAILBOX + ' 完成玉国金融邮箱验证</span><br>' +
+        '2. 回到注册页面，点击「刷新验证状态」即可自动通过。</p>';
+      return mailShell("您好，" + (username || "新用户"), "需要您用本人邮箱手动完成一次验证。", inner);
+    };
+    const buildForwardEmailText = function(email) {
+      return "您的邮箱（" + email + "）暂不支持自动接收验证码。\n\n" +
+        "请使用该邮箱发送邮件或转发本邮件至：" + FORWARD_MAILBOX + "\n\n" +
+        "邮件正文请保留这一行：请将本邮件转发至 " + FORWARD_MAILBOX + " 完成玉国金融邮箱验证\n\n" +
+        "发送后回到注册页面点击「刷新验证状态」即可自动通过。";
+    };
+    // 发送邮件：返回 true 表示已投递
+    const sendVerifyMail = async function(to, subject, html, text) {
+      if (!MAILTRAP_TOKEN) return false;
+      const mailtrap = new MailtrapClient({ token: MAILTRAP_TOKEN });
+      await mailtrap.send({ from: MAIL_FROM, to: [{ email: to }], subject: subject, html: html, text: text, category: "Email Verification" });
+      return true;
+    };
+
     // ========== Email 魔法链接登录 ==========
     if (path === "/oauth/email/send" && req.method === "POST") {
       const { email, returnUrl } = await req.json();
@@ -1109,25 +1173,52 @@ export default async function (req) {
         [emailLower, username, code, "pending", now]
       );
 
+      let mode = "forward";
       let mailSent = false;
       let mailError = null;
-      let skipMailtrap = isMicrosoftEmail(emailLower);
-      if (skipMailtrap) {
-        mailError = "Microsoft 邮箱域名不支持自动投递（严格头认证），请手动发送邮件";
-      } else {
+      const skipMailtrap = isMicrosoftEmail(emailLower);
+      if (!skipMailtrap && MAILTRAP_TOKEN) {
         try {
-          await mailtrapClient.send({
-            from: sender,
-            to: [{ email: emailLower }],
-            subject: "玉国金融 - 绑定邮箱验证码: " + code,
-            text: "您的绑定邮箱验证码是: " + code + "\n请在页面中输入此验证码完成邮箱绑定。",
-            category: "EmailBinding",
-          });
+          await sendVerifyMail(
+            emailLower,
+            "玉国金融 - 绑定邮箱验证码 " + code,
+            buildCodeEmail(code, username, "邮箱绑定验证码"),
+            "您的玉国金融绑定邮箱验证码是：" + code + "\n\n30 分钟内有效，请勿转发给他人。"
+          );
+          mode = "code";
           mailSent = true;
-        } catch (e) { console.error("[mailtrap]", String(e).substring(0,200)); mailError = e.message || "unknown"; }
+        } catch (e) {
+          console.error("[mailtrap]", String(e).substring(0, 200));
+          mailError = e.message || "unknown";
+        }
+      } else if (skipMailtrap) {
+        mailError = "该邮箱域名暂不支持自动投递，已自动切换为转发验证模式";
       }
 
-      return jsonResponse({ ok: true, mailSent, skipMailtrap: skipMailtrap || false, message: mailSent ? "验证码已发送到邮箱" : "邮件发送失败，请稍后重试或联系管理员" });
+      return jsonResponse({
+        ok: true,
+        mode: mode,
+        mailSent: mailSent,
+        mailError: mailError,
+        skipMailtrap: skipMailtrap || false,
+        forwardTo: FORWARD_MAILBOX,
+        message: mode === "code"
+          ? "验证码已发送到邮箱"
+          : "请用您的邮箱发送验证邮件到 " + FORWARD_MAILBOX
+      });
+    }
+
+    // ========== 老用户绑定邮箱：查询邮箱触发器验证结果 ==========
+    if (path === "/oauth/email/check-bind" && req.method === "GET") {
+      const u = new URL(req.url);
+      const username = u.searchParams.get("username");
+      const email = u.searchParams.get("email");
+      if (!username || !email) return jsonResponse({ error: "缺少参数" }, 400);
+      const emailLower = email.toLowerCase();
+      const bq = await execTurso("SELECT status FROM email_bindings WHERE username=? AND email=?", [username, emailLower]);
+      const brows = bq.data?.results?.[0]?.response?.result?.rows || bq.data?.results?.[0]?.response?.results?.rows || [];
+      const status = brows.length > 0 ? ((brows[0][0]?.value ?? brows[0][0]) || "") : "";
+      return jsonResponse({ verified: status === "verified", status: status || "pending" });
     }
 
     // ========== 老用户绑定邮箱（验证验证码） ==========
@@ -1152,7 +1243,9 @@ export default async function (req) {
     }
 
     // ========== Email 注册 + 验证码 ==========
-    // 注册：生成 6 位验证码，存入 email_verifications，用户需发邮件到 yuguoemail@yuconemail.cc.cd 完成验证
+    // 注册：生成 6 位验证码，存入 email_verifications
+    // 模式一（code）：直接发送漂亮的 HTML 验证码邮件；
+    // 模式二（forward）：邮箱无法自动接收时，引导用户用本人邮箱发送/转发邮件到 yuguoemail@yuconemail.cc.cd，不下发验证码
     if (path === "/oauth/email/register" && req.method === "POST") {
       const { email, username, password, passwordHash: clientHash, fullName, birthdate, country, province, city, referrer } = await req.json();
       if (!email || !username || !password) return jsonResponse({ error: "缺少必填字段" }, 400);
@@ -1183,37 +1276,53 @@ export default async function (req) {
         [emailLower, username, passwordHash, fullName || "", birthdate || "", country || "", province || "", city || "", referrer || "", code, "pending", now]
       );
 
-      // 通过 Mailtrap 自动发送验证码邮件给用户
-      // 微软系邮箱（Outlook/Hotmail/Live/MSN）Mailtrap 无法投递，直接降级为手动模式
+      // 两种投递模式：
+      //   code    = 直接发送 6 位验证码邮件（好看 HTML，不附带任何转发提示）
+      //   forward = 邮箱无法自动接收（微软系等），降级为用户用本人邮箱转发/发送完成验证，不下发验证码
+      let mode = "forward";
       let mailSent = false;
       let mailError = null;
-      let skipMailtrap = isMicrosoftEmail(emailLower);
-      if (skipMailtrap) {
-        mailError = "Microsoft 邮箱域名不支持自动投递（严格头认证），请手动发送邮件";
-      } else if (MAILTRAP_TOKEN) {
+      const skipMailtrap = isMicrosoftEmail(emailLower);
+      if (!skipMailtrap && MAILTRAP_TOKEN) {
         try {
-          const mailtrap = new MailtrapClient({ token: MAILTRAP_TOKEN });
-          await mailtrap.send({
-            from: { email: "hello@yuguojinrongemail.cc.cd", name: "玉国金融" },
-            to: [{ email: emailLower }],
-            subject: "玉国金融 - 邮箱验证码: " + code,
-            text: "您的验证码是: " + code + "\n\n请将此验证码回复发送到 yuguoemail@yuconemail.cc.cd 完成验证。\n\n验证码邮件正文请只填写这 6 位数字。\n\n玉国金融团队",
-            category: "Email Verification",
-          });
+          await sendVerifyMail(
+            emailLower,
+            "玉国金融 - 邮箱验证码 " + code,
+            buildCodeEmail(code, username, "注册验证码"),
+            "您的玉国金融验证码是：" + code + "\n\n30 分钟内有效，请勿转发给他人。"
+          );
+          mode = "code";
           mailSent = true;
         } catch (e) {
           mailError = e.message || "unknown";
         }
+      } else if (skipMailtrap) {
+        mailError = "该邮箱域名暂不支持自动投递，已自动切换为转发验证模式";
+      }
+
+      // 转发模式：尝试把「转发说明」邮件发给用户（不含验证码）；投递不了也不影响页面手动验证
+      if (mode === "forward" && !skipMailtrap && MAILTRAP_TOKEN) {
+        try {
+          await sendVerifyMail(
+            emailLower,
+            "玉国金融 - 请转发此邮件完成邮箱验证",
+            buildForwardEmail(username, emailLower),
+            buildForwardEmailText(emailLower)
+          );
+        } catch (e) { /* 忽略，页面会引导手动发送 */ }
       }
 
       return jsonResponse({
         ok: true,
-        code: code,
+        mode: mode,
         email: emailLower,
+        forwardTo: FORWARD_MAILBOX,
         mailSent: mailSent,
         mailError: mailError,
         skipMailtrap: skipMailtrap || false,
-        message: mailSent ? "验证码已发送到您的邮箱" : "验证码已生成" + (mailError ? "（" + mailError + "）" : "（Mailtrap 未配置）"),
+        message: mode === "code"
+          ? "验证码已发送到您的邮箱"
+          : "请用您的邮箱发送验证邮件到 " + FORWARD_MAILBOX
       });
     }
 

@@ -38,23 +38,24 @@ export default async function (email) {
     return new Response("Could not extract sender email from: " + rawFrom, { status: 400 });
   }
 
-  // 从邮件正文提取 6 位验证码
+  // 从邮件正文提取 6 位验证码（转发模式下可以没有验证码）
   const codeMatch = body.match(/\b(\d{6})\b/);
   const code = codeMatch ? codeMatch[1] : null;
 
   console.log("[EMAIL-TRIGGER] 提取的验证码:", code);
 
-  if (!code) {
-    console.log("[EMAIL-TRIGGER] ❌ 未在正文中找到6位数字验证码");
-    return new Response("No 6-digit code found in email body. Body: " + body.substring(0, 100), { status: 400 });
-  }
-
   const now = new Date().toISOString();
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   console.log("[EMAIL-TRIGGER] 当前时间:", now);
 
   try {
-    // 1. 查 email_verifications 表：匹配邮箱 + 验证码 + 未验证状态
+    // 1. 查 email_verifications 表：优先匹配邮箱 + 验证码；无验证码时按发件邮箱匹配最近的待验证记录
     console.log("[EMAIL-TRIGGER] 🔍 查询 email_verifications: email=" + senderEmail + " code=" + code);
+
+    const regSql = code
+      ? "SELECT username, password_hash, full_name, birthdate, country, province, city, referrer FROM email_verifications WHERE email=? AND code=? AND status='pending'"
+      : "SELECT username, password_hash, full_name, birthdate, country, province, city, referrer FROM email_verifications WHERE email=? AND status='pending' AND created_at>=? ORDER BY created_at DESC LIMIT 1";
+    const regArgs = code ? [senderEmail, code] : [senderEmail, cutoff];
 
     const checkRes = await fetch(TURSO_API, {
       method: "POST",
@@ -66,11 +67,8 @@ export default async function (email) {
         requests: [{
           type: "execute",
           stmt: {
-            sql: "SELECT username, password_hash, full_name, birthdate, country, province, city, referrer FROM email_verifications WHERE email=? AND code=? AND status='pending'",
-            args: [
-              { type: "text", value: senderEmail },
-              { type: "text", value: code }
-            ]
+            sql: regSql,
+            args: regArgs.map(function(v) { return { type: "text", value: String(v) }; })
           }
         }]
       })
@@ -80,14 +78,57 @@ export default async function (email) {
     const rows = (checkData.results?.[0]?.response?.result?.rows || []);
 
     console.log("[EMAIL-TRIGGER] Turso响应状态:", checkRes.status);
-    console.log("[EMAIL-TRIGGER] 匹配到的行数:", rows.length);
+    console.log("[EMAIL-TRIGGER] 匹配到的注册记录行数:", rows.length);
     if (checkData.results?.[0]?.error) {
       console.log("[EMAIL-TRIGGER] ❌ Turso错误:", JSON.stringify(checkData.results[0].error));
     }
 
+    // 1.5 没有注册记录时，尝试匹配「老用户绑定邮箱」记录
     if (rows.length === 0) {
+      const bindSql = code
+        ? "SELECT username FROM email_bindings WHERE email=? AND code=? AND status='pending'"
+        : "SELECT username FROM email_bindings WHERE email=? AND status='pending' AND created_at>=? ORDER BY created_at DESC LIMIT 1";
+      const bindArgs = code ? [senderEmail, code] : [senderEmail, cutoff];
+      const bindRes = await fetch(TURSO_API, {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + TURSO_TOKEN,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          requests: [{
+            type: "execute",
+            stmt: { sql: bindSql, args: bindArgs.map(function(v) { return { type: "text", value: String(v) }; }) }
+          }]
+        })
+      });
+      const bindData = await bindRes.json();
+      const bindRows = (bindData.results?.[0]?.response?.result?.rows || []);
+      console.log("[EMAIL-TRIGGER] 匹配到的绑定记录行数:", bindRows.length);
+
+      if (bindRows.length > 0) {
+        const bindUser = bindRows[0][0] && typeof bindRows[0][0] === "object" ? bindRows[0][0].value : bindRows[0][0];
+        console.log("[EMAIL-TRIGGER] ✅ 绑定邮箱验证通过: " + bindUser + " <- " + senderEmail);
+        const bindWrite = await fetch(TURSO_API, {
+          method: "POST",
+          headers: {
+            "Authorization": "Bearer " + TURSO_TOKEN,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            requests: [
+              { type: "execute", stmt: { sql: "UPDATE email_bindings SET status='verified', verified_at=? WHERE email=? AND username=?", args: [now, senderEmail, bindUser].map(function(v) { return { type: "text", value: String(v) }; }) } },
+              { type: "execute", stmt: { sql: "UPDATE users SET email=?, updated_at=? WHERE id=?", args: [senderEmail, now, bindUser].map(function(v) { return { type: "text", value: String(v) }; }) } },
+              { type: "execute", stmt: { sql: "UPDATE registrations SET email=?, oauth_id=?, oauth_email=? WHERE username=?", args: [senderEmail, senderEmail, senderEmail, bindUser].map(function(v) { return { type: "text", value: String(v) }; }) } }
+            ]
+          })
+        });
+        console.log("[EMAIL-TRIGGER] 绑定写入状态:", bindWrite.status);
+        return new Response("OK - Email bound for user " + bindUser + " via " + senderEmail, { status: 200 });
+      }
+
       console.log("[EMAIL-TRIGGER] ❌ 未匹配到待验证记录，完整响应的results:", JSON.stringify(checkData.results).substring(0, 500));
-      return new Response("No matching pending verification. Email: " + senderEmail + " Code: " + code, { status: 404 });
+      return new Response("No matching pending verification. Email: " + senderEmail + " Code: " + (code || "(none)"), { status: 404 });
     }
 
     console.log("[EMAIL-TRIGGER] ✅ 找到匹配记录!");
