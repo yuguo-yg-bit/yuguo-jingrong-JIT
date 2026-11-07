@@ -670,11 +670,9 @@
 <script>
 // ========= Cloudflare Turnstile（Managed 托管模式） =========
 // site key 可以公开；secret key 只在后端环境变量里，前端绝不出现
-var TURNSTILE_SITE_KEY = "0x4AAAAAAAF3fQeXnYcJMaVzx";
+var TURNSTILE_SITE_KEY = "0x4AAAAAAF3fQeXnYcJMaVzx";
 // 紧急开关：true=强制人机验证，false=暂时放行
-// 当前提供的 Site Key 被 Cloudflare 判定为无效，先置 false 避免线上无法登录；
-// 在 Turnstile 后台确认密钥有效（且域名已加入白名单）后，请改回 true
-var TURNSTILE_REQUIRED = false;
+var TURNSTILE_REQUIRED = true;
 var _tsWidgets = {};
 var _tsErrors = {};
 function _renderTurnstile(containerId) {
