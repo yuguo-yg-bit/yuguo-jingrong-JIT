@@ -1380,6 +1380,174 @@ export default async function (req) {
       return jsonResponse({ verified: true, oauth_token: loginToken, username: username, message: "验证通过" });
     }
 
+    // ========== 忘记密码 — 发送重置验证码 ==========
+    if (path === "/oauth/email/forgot-password" && req.method === "POST") {
+      const { email } = await req.json();
+      if (!email) return jsonResponse({ error: "缺少邮箱地址" }, 400);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonResponse({ error: "邮箱格式不正确" }, 400);
+
+      const emailLower = email.toLowerCase();
+      const now = new Date().toISOString();
+
+      // 检查该邮箱是否有关联的已审核用户
+      const { data: userCheck } = await execTurso(
+        "SELECT username FROM registrations WHERE (oauth_email=? OR email=?) AND review_status='approved' LIMIT 1",
+        [emailLower, emailLower]
+      );
+      const urows = userCheck.results?.[0]?.response?.result?.rows || [];
+      if (urows.length === 0) {
+        // 也查 users 表
+        const { data: userCheck2 } = await execTurso(
+          "SELECT id FROM users WHERE (oauth_id=? OR email=?) AND review_status='approved' LIMIT 1",
+          [emailLower, emailLower]
+        );
+        const urows2 = userCheck2.results?.[0]?.response?.result?.rows || [];
+        if (urows2.length === 0) {
+          return jsonResponse({ error: "该邮箱未注册或尚未通过审核" }, 404);
+        }
+      }
+
+      // 确保 email_verifications 表有 purpose 列（迁移）
+      try {
+        await execTurso("ALTER TABLE email_verifications ADD COLUMN purpose TEXT DEFAULT ''", []);
+      } catch (e) {}
+
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+
+      // 存入 email_verifications 表（purpose='reset' 区分注册验证）
+      await execTurso(
+        "INSERT OR REPLACE INTO email_verifications (email, username, password_hash, full_name, birthdate, country, province, city, referrer, code, status, purpose, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [emailLower, "__reset__", "", "", "", "", "", "", "", code, "pending", "reset", now]
+      );
+
+      // 通过 Mailtrap 发送验证码
+      let mailSent = false;
+      let mailError = null;
+      let skipMailtrap = isMicrosoftEmail(emailLower);
+      if (skipMailtrap) {
+        mailError = "Microsoft 邮箱域名不支持自动投递（严格头认证），请手动发送邮件";
+      } else if (MAILTRAP_TOKEN) {
+        try {
+          const mailtrap = new MailtrapClient({ token: MAILTRAP_TOKEN });
+          await mailtrap.send({
+            from: { email: "hello@yuguojinrongemail.cc.cd", name: "玉国金融" },
+            to: [{ email: emailLower }],
+            subject: "玉国金融 - 重置密码验证码: " + code,
+            text: "您的重置密码验证码是: " + code + "\n\n请将此验证码输入页面完成密码重置。\n\n如非本人操作，请忽略此邮件。\n\n玉国金融团队",
+            category: "Password Reset",
+          });
+          mailSent = true;
+        } catch (e) {
+          mailError = e.message || "unknown";
+        }
+      }
+
+      // 同时尝试 Mailkite 发送
+      if (!mailSent && !skipMailtrap) {
+        const mailkiteKey = process.env.MAILKITE_API_KEY;
+        if (mailkiteKey) {
+          try {
+            const mkRes = await fetch("https://api.mailkite.dev/v1/send", {
+              method: "POST",
+              headers: {
+                "Authorization": "Bearer " + mailkiteKey,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                from: "玉国金融 <noreply@yuguojinrong.mailk.us>",
+                to: [emailLower],
+                subject: "玉国金融 - 重置密码验证码 " + code,
+                html: '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#f5f0e8;">' +
+                  '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:40px 0;">' +
+                  '<tr><td align="center">' +
+                  '<table width="480" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">' +
+                  '<tr><td style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);padding:32px 40px;text-align:center;">' +
+                  '<div style="font-size:28px;font-weight:700;color:#b8860b;letter-spacing:2px;">玉国金融</div>' +
+                  '<div style="font-size:13px;color:#8892a4;margin-top:6px;letter-spacing:1px;">YUGUO FINANCE</div>' +
+                  '</td></tr>' +
+                  '<tr><td style="padding:36px 40px 28px;">' +
+                  '<p style="font-size:16px;color:#333;margin:0 0 8px;">您好，</p>' +
+                  '<p style="font-size:14px;color:#666;line-height:1.8;margin:0 0 28px;">您正在重置玉国金融账户的登录密码。请使用以下验证码完成密码重置。</p>' +
+                  '<table width="100%" cellpadding="0" cellspacing="0" style="background:#faf8f3;border:2px dashed #b8860b;border-radius:10px;margin-bottom:24px;">' +
+                  '<tr><td style="padding:20px;text-align:center;">' +
+                  '<div style="font-size:12px;color:#999;margin-bottom:8px;letter-spacing:2px;">重置密码验证码</div>' +
+                  '<div style="font-size:36px;font-weight:700;color:#b8860b;letter-spacing:8px;font-family:\'Courier New\',monospace;">' + code + '</div>' +
+                  '<div style="font-size:12px;color:#999;margin-top:6px;">15 分钟内有效 · 请勿转发他人</div>' +
+                  '</td></tr></table>' +
+                  '</td></tr>' +
+                  '<tr><td style="padding:0 40px 32px;">' +
+                  '<table width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #eee;padding-top:24px;">' +
+                  '<tr><td style="font-size:12px;color:#999;line-height:1.8;">' +
+                  '<p style="margin:0 0 4px;">📌 如非本人操作，请忽略此邮件。</p>' +
+                  '<p style="margin:0;">🔒 验证码 15 分钟内有效。</p>' +
+                  '</td></tr></table>' +
+                  '</td></tr>' +
+                  '<tr><td style="background:#fafafa;padding:20px 40px;text-align:center;">' +
+                  '<div style="font-size:11px;color:#bbb;">此邮件由系统自动发送 · 请勿回复 · 玉国金融 © ' + new Date().getFullYear() + '</div>' +
+                  '</td></tr>' +
+                  '</table></td></tr></table></body></html>'
+              })
+            });
+            if (mkRes.ok) {
+              const mkData = await mkRes.json();
+              mailSent = !!mkData.id;
+            }
+          } catch (ignored) {}
+        }
+      }
+
+      return jsonResponse({
+        ok: true,
+        email: emailLower,
+        mailSent: mailSent,
+        skipMailtrap: skipMailtrap || false,
+        code: mailSent ? undefined : code,
+        message: mailSent ? "重置密码验证码已发送到您的邮箱" : "验证码已生成" + (mailError ? "（" + mailError + "）" : ""),
+      });
+    }
+
+    // ========== 忘记密码 — 验证码校验 + 重置密码 ==========
+    if (path === "/oauth/email/reset-password" && req.method === "POST") {
+      const { email, code, newPassword, newPasswordHash } = await req.json();
+      if (!email || !code || !newPassword) return jsonResponse({ error: "缺少必填字段" }, 400);
+      if (newPassword.length < 6) return jsonResponse({ error: "新密码至少需要6位" }, 400);
+      if (!/^\d{6}$/.test(code)) return jsonResponse({ error: "验证码格式不正确" }, 400);
+
+      const emailLower = email.toLowerCase();
+      const now = new Date().toISOString();
+
+      // 校验验证码
+      const { data: verData } = await execTurso(
+        "SELECT code FROM email_verifications WHERE email=? AND code=? AND status='pending' AND purpose='reset'",
+        [emailLower, code]
+      );
+      const vrows = verData.results?.[0]?.response?.result?.rows || [];
+      if (vrows.length === 0) return jsonResponse({ error: "验证码错误或已过期" }, 400);
+
+      // 计算密码哈希（与登录接口一致）
+      const passwordHash = (newPasswordHash && String(newPasswordHash).startsWith("sha256$"))
+        ? newPasswordHash
+        : await hashPassword(newPassword);
+
+      // 更新 registrations 表密码
+      await execTurso(
+        "UPDATE registrations SET password_hash=?, updated_at=? WHERE (oauth_email=? OR email=?) AND review_status='approved'",
+        [passwordHash, now, emailLower, emailLower]
+      );
+
+      // 更新 users 表密码
+      await execTurso(
+        "UPDATE users SET password_hash=?, updated_at=? WHERE (oauth_id=? OR email=?) AND review_status='approved'",
+        [passwordHash, now, emailLower, emailLower]
+      );
+
+      // 标记验证码已使用
+      await execTurso("UPDATE email_verifications SET status='verified', verified_at=? WHERE email=?", [now, emailLower]);
+
+      logAudit("PASSWORD_RESET", emailLower, "users", "", "密码重置成功", "/oauth/email/reset-password", "", "ok");
+      return jsonResponse({ ok: true, message: "密码重置成功，请使用新密码登录" });
+    }
+
     // 轮询：检查邮箱是否已验证通过（降级场景：邮箱触发器验证）
     if (path === "/oauth/email/check-register" && req.method === "GET") {
       const email = new URL(req.url).searchParams.get("email");

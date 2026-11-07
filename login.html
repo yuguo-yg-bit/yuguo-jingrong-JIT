@@ -188,6 +188,29 @@
   display: block;
 }
 
+/* 忘记密码 - 登录表单 ↔ 重置密码 渐变切换 */
+#loginFormInner, #resetPwdForm {
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+#loginFormInner.fade-out {
+  opacity: 0;
+  transform: translateX(-30px);
+  pointer-events: none;
+}
+#loginFormInner.fade-in {
+  opacity: 1;
+  transform: translateX(0);
+}
+#resetPwdForm.fade-in {
+  opacity: 1;
+  transform: translateX(0);
+}
+#resetPwdForm.fade-out {
+  opacity: 0;
+  transform: translateX(30px);
+  pointer-events: none;
+}
+
 /* ========= 表单适配 ========= */
 .login-card .form-group {
   margin-bottom: 18px;
@@ -400,6 +423,7 @@
       <!-- 登录面板 -->
       <div class="login-panel active" id="panelLogin">
         <div id="referrerHint" style="text-align:center;color:var(--ice-blue);font-size:13px;margin-bottom:12px;display:none;"></div>
+        <div id="loginFormInner">
         <div class="form-group">
           <label class="form-label">邮箱/用户名</label>
           <input type="text" class="form-input" id="loginUsername" placeholder="请输入邮箱或用户名">
@@ -410,6 +434,46 @@
         </div>
         <div class="form-error" id="loginError" style="display:none;"></div>
         <button class="btn-submit" id="btnLogin" style="width:100%;">登 录</button>
+        <div style="text-align:right;margin-top:8px;">
+          <a href="javascript:void(0)" id="linkForgotPassword" style="font-size:13px;color:var(--ice-blue);text-decoration:none;transition:color 0.3s;" onmouseover="this.style.color='var(--ice-blue-light)'" onmouseout="this.style.color='var(--ice-blue)'">忘记密码？</a>
+        </div>
+        </div>
+
+        <!-- 重置密码表单（默认隐藏） -->
+        <div id="resetPwdForm" style="display:none;">
+          <div id="resetPwdStep1">
+            <p style="font-size:14px;color:var(--text-secondary);margin-bottom:18px;text-align:center;">请输入您的注册邮箱，我们将发送验证码</p>
+            <div class="form-group">
+              <label class="form-label">邮箱 <span class="required">*</span></label>
+              <input type="email" class="form-input" id="resetPwdEmail" placeholder="请输入注册邮箱" autocapitalize="off">
+            </div>
+            <div class="form-error" id="resetPwdError" style="display:none;"></div>
+            <button class="btn-submit" id="btnResetPwdSend" style="width:100%;">发送验证码</button>
+          </div>
+          <div id="resetPwdStep2" style="display:none;">
+            <p style="font-size:14px;color:var(--success);margin-bottom:8px;text-align:center;">验证码已发送，请查收邮箱</p>
+            <p style="font-size:12px;color:var(--text-secondary);margin-bottom:18px;text-align:center;" id="resetPwdEmailDisplay"></p>
+            <div class="form-group">
+              <label class="form-label">验证码 <span class="required">*</span></label>
+              <input type="text" class="form-input" id="resetPwdCode" placeholder="输入 6 位验证码" maxlength="6" autocomplete="off" style="text-align:center;font-size:22px;letter-spacing:6px;font-family:monospace;">
+            </div>
+            <div class="form-group">
+              <label class="form-label">新密码 <span class="required">*</span></label>
+              <input type="password" class="form-input" id="resetPwdNewPassword" placeholder="至少6位">
+            </div>
+            <div class="form-group">
+              <label class="form-label">确认新密码 <span class="required">*</span></label>
+              <input type="password" class="form-input" id="resetPwdNewPassword2" placeholder="请再次输入新密码">
+            </div>
+            <div class="form-error" id="resetPwdError2" style="display:none;"></div>
+            <button class="btn-submit" id="btnResetPwdConfirm" style="width:100%;">重 置 密 码</button>
+            <button class="btn-submit" id="btnResetPwdResend" style="width:100%;margin-top:8px;background:var(--ice-blue);">重新发送验证码</button>
+          </div>
+          <div style="text-align:center;margin-top:16px;">
+            <a href="javascript:void(0)" id="linkBackToLogin" style="font-size:13px;color:var(--text-secondary);text-decoration:none;transition:color 0.3s;" onmouseover="this.style.color='var(--ice-blue)'" onmouseout="this.style.color='var(--text-secondary)'">← 返回登录</a>
+          </div>
+        </div>
+
         <div class="oauth-divider"><span>或 使用大平台登录</span></div>
         <div class="oauth-buttons">
           <button class="btn-oauth github" id="btnGitHubLogin">
@@ -765,6 +829,165 @@
         btn.disabled = false;
         btn.textContent = "登 录";
       });
+  });
+
+  // ========= 忘记密码 - 重置密码逻辑 =========
+  function _showResetPwdForm() {
+    var loginInner = document.getElementById("loginFormInner");
+    var resetForm = document.getElementById("resetPwdForm");
+    var oauthDivider = document.querySelector("#panelLogin .oauth-divider");
+    var oauthButtons = document.querySelector("#panelLogin .oauth-buttons");
+    if (oauthDivider) oauthDivider.style.display = "none";
+    if (oauthButtons) oauthButtons.style.display = "none";
+    // 渐变动画：登录表单左滑消失
+    loginInner.style.transition = "opacity 0.4s ease, transform 0.4s ease";
+    resetForm.style.transition = "opacity 0.4s ease, transform 0.4s ease";
+    loginInner.style.opacity = "0";
+    loginInner.style.transform = "translateX(-30px)";
+    setTimeout(function() {
+      loginInner.style.display = "none";
+      resetForm.style.display = "block";
+      resetForm.style.opacity = "0";
+      resetForm.style.transform = "translateX(30px)";
+      // 重置表单状态
+      document.getElementById("resetPwdStep1").style.display = "block";
+      document.getElementById("resetPwdStep2").style.display = "none";
+      document.getElementById("resetPwdEmail").value = "";
+      document.getElementById("resetPwdCode").value = "";
+      document.getElementById("resetPwdNewPassword").value = "";
+      document.getElementById("resetPwdNewPassword2").value = "";
+      document.getElementById("resetPwdError").style.display = "none";
+      document.getElementById("resetPwdError2").style.display = "none";
+      setTimeout(function() {
+        resetForm.style.opacity = "1";
+        resetForm.style.transform = "translateX(0)";
+      }, 20);
+    }, 400);
+  }
+
+  function _hideResetPwdForm() {
+    var loginInner = document.getElementById("loginFormInner");
+    var resetForm = document.getElementById("resetPwdForm");
+    var oauthDivider = document.querySelector("#panelLogin .oauth-divider");
+    var oauthButtons = document.querySelector("#panelLogin .oauth-buttons");
+    loginInner.style.transition = "opacity 0.4s ease, transform 0.4s ease";
+    resetForm.style.transition = "opacity 0.4s ease, transform 0.4s ease";
+    resetForm.style.opacity = "0";
+    resetForm.style.transform = "translateX(30px)";
+    setTimeout(function() {
+      resetForm.style.display = "none";
+      loginInner.style.display = "";
+      loginInner.style.opacity = "0";
+      loginInner.style.transform = "translateX(-30px)";
+      if (oauthDivider) oauthDivider.style.display = "";
+      if (oauthButtons) oauthButtons.style.display = "";
+      setTimeout(function() {
+        loginInner.style.opacity = "1";
+        loginInner.style.transform = "translateX(0)";
+      }, 20);
+    }, 400);
+  }
+
+  document.getElementById("linkForgotPassword").addEventListener("click", function(e) {
+    e.preventDefault();
+    _showResetPwdForm();
+  });
+  document.getElementById("linkBackToLogin").addEventListener("click", function(e) {
+    e.preventDefault();
+    _hideResetPwdForm();
+  });
+
+  // 步骤1：发送重置验证码
+  document.getElementById("btnResetPwdSend").addEventListener("click", function() {
+    var email = document.getElementById("resetPwdEmail").value.trim();
+    var errEl = document.getElementById("resetPwdError");
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errEl.style.display = "block"; errEl.textContent = "请输入正确的邮箱"; return;
+    }
+    errEl.style.display = "none";
+    var btn = document.getElementById("btnResetPwdSend");
+    btn.disabled = true; btn.textContent = "发送中...";
+    JITApi.forgotPassword(email).then(function(res) {
+      if (res && res.ok) {
+        document.getElementById("resetPwdEmailDisplay").textContent = "验证码已发送至: " + email;
+        document.getElementById("resetPwdStep1").style.display = "none";
+        document.getElementById("resetPwdStep2").style.display = "block";
+        document.getElementById("resetPwdError2").style.display = "none";
+        if (!res.mailSent && res.code) {
+          _showToast("验证码: " + res.code + " | 请手动发送邮件到 yuguoemail@yuconemail.cc.cd");
+        }
+      } else {
+        errEl.style.display = "block";
+        errEl.textContent = (res && res.error) || "发送失败，请检查邮箱是否正确";
+      }
+    }).catch(function(err) {
+      errEl.style.display = "block";
+      errEl.textContent = "网络错误: " + err.message;
+    }).finally(function() {
+      btn.disabled = false; btn.textContent = "发送验证码";
+    });
+  });
+
+  // 步骤2：验证码校验 + 密码重置
+  document.getElementById("btnResetPwdConfirm").addEventListener("click", function() {
+    var email = document.getElementById("resetPwdEmail").value.trim();
+    var code = document.getElementById("resetPwdCode").value.trim();
+    var newPwd = document.getElementById("resetPwdNewPassword").value;
+    var newPwd2 = document.getElementById("resetPwdNewPassword2").value;
+    var errEl = document.getElementById("resetPwdError2");
+    if (!code || !/^\d{6}$/.test(code)) {
+      errEl.style.display = "block"; errEl.textContent = "请输入6位验证码"; return;
+    }
+    if (!newPwd || newPwd.length < 6) {
+      errEl.style.display = "block"; errEl.textContent = "新密码至少需要6位"; return;
+    }
+    if (newPwd !== newPwd2) {
+      errEl.style.display = "block"; errEl.textContent = "两次密码输入不一致"; return;
+    }
+    errEl.style.display = "none";
+    var btn = document.getElementById("btnResetPwdConfirm");
+    btn.disabled = true; btn.textContent = "重置中...";
+    JITApi.resetPassword(email, code, newPwd).then(function(res) {
+      if (res && res.ok) {
+        _showToast("密码重置成功，请使用新密码登录", "success");
+        setTimeout(function() {
+          _hideResetPwdForm();
+          // 预填邮箱到登录框
+          document.getElementById("loginUsername").value = email;
+          document.getElementById("loginPassword").value = "";
+        }, 1200);
+      } else {
+        errEl.style.display = "block";
+        errEl.textContent = (res && res.error) || "重置失败，请重试";
+      }
+    }).catch(function(err) {
+      errEl.style.display = "block";
+      errEl.textContent = "网络错误: " + err.message;
+    }).finally(function() {
+      btn.disabled = false; btn.textContent = "重 置 密 码";
+    });
+  });
+
+  // 重新发送验证码
+  document.getElementById("btnResetPwdResend").addEventListener("click", function() {
+    var email = document.getElementById("resetPwdEmail").value.trim();
+    var errEl = document.getElementById("resetPwdError2");
+    var btn = document.getElementById("btnResetPwdResend");
+    btn.disabled = true; btn.textContent = "重新发送中...";
+    JITApi.forgotPassword(email).then(function(res) {
+      if (res && res.ok) {
+        _showToast("验证码已重新发送", "success");
+        document.getElementById("resetPwdError2").style.display = "none";
+      } else {
+        errEl.style.display = "block";
+        errEl.textContent = (res && res.error) || "发送失败";
+      }
+    }).catch(function(err) {
+      errEl.style.display = "block";
+      errEl.textContent = "网络错误: " + err.message;
+    }).finally(function() {
+      btn.disabled = false; btn.textContent = "重新发送验证码";
+    });
   });
 
   // ========= 管理员登录 =========

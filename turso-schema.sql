@@ -385,6 +385,7 @@ CREATE TABLE IF NOT EXISTS email_verifications (
   referrer TEXT DEFAULT '',
   code TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending',
+  purpose TEXT DEFAULT '',
   created_at TEXT NOT NULL,
   verified_at TEXT
 );

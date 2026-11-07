@@ -1720,6 +1720,24 @@ var JITApi = (function() {
       return _fetchWithTimeout(_tursoProxy + "/oauth/email/check-bind?username=" + encodeURIComponent(username) + "&email=" + encodeURIComponent(email), { method: "GET" })
         .then(function(r) { return r.json(); });
     },
+    // ===== 忘记密码 =====
+    forgotPassword: function(email) {
+      return _fetchWithTimeout(_tursoProxy + "/oauth/email/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email })
+      }).then(function(r) { return r.json(); });
+    },
+    resetPassword: function(email, code, newPassword) {
+      var _self = this;
+      return _hashPw(newPassword, email).then(function(pwHash) {
+        return _fetchWithTimeout(_tursoProxy + "/oauth/email/reset-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email, code: code, newPassword: newPassword, newPasswordHash: "sha256$" + pwHash })
+        }).then(function(r) { return r.json(); });
+      });
+    },
     // 代理预热：页面加载时立即发一个轻量请求唤醒 Val.town 冷启动
     warmupProxy: function() {
       var warmupUrl = _tursoProxy + "/health";

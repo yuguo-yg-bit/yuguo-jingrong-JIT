@@ -53,8 +53,8 @@ export default async function (email) {
     console.log("[EMAIL-TRIGGER] 🔍 查询 email_verifications: email=" + senderEmail + " code=" + code);
 
     const regSql = code
-      ? "SELECT username, password_hash, full_name, birthdate, country, province, city, referrer FROM email_verifications WHERE email=? AND code=? AND status='pending'"
-      : "SELECT username, password_hash, full_name, birthdate, country, province, city, referrer FROM email_verifications WHERE email=? AND status='pending' AND created_at>=? ORDER BY created_at DESC LIMIT 1";
+      ? "SELECT username, password_hash, full_name, birthdate, country, province, city, referrer, COALESCE(purpose,'') as purpose FROM email_verifications WHERE email=? AND code=? AND status='pending'"
+      : "SELECT username, password_hash, full_name, birthdate, country, province, city, referrer, COALESCE(purpose,'') as purpose FROM email_verifications WHERE email=? AND status='pending' AND created_at>=? ORDER BY created_at DESC LIMIT 1";
     const regArgs = code ? [senderEmail, code] : [senderEmail, cutoff];
 
     const checkRes = await fetch(TURSO_API, {
@@ -146,6 +146,33 @@ export default async function (email) {
     const province = gv(row[5]);
     const city = gv(row[6]);
     const referrer = gv(row[7]);
+    const purpose = gv(row[8]) || "";
+
+    // 如果是重置密码验证，只标记验证通过，不创建用户
+    if (purpose === "reset") {
+      console.log("[EMAIL-TRIGGER] 检测到重置密码验证，仅标记验证状态");
+      await fetch(TURSO_API, {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + TURSO_TOKEN,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          requests: [{
+            type: "execute",
+            stmt: {
+              sql: "UPDATE email_verifications SET status='verified', verified_at=? WHERE email=?",
+              args: [
+                { type: "text", value: now },
+                { type: "text", value: senderEmail }
+              ]
+            }
+          }]
+        })
+      });
+      console.log("[EMAIL-TRIGGER] 重置密码验证码已通过");
+      return new Response("Reset password verification confirmed for: " + senderEmail, { status: 200 });
+    }
 
     const regId = crypto.randomUUID
       ? crypto.randomUUID()
