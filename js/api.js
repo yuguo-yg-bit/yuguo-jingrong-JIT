@@ -8,7 +8,7 @@ var JITApi = (function() {
   var _tursoProxy = "https://yuguoygbit--efeee912c58011f1af2f1607ee4eb77e.web.val.run";
   var _gameProxy = "https://yuguoygbit--8f55f7b6d02111f18f891607ee4eb77e.web.val.run";
   // 忘记密码代理：部署 val-town-proxy-forgot-password.js 后替换此 URL
-  var _fpProxy = "https://yuguoygbit--efeee912c58011f1af2f1607ee4eb77e.web.val.run";
+  var _fpProxy = "https://yuguoygbit--b8ff89d6dac311f1a0cd1607ee4eb77e.web.val.run";
   var _tursoAuth = "Jrb@025808";
 
   // ========== Turso 代理调用 ==========
