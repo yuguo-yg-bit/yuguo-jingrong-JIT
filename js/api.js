@@ -7,6 +7,8 @@ var JITApi = (function() {
   // ========== Turso 代理配置 ==========
   var _tursoProxy = "https://yuguoygbit--efeee912c58011f1af2f1607ee4eb77e.web.val.run";
   var _gameProxy = "https://yuguoygbit--8f55f7b6d02111f18f891607ee4eb77e.web.val.run";
+  // 忘记密码代理：部署 val-town-proxy-forgot-password.js 后替换此 URL
+  var _fpProxy = "https://yuguoygbit--efeee912c58011f1af2f1607ee4eb77e.web.val.run";
   var _tursoAuth = "Jrb@025808";
 
   // ========== Turso 代理调用 ==========
@@ -1724,7 +1726,7 @@ var JITApi = (function() {
     },
     // ===== 忘记密码 =====
     forgotPassword: function(email) {
-      return _fetchWithTimeout(_tursoProxy + "/oauth/email/forgot-password", {
+      return _fetchWithTimeout(_fpProxy + "/oauth/email/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email })
@@ -1733,7 +1735,7 @@ var JITApi = (function() {
     resetPassword: function(email, code, newPassword) {
       var _self = this;
       return _hashPw(newPassword, email).then(function(pwHash) {
-        return _fetchWithTimeout(_tursoProxy + "/oauth/email/reset-password", {
+        return _fetchWithTimeout(_fpProxy + "/oauth/email/reset-password", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email: email, code: code, newPassword: newPassword, newPasswordHash: "sha256$" + pwHash })
