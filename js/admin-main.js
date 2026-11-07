@@ -1903,13 +1903,20 @@ var JITAdmin = (function() {
 
     // ===== Cloudflare Turnstile（管理员登录同样需要人机验证） =====
     var TURNSTILE_SITE_KEY = "0x4AAAAAAAF3fQeXnYcJMaVzx";
+    var TURNSTILE_REQUIRED = true; // 紧急开关：密钥异常时可临时改为 false
     var _tsWidget = null;
+    var _tsErrorCode = "";
     var _renderAdminTurnstile = function() {
       if (!window.turnstile || _tsWidget !== null) return !!window.turnstile;
       var el = document.getElementById("adminTurnstile");
       if (!el) return false;
       try {
-        _tsWidget = window.turnstile.render(el, { sitekey: TURNSTILE_SITE_KEY, language: "zh-cn", theme: "dark" });
+        _tsWidget = window.turnstile.render(el, {
+          sitekey: TURNSTILE_SITE_KEY,
+          language: "zh-cn",
+          theme: "dark",
+          "error-callback": function(code) { _tsErrorCode = code; }
+        });
       } catch (e) {}
       return !!window.turnstile;
     };
@@ -1934,9 +1941,11 @@ var JITAdmin = (function() {
       var errorEl = document.getElementById("loginError");
       var btn = document.getElementById("btnAdminLogin");
       var tsToken = _adminTsToken();
-      if (!tsToken) {
+      if (!tsToken && TURNSTILE_REQUIRED) {
         errorEl.style.display = "block";
-        errorEl.textContent = window.turnstile ? "请先完成人机验证" : "人机验证组件加载失败，请刷新页面后重试";
+        errorEl.textContent = !window.turnstile
+          ? "人机验证组件加载失败，请刷新页面后重试"
+          : (_tsErrorCode ? "人机验证加载失败（错误码 " + _tsErrorCode + "），请刷新页面重试" : "请先完成人机验证");
         return;
       }
       btn.disabled = true;

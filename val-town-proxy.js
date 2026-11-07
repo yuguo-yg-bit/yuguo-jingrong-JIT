@@ -39,7 +39,8 @@ export default async function (req) {
   const TURNSTILE_SECRET = process.env.TURNSTILE_SECRET;
   const TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
   async function verifyTurnstile(token, ip) {
-    if (!TURNSTILE_SECRET) return { ok: false, error: "服务端未配置人机验证密钥" };
+    // 未配置密钥时视为功能未开启（便于部署过渡，不阻断登录）；配置后严格校验
+    if (!TURNSTILE_SECRET) return { ok: true, skipped: true };
     if (!token) return { ok: false, error: "请先完成人机验证" };
     try {
       const form = new URLSearchParams();

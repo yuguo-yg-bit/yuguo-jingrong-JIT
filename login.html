@@ -671,7 +671,10 @@
 // ========= Cloudflare Turnstile（Managed 托管模式） =========
 // site key 可以公开；secret key 只在后端环境变量里，前端绝不出现
 var TURNSTILE_SITE_KEY = "0x4AAAAAAAF3fQeXnYcJMaVzx";
+// 紧急开关：站点密钥异常时可临时改为 false 以恢复登录（会暂时失去人机验证保护）
+var TURNSTILE_REQUIRED = true;
 var _tsWidgets = {};
+var _tsErrors = {};
 function _renderTurnstile(containerId) {
   if (!window.turnstile) return false;
   var el = document.getElementById(containerId);
@@ -681,12 +684,16 @@ function _renderTurnstile(containerId) {
       sitekey: TURNSTILE_SITE_KEY,
       language: "zh-cn",
       theme: "dark",
-      size: "normal"
+      size: "normal",
+      "error-callback": function(code) { _tsErrors[containerId] = code; }
     });
     return true;
   } catch (e) {
     return false;
   }
+}
+function _turnstileError(containerId) {
+  return _tsErrors[containerId] || "";
 }
 function _turnstileToken(containerId) {
   if (!window.turnstile || _tsWidgets[containerId] === undefined) return "";
@@ -846,9 +853,12 @@ if (window.turnstile) {
 
     errorEl.style.display = "none";
     var tsToken = _turnstileToken("loginTurnstile");
-    if (!tsToken) {
+    if (!tsToken && TURNSTILE_REQUIRED) {
+      var tsErr = _turnstileError("loginTurnstile");
       errorEl.style.display = "block";
-      errorEl.textContent = window.turnstile ? "请先完成人机验证" : "人机验证组件加载失败，请刷新页面或更换网络后重试";
+      errorEl.textContent = !window.turnstile
+        ? "人机验证组件加载失败，请刷新页面或更换网络后重试"
+        : (tsErr ? "人机验证加载失败（错误码 " + tsErr + "），请刷新页面重试" : "请先完成人机验证");
       return;
     }
     var btn = document.getElementById("btnLogin");
@@ -1481,9 +1491,12 @@ if (window.turnstile) {
     if (password !== password2) { errorEl.style.display = "block"; errorEl.textContent = "两次密码输入不一致"; return; }
 
     var tsToken = _turnstileToken("regTurnstile");
-    if (!tsToken) {
+    if (!tsToken && TURNSTILE_REQUIRED) {
+      var tsErr = _turnstileError("regTurnstile");
       errorEl.style.display = "block";
-      errorEl.textContent = window.turnstile ? "请先完成人机验证" : "人机验证组件加载失败，请刷新页面或更换网络后重试";
+      errorEl.textContent = !window.turnstile
+        ? "人机验证组件加载失败，请刷新页面或更换网络后重试"
+        : (tsErr ? "人机验证加载失败（错误码 " + tsErr + "），请刷新页面重试" : "请先完成人机验证");
       return;
     }
 
@@ -1626,7 +1639,7 @@ if (window.turnstile) {
     }
     var btn = document.getElementById("btnEmailResend");
     var tsToken = _turnstileToken("regTurnstile");
-    if (!tsToken) {
+    if (!tsToken && TURNSTILE_REQUIRED) {
       _showToast(window.turnstile ? "请先在上方完成人机验证" : "人机验证组件加载失败，请刷新页面后重试", "error");
       return;
     }
