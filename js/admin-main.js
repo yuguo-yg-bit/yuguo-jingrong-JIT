@@ -1901,14 +1901,48 @@ var JITAdmin = (function() {
   var init = function() {
     if (!checkLoginStatus()) return;
 
+    // ===== Cloudflare Turnstile（管理员登录同样需要人机验证） =====
+    var TURNSTILE_SITE_KEY = "0x4AAAAAAAF3fQeXnYcJMaVzx";
+    var _tsWidget = null;
+    var _renderAdminTurnstile = function() {
+      if (!window.turnstile || _tsWidget !== null) return !!window.turnstile;
+      var el = document.getElementById("adminTurnstile");
+      if (!el) return false;
+      try {
+        _tsWidget = window.turnstile.render(el, { sitekey: TURNSTILE_SITE_KEY, language: "zh-cn", theme: "dark" });
+      } catch (e) {}
+      return !!window.turnstile;
+    };
+    var _adminTsToken = function() {
+      if (!window.turnstile || _tsWidget === null) return "";
+      try { return window.turnstile.getResponse(_tsWidget) || ""; } catch (e) { return ""; }
+    };
+    var _resetAdminTs = function() {
+      if (!window.turnstile || _tsWidget === null) return;
+      try { window.turnstile.reset(_tsWidget); } catch (e) {}
+    };
+    if (!_renderAdminTurnstile()) {
+      var _tsTries = 0;
+      var _tsTimer = setInterval(function() {
+        _tsTries++;
+        if (_renderAdminTurnstile() || _tsTries > 40) clearInterval(_tsTimer);
+      }, 250);
+    }
+
     document.getElementById("btnAdminLogin").addEventListener("click", function() {
       var password = document.getElementById("adminPassword").value.trim();
       var errorEl = document.getElementById("loginError");
       var btn = document.getElementById("btnAdminLogin");
+      var tsToken = _adminTsToken();
+      if (!tsToken) {
+        errorEl.style.display = "block";
+        errorEl.textContent = window.turnstile ? "请先完成人机验证" : "人机验证组件加载失败，请刷新页面后重试";
+        return;
+      }
       btn.disabled = true;
       btn.textContent = "验证中...";
       _sha256(ADMIN_SALT + password).then(function(hash) {
-        JITApi.adminLogin(hash).then(function(ok) {
+        JITApi.adminLogin(hash, tsToken).then(function(ok) {
           if (ok) {
             _isLoggedIn = true;
             localStorage.removeItem(_attemptsKey);
@@ -1918,6 +1952,7 @@ var JITAdmin = (function() {
             document.getElementById("adminUser").textContent = "管理员";
             loadIssues();
           } else {
+            _resetAdminTs();
             var attempts = parseInt(localStorage.getItem(_attemptsKey) || "0", 10) + 1;
             localStorage.setItem(_attemptsKey, String(attempts));
             var remain = MAX_ATTEMPTS - attempts;
@@ -1936,12 +1971,14 @@ var JITAdmin = (function() {
             document.getElementById("adminPassword").value = "";
           }
         }).catch(function() {
+          _resetAdminTs();
           errorEl.style.display = "block";
           errorEl.textContent = "验证失败，请重试";
           btn.disabled = false;
           btn.textContent = "登录";
         });
       }).catch(function() {
+        _resetAdminTs();
         errorEl.style.display = "block";
         errorEl.textContent = "验证失败，请重试";
         btn.disabled = false;

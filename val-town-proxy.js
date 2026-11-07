@@ -34,6 +34,28 @@ export default async function (req) {
     });
   }
 
+  // ========== Cloudflare Turnstile 服务端校验 ==========
+  // 密钥只从环境变量读取，绝不写进前端或仓库
+  const TURNSTILE_SECRET = process.env.TURNSTILE_SECRET;
+  const TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+  async function verifyTurnstile(token, ip) {
+    if (!TURNSTILE_SECRET) return { ok: false, error: "服务端未配置人机验证密钥" };
+    if (!token) return { ok: false, error: "请先完成人机验证" };
+    try {
+      const form = new URLSearchParams();
+      form.append("secret", TURNSTILE_SECRET);
+      form.append("response", String(token));
+      if (ip && ip !== "unknown") form.append("remoteip", ip);
+      const r = await fetch(TURNSTILE_VERIFY_URL, { method: "POST", body: form });
+      const d = await r.json().catch(function () { return {}; });
+      if (d.success) return { ok: true };
+      const codes = Array.isArray(d["error-codes"]) ? d["error-codes"].join(",") : "";
+      return { ok: false, error: "人机验证未通过" + (codes ? "（" + codes + "）" : ""), codes: codes };
+    } catch (e) {
+      return { ok: false, error: "人机验证服务暂不可用，请稍后重试" };
+    }
+  }
+
   if (req.method === "OPTIONS") {
     const origin = req.headers.get("origin") || "";
     const ch = getCorsHeaders(origin);
@@ -273,6 +295,13 @@ export default async function (req) {
       const isAdmin = String(role || "") === "admin";
       const nowIso = new Date().toISOString();
       const { ip, ua } = getClientInfo();
+
+      // 人机验证（登录接口全量校验，管理员同样需要）
+      const tsr = await verifyTurnstile(body.turnstileToken, ip);
+      if (!tsr.ok) {
+        logAudit("LOGIN_TURNSTILE_FAILED", username, "sessions", "", tsr.error || "人机验证失败", "/login", "", "fail");
+        return jsonResponse({ error: tsr.error, turnstileFailed: true }, 403);
+      }
 
       let valid = false;
       let dbUser = null;
@@ -1247,10 +1276,15 @@ export default async function (req) {
     // 模式一（code）：直接发送漂亮的 HTML 验证码邮件；
     // 模式二（forward）：邮箱无法自动接收时，引导用户用本人邮箱发送/转发邮件到 yuguoemail@yuconemail.cc.cd，不下发验证码
     if (path === "/oauth/email/register" && req.method === "POST") {
-      const { email, username, password, passwordHash: clientHash, fullName, birthdate, country, province, city, referrer } = await req.json();
+      const { email, username, password, passwordHash: clientHash, fullName, birthdate, country, province, city, referrer, turnstileToken } = await req.json();
       if (!email || !username || !password) return jsonResponse({ error: "缺少必填字段" }, 400);
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonResponse({ error: "邮箱格式不正确" }, 400);
       if (password.length < 6) return jsonResponse({ error: "密码至少需要6位" }, 400);
+
+      // 人机验证（防止脚本批量注册 / 刷邮件）
+      const { ip: regIp } = getClientInfo();
+      const tsr = await verifyTurnstile(turnstileToken, regIp);
+      if (!tsr.ok) return jsonResponse({ error: tsr.error, turnstileFailed: true }, 403);
 
       const emailLower = email.toLowerCase();
       const now = new Date().toISOString();

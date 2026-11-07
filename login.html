@@ -346,6 +346,8 @@
   }
 }
 </style>
+<!-- Cloudflare Turnstile：Managed 托管交互模式，仅加载组件，校验由后端完成 -->
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 </head>
 <body>
 <div class="bg-grid"></div>
@@ -432,6 +434,7 @@
           <label class="form-label">密码</label>
           <input type="password" class="form-input" id="loginPassword" placeholder="请输入密码">
         </div>
+        <div id="loginTurnstile" style="display:flex;justify-content:center;margin:-4px 0 12px;"></div>
         <div class="form-error" id="loginError" style="display:none;"></div>
         <button class="btn-submit" id="btnLogin" style="width:100%;">登 录</button>
         <div style="text-align:right;margin-top:8px;">
@@ -618,6 +621,7 @@
           </div>
         </div>
 
+        <div id="regTurnstile" style="display:flex;justify-content:center;margin:4px 0 12px;"></div>
         <button class="btn-submit" id="btnEmailRegister" style="width:100%;margin-top:12px;">发送验证邮件</button>
       </div>
     </div>
@@ -663,6 +667,51 @@
 
 <script src="js/config.js"></script>
 <script src="js/api.js"></script>
+<script>
+// ========= Cloudflare Turnstile（Managed 托管模式） =========
+// site key 可以公开；secret key 只在后端环境变量里，前端绝不出现
+var TURNSTILE_SITE_KEY = "0x4AAAAAAAF3fQeXnYcJMaVzx";
+var _tsWidgets = {};
+function _renderTurnstile(containerId) {
+  if (!window.turnstile) return false;
+  var el = document.getElementById(containerId);
+  if (!el || _tsWidgets[containerId] !== undefined) return true;
+  try {
+    _tsWidgets[containerId] = window.turnstile.render(el, {
+      sitekey: TURNSTILE_SITE_KEY,
+      language: "zh-cn",
+      theme: "dark",
+      size: "normal"
+    });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+function _turnstileToken(containerId) {
+  if (!window.turnstile || _tsWidgets[containerId] === undefined) return "";
+  try { return window.turnstile.getResponse(_tsWidgets[containerId]) || ""; } catch (e) { return ""; }
+}
+function _resetTurnstile(containerId) {
+  if (!window.turnstile || _tsWidgets[containerId] === undefined) return;
+  try { window.turnstile.reset(_tsWidgets[containerId]); } catch (e) {}
+}
+function _renderAllTurnstile() {
+  _renderTurnstile("loginTurnstile");
+  _renderTurnstile("regTurnstile");
+}
+if (window.turnstile) {
+  _renderAllTurnstile();
+} else {
+  window.addEventListener("load", _renderAllTurnstile);
+  // 组件脚本较慢时，轮询几次兜底渲染
+  var _tsTries = 0;
+  var _tsTimer = setInterval(function() {
+    _tsTries++;
+    if (_renderAllTurnstile() || _tsTries > 40) clearInterval(_tsTimer);
+  }, 250);
+}
+</script>
 <script>
 (function() {
   // ========= 背景粒子动画 =========
@@ -796,10 +845,16 @@
     }
 
     errorEl.style.display = "none";
+    var tsToken = _turnstileToken("loginTurnstile");
+    if (!tsToken) {
+      errorEl.style.display = "block";
+      errorEl.textContent = window.turnstile ? "请先完成人机验证" : "人机验证组件加载失败，请刷新页面或更换网络后重试";
+      return;
+    }
     var btn = document.getElementById("btnLogin");
     btn.disabled = true;
     btn.textContent = "验证中...";
-    JITApi.login(username, password).then(function(res) {
+    JITApi.login(username, password, "user", tsToken).then(function(res) {
       if (res && res.ok) {
         localStorage.setItem("jit_current_user", res.username);
         if (res.emailBindingRequired) {
@@ -813,6 +868,12 @@
         setTimeout(function() { window.location.replace(_postLoginUrl()); }, 600);
         return;
       }
+      _resetTurnstile("loginTurnstile");
+      if (res && res.turnstileFailed) {
+        errorEl.style.display = "block";
+        errorEl.textContent = res.error || "人机验证未通过，请重试";
+        return;
+      }
       return JITApi.findPendingRegistration(username).then(function(pending) {
         if (pending) {
           errorEl.style.display = "block";
@@ -823,6 +884,7 @@
         }
       });
     }).catch(function(err) {
+        _resetTurnstile("loginTurnstile");
         errorEl.style.display = "block";
         errorEl.textContent = "登录失败: " + err.message;
       }).finally(function() {
@@ -1418,12 +1480,19 @@
     if (!password || password.length < 6) { errorEl.style.display = "block"; errorEl.textContent = "密码至少需要6位"; return; }
     if (password !== password2) { errorEl.style.display = "block"; errorEl.textContent = "两次密码输入不一致"; return; }
 
+    var tsToken = _turnstileToken("regTurnstile");
+    if (!tsToken) {
+      errorEl.style.display = "block";
+      errorEl.textContent = window.turnstile ? "请先完成人机验证" : "人机验证组件加载失败，请刷新页面或更换网络后重试";
+      return;
+    }
+
     errorEl.style.display = "none";
     var btn = document.getElementById("btnEmailRegister");
     btn.disabled = true;
     btn.textContent = "提交中...";
 
-    JITApi.registerEmail(email, username, password, fullName, birthdate, country, province, city, referrer).then(function(res) {
+    JITApi.registerEmail(email, username, password, fullName, birthdate, country, province, city, referrer, tsToken).then(function(res) {
       if (res.error) {
         errorEl.style.display = "block";
         errorEl.textContent = res.error;
@@ -1458,6 +1527,7 @@
       errorEl.style.display = "block";
       errorEl.textContent = "注册失败: " + (err.message || "网络错误");
     }).finally(function() {
+      _resetTurnstile("regTurnstile");
       btn.disabled = false;
       btn.textContent = "发送验证邮件";
     });
@@ -1555,10 +1625,15 @@
       return;
     }
     var btn = document.getElementById("btnEmailResend");
+    var tsToken = _turnstileToken("regTurnstile");
+    if (!tsToken) {
+      _showToast(window.turnstile ? "请先在上方完成人机验证" : "人机验证组件加载失败，请刷新页面后重试", "error");
+      return;
+    }
     _emailRegResendCount++;
     btn.disabled = true;
     btn.textContent = "生成中...";
-    JITApi.registerEmail(email, username, password, fullName, birthdate, country, province, city, referrer).then(function(res) {
+    JITApi.registerEmail(email, username, password, fullName, birthdate, country, province, city, referrer, tsToken).then(function(res) {
       if (res.error) {
         _showToast(res.error, "error");
         return;
@@ -1590,6 +1665,7 @@
     }).catch(function(err) {
       _showToast("网络错误: " + (err.message || ""), "error");
     }).finally(function() {
+      _resetTurnstile("regTurnstile");
       btn.disabled = false;
       btn.textContent = _emailRegResendCount >= 3 ? "重新生成验证码（手动模式）" : "重新生成验证码";
     });

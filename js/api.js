@@ -830,14 +830,15 @@ var JITApi = (function() {
   };
 
   // ========== 登录（发会话 token，代理端校验） ==========
-  var _login = function(username, password, role) {
+  var _login = function(username, password, role, turnstileToken) {
     if (!username || !password) return Promise.reject(new Error("请输入用户名和密码"));
     return _hashPw(password, username).then(function(hash) {
       return _tursoCall("/login", {
         username: username,
         password: password,
         passwordHash: "sha256$" + hash,
-        role: role || "user"
+        role: role || "user",
+        turnstileToken: turnstileToken || ""
       }).then(function(res) {
         if (res.ok && res.token) {
           try {
@@ -1110,11 +1111,12 @@ var JITApi = (function() {
   };
 
   // ========== 管理员登录验证（走会话） ==========
-  var _adminLogin = function(passwordHash) {
+  var _adminLogin = function(passwordHash, turnstileToken) {
     return _tursoCall("/login", {
       username: "admin",
       passwordHash: passwordHash,
-      role: "admin"
+      role: "admin",
+      turnstileToken: turnstileToken || ""
     }).then(function(res) {
       if (res.ok && res.token) {
         try {
@@ -1681,12 +1683,12 @@ var JITApi = (function() {
     migrateLocalToTurso: _migrateLocalToTurso,
     hasMigratedToTurso: _hasMigratedToTurso,
     // ===== 邮箱注册验证 =====
-    registerEmail: function(email, username, password, fullName, birthdate, country, province, city, referrer) {
+    registerEmail: function(email, username, password, fullName, birthdate, country, province, city, referrer, turnstileToken) {
       return _hashPw(password, username).then(function(pwHash) {
         return _fetchWithTimeout(_tursoProxy + "/oauth/email/register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: email, username: username, password: password, passwordHash: "sha256$" + pwHash, fullName: fullName, birthdate: birthdate || "", country: country || "", province: province || "", city: city || "", referrer: referrer || "" })
+          body: JSON.stringify({ email: email, username: username, password: password, passwordHash: "sha256$" + pwHash, fullName: fullName, birthdate: birthdate || "", country: country || "", province: province || "", city: city || "", referrer: referrer || "", turnstileToken: turnstileToken || "" })
         }).then(function(r) { return r.json(); });
       });
     },
