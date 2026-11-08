@@ -37,6 +37,27 @@ export default async function (req) {
     return new Response(null, { status: 204, headers: ch });
   }
 
+  // ========== Cloudflare Turnstile 服务端校验 ==========
+  const TURNSTILE_SECRET = process.env.TURNSTILE_SECRET;
+  const TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+  async function verifyTurnstile(token, ip) {
+    if (!TURNSTILE_SECRET) return { ok: true, skipped: true };
+    if (!token) return { ok: false, error: "请先完成人机验证" };
+    try {
+      const form = new URLSearchParams();
+      form.append("secret", TURNSTILE_SECRET);
+      form.append("response", String(token));
+      if (ip && ip !== "unknown") form.append("remoteip", ip);
+      const r = await fetch(TURNSTILE_VERIFY_URL, { method: "POST", body: form });
+      const d = await r.json().catch(function () { return {}; });
+      if (d.success) return { ok: true };
+      const codes = Array.isArray(d["error-codes"]) ? d["error-codes"].join(",") : "";
+      return { ok: false, error: "人机验证未通过" + (codes ? "（" + codes + "）" : ""), codes: codes };
+    } catch (e) {
+      return { ok: false, error: "人机验证服务暂不可用，请稍后重试" };
+    }
+  }
+
   const url = new URL(req.url);
   const path = url.pathname;
 
@@ -122,9 +143,18 @@ export default async function (req) {
 
     // ========== 忘记密码 — 发送重置验证码 ==========
     if (path === "/oauth/email/forgot-password" && req.method === "POST") {
-      const { email } = await req.json();
+      const { email, turnstileToken } = await req.json();
       if (!email) return jsonResponse({ error: "缺少邮箱地址" }, 400);
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonResponse({ error: "邮箱格式不正确" }, 400);
+
+      const h = req.headers || {};
+      let ip = h.get("cf-connecting-ip") || h.get("x-real-ip") || h.get("x-forwarded-for") || "";
+      if (ip.indexOf(",") > -1) ip = ip.split(",")[0].trim();
+      const tsr = await verifyTurnstile(turnstileToken, ip);
+      if (!tsr.ok) {
+        logAudit("FORGOT_PWD_TURNSTILE_FAILED", email.toLowerCase(), "users", "", tsr.error || "人机验证失败", "/oauth/email/forgot-password", "", "fail");
+        return jsonResponse({ error: tsr.error, turnstileFailed: true }, 403);
+      }
 
       const emailLower = email.toLowerCase();
       const now = new Date().toISOString();

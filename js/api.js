@@ -1725,11 +1725,11 @@ var JITApi = (function() {
         .then(function(r) { return r.json(); });
     },
     // ===== 忘记密码 =====
-    forgotPassword: function(email) {
+    forgotPassword: function(email, turnstileToken) {
       return _fetchWithTimeout(_fpProxy + "/oauth/email/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email })
+        body: JSON.stringify({ email: email, turnstileToken: turnstileToken || "" })
       }).then(function(r) { return r.json(); });
     },
     resetPassword: function(email, code, newPassword) {
