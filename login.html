@@ -346,7 +346,7 @@
   }
 }
 </style>
-<!-- Cloudflare Turnstile：Managed 托管交互模式，仅加载组件，校验由后端完成 -->
+<!-- Cloudflare Turnstile：Execute 模式，需用户点击才触发验证 -->
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 </head>
 <body>
@@ -669,10 +669,8 @@
 <script src="js/config.js"></script>
 <script src="js/api.js?v=3.5.8"></script>
 <script>
-// ========= Cloudflare Turnstile（Managed 托管模式） =========
-// site key 可以公开；secret key 只在后端环境变量里，前端绝不出现
+// ========= Cloudflare Turnstile（Execute 模式：需用户点击才验证） =========
 var TURNSTILE_SITE_KEY = "0x4AAAAAAF3fQeXnYcJMaVzx";
-// 紧急开关：true=强制人机验证，false=暂时放行
 var TURNSTILE_REQUIRED = true;
 var _tsWidgets = {};
 var _tsErrors = {};
@@ -683,6 +681,7 @@ function _renderTurnstile(containerId) {
   try {
     _tsWidgets[containerId] = window.turnstile.render(el, {
       sitekey: TURNSTILE_SITE_KEY,
+      appearance: "execute",
       language: "zh-cn",
       theme: "dark",
       size: "normal",
