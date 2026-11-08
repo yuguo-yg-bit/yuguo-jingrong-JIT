@@ -24,19 +24,65 @@ export default async function (email) {
     date: email.date
   }));
 
-  const rawFrom = email.from || "";
-  const senderMatch = rawFrom.match(/<([^>]+)>/);
-  const senderEmail = (senderMatch ? senderMatch[1] : rawFrom).trim().toLowerCase();
   const body = (email.text || "").trim();
+  const rawFrom = email.from || "";
 
   console.log("[EMAIL-TRIGGER] 发件人原始值:", rawFrom);
-  console.log("[EMAIL-TRIGGER] 提取的发件人邮箱:", senderEmail);
-  console.log("[EMAIL-TRIGGER] 邮件正文(前200字):", body.substring(0, 200));
+  console.log("[EMAIL-TRIGGER] 邮件正文(前300字):", body.substring(0, 300));
 
-  if (!senderEmail) {
-    console.log("[EMAIL-TRIGGER] ❌ 无法提取发件人邮箱");
+  // ========= 多途径提取发件人真实邮箱 =========
+  // 策略：邮件可能经过 yuconemail.cc.cd 转发，From 头可能被改写。
+  // 前端 mailto 链接的 body 里写了「注册邮箱：xxx@xxx.com」，从这里提取最可靠。
+  var senderEmail = "";
+
+  // 途径1: 从邮件正文提取「注册邮箱：」后面的邮箱地址
+  var bodyEmailMatch = body.match(/注册邮箱[：:]\s*([^\s\n\r]+@[^\s\n\r]+)/i);
+  if (bodyEmailMatch && bodyEmailMatch[1]) {
+    senderEmail = bodyEmailMatch[1].trim().toLowerCase();
+    console.log("[EMAIL-TRIGGER] 途径1-从正文提取邮箱:", senderEmail);
+  }
+
+  // 途径2: 从邮件正文提取任意邮箱（用户名注册的 mailto body 带了注册邮箱）
+  if (!senderEmail || !/@/.test(senderEmail)) {
+    var anyEmailMatch = body.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g);
+    if (anyEmailMatch && anyEmailMatch.length > 0) {
+      // 排除系统邮箱
+      for (var ei = 0; ei < anyEmailMatch.length; ei++) {
+        var candidate = anyEmailMatch[ei].trim().toLowerCase();
+        if (candidate.indexOf("yuguoemail@") < 0 && candidate.indexOf("valtown.email") < 0 && candidate.indexOf("noreply@") < 0) {
+          senderEmail = candidate;
+          console.log("[EMAIL-TRIGGER] 途径2-从正文匹配邮箱:", senderEmail);
+          break;
+        }
+      }
+    }
+  }
+
+  // 途径3: 从 email.from 提取（标准格式 "Name <email>"）
+  if (!senderEmail || !/@/.test(senderEmail)) {
+    var senderMatch = rawFrom.match(/<([^>]+)>/);
+    var extracted = (senderMatch ? senderMatch[1] : rawFrom).trim().toLowerCase();
+    if (extracted && /@/.test(extracted)) {
+      senderEmail = extracted;
+      console.log("[EMAIL-TRIGGER] 途径3-从From头提取邮箱:", senderEmail);
+    }
+  }
+
+  // 途径4: email.from 本身就是纯邮箱
+  if (!senderEmail || !/@/.test(senderEmail)) {
+    var cleanFrom = rawFrom.trim().toLowerCase();
+    if (/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(cleanFrom)) {
+      senderEmail = cleanFrom;
+      console.log("[EMAIL-TRIGGER] 途径4-From头即邮箱:", senderEmail);
+    }
+  }
+
+  if (!senderEmail || !/@/.test(senderEmail)) {
+    console.log("[EMAIL-TRIGGER] ❌ 无法提取发件人邮箱, rawFrom=" + rawFrom + " body(前200)=" + body.substring(0, 200));
     return new Response("Could not extract sender email from: " + rawFrom, { status: 400 });
   }
+
+  console.log("[EMAIL-TRIGGER] 最终使用的发件人邮箱:", senderEmail);
 
   // 从邮件正文提取 6 位验证码（转发模式下可以没有验证码）
   const codeMatch = body.match(/\b(\d{6})\b/);
@@ -182,78 +228,115 @@ export default async function (email) {
 
     // 3. 标记验证通过 + 创建用户（免审核 approved）+ 写入 registrations 表
     console.log("[EMAIL-TRIGGER] ✍️ 写入数据库: 更新验证状态 + 创建用户 + 插入registrations");
-    const stmts = [
-      {
-        sql: "UPDATE email_verifications SET status='verified', verified_at=? WHERE email=?",
-        args: [
-          { type: "text", value: now },
-          { type: "text", value: senderEmail }
-        ]
-      },
-      {
-        sql: "INSERT OR REPLACE INTO registrations (id, username, password_hash, full_name, birthdate, country, province, city, referrer, review_status, oauth_provider, oauth_id, oauth_email, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        args: [
-          { type: "text", value: regId },
-          { type: "text", value: username },
-          { type: "text", value: passwordHash },
-          { type: "text", value: fullName },
-          { type: "text", value: birthdate },
-          { type: "text", value: country },
-          { type: "text", value: province },
-          { type: "text", value: city },
-          { type: "text", value: referrer },
-          { type: "text", value: "approved" },
-          { type: "text", value: "email" },
-          { type: "text", value: senderEmail },
-          { type: "text", value: senderEmail },
-          { type: "text", value: now }
-        ]
-      },
-      {
-        sql: "INSERT INTO users (id, password_hash, full_name, birthdate, country, province, city, referrer, review_status, oauth_provider, oauth_id, email, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET oauth_provider=EXCLUDED.oauth_provider, oauth_id=EXCLUDED.oauth_id, email=EXCLUDED.email, updated_at=EXCLUDED.updated_at",
-        args: [
-          { type: "text", value: username },
-          { type: "text", value: passwordHash },
-          { type: "text", value: fullName },
-          { type: "text", value: birthdate },
-          { type: "text", value: country },
-          { type: "text", value: province },
-          { type: "text", value: city },
-          { type: "text", value: referrer },
-          { type: "text", value: "approved" },
-          { type: "text", value: "email" },
-          { type: "text", value: senderEmail },
-          { type: "text", value: senderEmail },
-          { type: "text", value: now },
-          { type: "text", value: now }
-        ]
-      }
-    ];
+    var writeErrors = [];
 
-    const writeRes = await fetch(TURSO_API, {
+    // 步骤0: 标记 email_verifications 为已验证
+    var u0 = await fetch(TURSO_API, {
       method: "POST",
-      headers: {
-        "Authorization": "Bearer " + TURSO_TOKEN,
-        "Content-Type": "application/json"
-      },
+      headers: { "Authorization": "Bearer " + TURSO_TOKEN, "Content-Type": "application/json" },
       body: JSON.stringify({
-        requests: stmts.map(function(s) {
-          return { type: "execute", stmt: s };
-        })
+        requests: [{
+          type: "execute",
+          stmt: {
+            sql: "UPDATE email_verifications SET status='verified', verified_at=? WHERE email=?",
+            args: [{ type: "text", value: now }, { type: "text", value: senderEmail }]
+          }
+        }]
       })
     });
+    var d0 = await u0.json();
+    console.log("[EMAIL-TRIGGER] 步骤0-标记验证状态:", u0.status, d0.results?.[0]?.error ? JSON.stringify(d0.results[0].error) : "OK");
 
-    const writeData = await writeRes.json();
-    console.log("[EMAIL-TRIGGER] 写入响应状态:", writeRes.status);
-    if (writeData.results) {
-      for (var wi = 0; wi < writeData.results.length; wi++) {
-        var wr = writeData.results[wi];
-        if (wr.error) {
-          console.log("[EMAIL-TRIGGER] ❌ 写入步骤" + wi + "失败:", JSON.stringify(wr.error));
-        } else {
-          console.log("[EMAIL-TRIGGER] ✅ 写入步骤" + wi + "成功");
-        }
-      }
+    // 步骤1: 写入 registrations（列名与主代理 /oauth/email/verify-code 完全一致）
+    var u1 = await fetch(TURSO_API, {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + TURSO_TOKEN, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requests: [{
+          type: "execute",
+          stmt: {
+            sql: "INSERT OR REPLACE INTO registrations (id, username, password_hash, full_name, birthdate, country, province, city, referrer, review_status, oauth_provider, oauth_id, oauth_email, email, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            args: [
+              { type: "text", value: regId },
+              { type: "text", value: username },
+              { type: "text", value: passwordHash },
+              { type: "text", value: fullName },
+              { type: "text", value: birthdate || "" },
+              { type: "text", value: country || "" },
+              { type: "text", value: province || "" },
+              { type: "text", value: city || "" },
+              { type: "text", value: referrer || "" },
+              { type: "text", value: "approved" },
+              { type: "text", value: "email" },
+              { type: "text", value: senderEmail },
+              { type: "text", value: senderEmail },
+              { type: "text", value: senderEmail },
+              { type: "text", value: now }
+            ]
+          }
+        }]
+      })
+    });
+    var d1 = await u1.json();
+    if (d1.results?.[0]?.error) { writeErrors.push("registrations: " + JSON.stringify(d1.results[0].error)); }
+    console.log("[EMAIL-TRIGGER] 步骤1-registrations:", u1.status, d1.results?.[0]?.error ? "ERR:" + JSON.stringify(d1.results[0].error) : "OK");
+
+    // 步骤2: 写入 users（与主代理 /oauth/email/verify-code 完全一致）
+    var u2 = await fetch(TURSO_API, {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + TURSO_TOKEN, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requests: [{
+          type: "execute",
+          stmt: {
+            sql: "INSERT INTO users (id, password_hash, full_name, birthdate, country, province, city, referrer, review_status, oauth_provider, oauth_id, email, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET oauth_provider=EXCLUDED.oauth_provider, oauth_id=EXCLUDED.oauth_id, email=EXCLUDED.email, updated_at=EXCLUDED.updated_at",
+            args: [
+              { type: "text", value: username },
+              { type: "text", value: passwordHash },
+              { type: "text", value: fullName },
+              { type: "text", value: birthdate || "" },
+              { type: "text", value: country || "" },
+              { type: "text", value: province || "" },
+              { type: "text", value: city || "" },
+              { type: "text", value: referrer || "" },
+              { type: "text", value: "approved" },
+              { type: "text", value: "email" },
+              { type: "text", value: senderEmail },
+              { type: "text", value: senderEmail },
+              { type: "text", value: now },
+              { type: "text", value: now }
+            ]
+          }
+        }]
+      })
+    });
+    var d2 = await u2.json();
+    if (d2.results?.[0]?.error) { writeErrors.push("users: " + JSON.stringify(d2.results[0].error)); }
+    console.log("[EMAIL-TRIGGER] 步骤2-users:", u2.status, d2.results?.[0]?.error ? "ERR:" + JSON.stringify(d2.results[0].error) : "OK");
+
+    // 步骤3: 确保 user_levels 记录存在
+    try {
+      await fetch(TURSO_API, {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + TURSO_TOKEN, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requests: [{
+            type: "execute",
+            stmt: {
+              sql: "INSERT OR IGNORE INTO user_levels (user_id, level, exp, joined_at) VALUES (?,0,0,?)",
+              args: [{ type: "text", value: username }, { type: "text", value: now }]
+            }
+          }]
+        })
+      });
+      console.log("[EMAIL-TRIGGER] 步骤3-user_levels: OK");
+    } catch (e3) {
+      console.log("[EMAIL-TRIGGER] 步骤3-user_levels 忽略错误:", e3.message);
+    }
+
+    if (writeErrors.length > 0) {
+      console.log("[EMAIL-TRIGGER] ❌ 写入失败! 错误列表:", JSON.stringify(writeErrors));
+      return new Response("Write errors: " + writeErrors.join("; "), { status: 500 });
     }
 
     console.log("[EMAIL-TRIGGER] 🎉 验证完成! User " + username + " via " + senderEmail);

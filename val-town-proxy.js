@@ -84,6 +84,8 @@ export default async function (req) {
     }
 
     try { await execTurso("ALTER TABLE oauth_tokens ADD COLUMN last_used_at TEXT DEFAULT ''", []); } catch (e) {}
+    try { await execTurso("ALTER TABLE users ADD COLUMN email TEXT DEFAULT ''", []); } catch (e) {}
+    try { await execTurso("ALTER TABLE registrations ADD COLUMN email TEXT DEFAULT ''", []); } catch (e) {}
 
     // ========== 密码哈希：SHA-256(盐 + 密码) ==========
     const SALT = "yuguo-jr-salt-2024";
