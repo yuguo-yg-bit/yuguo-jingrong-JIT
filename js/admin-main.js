@@ -1,4 +1,6 @@
 var JITAdmin = (function() {
+  // 管理后台使用独立的会话令牌，避免被同浏览器的普通账号登录覆盖
+  window.__JIT_ADMIN_SESSION__ = true;
   // 管理员密码：SHA-256(盐 + 明文密码)
   // 盐: yuguo-jr-salt-2024
   var ADMIN_SALT = "yuguo-jr-salt-2024";
@@ -2165,6 +2167,8 @@ var JITAdmin = (function() {
         localStorage.removeItem("jit_session_token");
         localStorage.removeItem("jit_session_user");
         localStorage.removeItem("jit_session_role");
+        localStorage.removeItem("jit_admin_token");
+        localStorage.removeItem("jit_admin_token_expires");
       } catch (e) {}
       location.reload();
     });

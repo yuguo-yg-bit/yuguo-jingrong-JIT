@@ -16,7 +16,15 @@ var JITApi = (function() {
     try { return localStorage.getItem("jit_current_user") || "anonymous"; } catch(e) { return "anonymous"; }
   };
   var _sessionToken = function() {
-    try { return localStorage.getItem("jit_session_token") || ""; } catch(e) { return ""; }
+    try {
+      // 管理后台优先使用独立的管理员令牌：
+      // 同一浏览器里普通账号登录会覆盖 jit_session_token，若不隔离会导致管理操作 403
+      if (window.__JIT_ADMIN_SESSION__) {
+        var adminToken = localStorage.getItem("jit_admin_token") || "";
+        if (adminToken) return adminToken;
+      }
+      return localStorage.getItem("jit_session_token") || "";
+    } catch(e) { return ""; }
   };
   // 密码哈希（SHA-256 + 用户名盐；防数据库明文泄露）
   var _sha256hex = function(str) {
@@ -1125,6 +1133,9 @@ var JITApi = (function() {
           localStorage.setItem("jit_session_token", res.token);
           localStorage.setItem("jit_session_user", "admin");
           localStorage.setItem("jit_session_role", "admin");
+          // 管理员令牌独立存一份，避免被普通账号登录覆盖
+          localStorage.setItem("jit_admin_token", res.token);
+          if (res.expiresAt) localStorage.setItem("jit_admin_token_expires", res.expiresAt);
         } catch (e) {}
         return true;
       }
