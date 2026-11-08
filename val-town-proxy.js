@@ -101,10 +101,6 @@ export default async function (req) {
       return "sha256$" + (h >>> 0).toString(16).padStart(8, "0");
     }
 
-    if (path === "/health_old") {
-      return jsonResponse({ ok: true, time: new Date().toISOString() });
-    }
-
     // ========== SQL 安全校验层（防注入/防删库） ==========
     const ALLOWED_TABLES = [
       "users","vouchers","points_records","points_logs","points_accounts","chat_messages",
@@ -223,16 +219,6 @@ export default async function (req) {
            ip, String(ua).slice(0, 200), String(bizNo || "").slice(0, 80), st, now]
         ).catch(function() {});
       } catch (e) {}
-    }
-
-    // ========== 调试：返回原始 Turso 响应 ==========
-    if (path === "/debug-sql" && req.method === "POST") {
-      const body = await req.json();
-      const { sql, params } = body;
-      if (!sql) return jsonResponse({ error: "缺少 sql 参数" }, 400);
-
-      const { ok, status, data, rawText } = await execTurso(sql, params);
-      return jsonResponse({ tursoOk: ok, tursoStatus: status, rawResponse: data, rawText });
     }
 
     // ========== SQL 透传（核心接口） ==========
@@ -1102,91 +1088,6 @@ export default async function (req) {
       await mailtrap.send({ from: MAIL_FROM, to: [{ email: to }], subject: subject, html: html, text: text, category: "Email Verification" });
       return true;
     };
-
-    // ========== Email 魔法链接登录 ==========
-    if (path === "/oauth/email/send" && req.method === "POST") {
-      const { email, returnUrl } = await req.json();
-      if (!email) return jsonResponse({ error: "缺少邮箱地址" }, 400);
-      // 简单邮箱格式校验
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonResponse({ error: "邮箱格式不正确" }, 400);
-
-      try {
-        const token = crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).substring(2, 15));
-        const verifyCode = String(Math.floor(100000 + Math.random() * 900000));
-        const now = new Date().toISOString();
-        const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-
-        await execTurso(
-          "INSERT INTO oauth_tokens (token, username, oauth_id, provider, created_at, expires_at) VALUES (?,?,?,?,?,?)",
-          [token, verifyCode, email.toLowerCase(), "email", now, expiresAt]
-        );
-
-        const baseUrl = returnUrl || process.env.SITE_URL || ALLOW_ORIGINS[0];
-        const magicLink = baseUrl + "/login?email_token=" + encodeURIComponent(token) + "&email=" + encodeURIComponent(email);
-
-        const mailkiteKey = process.env.MAILKITE_API_KEY;
-        let emailSent = false;
-        if (mailkiteKey) {
-          try {
-            const mkRes = await fetch("https://api.mailkite.dev/v1/send", {
-              method: "POST",
-              headers: {
-                "Authorization": "Bearer " + mailkiteKey,
-                "Content-Type": "application/json"
-              },
-              body: JSON.stringify({
-                from: "玉国金融 <noreply@yuguojinrong.mailk.us>",
-                to: [email],
-                subject: "玉国金融 - 登录验证码 " + verifyCode,
-                html: '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#f5f0e8;">' +
-                  '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:40px 0;">' +
-                  '<tr><td align="center">' +
-                  '<table width="480" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">' +
-                  '<tr><td style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);padding:32px 40px;text-align:center;">' +
-                  '<div style="font-size:28px;font-weight:700;color:#b8860b;letter-spacing:2px;">玉国金融</div>' +
-                  '<div style="font-size:13px;color:#8892a4;margin-top:6px;letter-spacing:1px;">YUGUO FINANCE</div>' +
-                  '</td></tr>' +
-                  '<tr><td style="padding:36px 40px 28px;">' +
-                  '<p style="font-size:16px;color:#333;margin:0 0 8px;">您好，</p>' +
-                  '<p style="font-size:14px;color:#666;line-height:1.8;margin:0 0 28px;">您正在登录玉国金融平台。请使用以下验证码完成登录，或点击下方按钮一键登录。</p>' +
-                  '<table width="100%" cellpadding="0" cellspacing="0" style="background:#faf8f3;border:2px dashed #b8860b;border-radius:10px;margin-bottom:24px;">' +
-                  '<tr><td style="padding:20px;text-align:center;">' +
-                  '<div style="font-size:12px;color:#999;margin-bottom:8px;letter-spacing:2px;">登录验证码</div>' +
-                  '<div style="font-size:36px;font-weight:700;color:#b8860b;letter-spacing:8px;font-family:\'Courier New\',monospace;">' + verifyCode + '</div>' +
-                  '<div style="font-size:12px;color:#999;margin-top:6px;">15 分钟内有效 · 请勿转发他人</div>' +
-                  '</td></tr></table>' +
-                  '<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">' +
-                  '<a href="' + magicLink + '" style="display:inline-block;background:linear-gradient(135deg,#b8860b,#9a7209);color:#fff;text-decoration:none;padding:14px 48px;border-radius:8px;font-size:16px;font-weight:600;letter-spacing:1px;">一键登录</a>' +
-                  '</td></tr></table>' +
-                  '</td></tr>' +
-                  '<tr><td style="padding:0 40px 32px;">' +
-                  '<table width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #eee;padding-top:24px;">' +
-                  '<tr><td style="font-size:12px;color:#999;line-height:1.8;">' +
-                  '<p style="margin:0 0 4px;">📌 如非本人操作，请忽略此邮件。</p>' +
-                  '<p style="margin:0 0 4px;">📌 验证码和链接均 15 分钟内有效。</p>' +
-                  '<p style="margin:0;">🔗 备用链接：<a href="' + magicLink + '" style="color:#b8860b;">' + magicLink + '</a></p>' +
-                  '</td></tr></table>' +
-                  '</td></tr>' +
-                  '<tr><td style="background:#fafafa;padding:20px 40px;text-align:center;">' +
-                  '<div style="font-size:11px;color:#bbb;">此邮件由系统自动发送 · 请勿回复 · 玉国金融 © ' + new Date().getFullYear() + '</div>' +
-                  '</td></tr>' +
-                  '</table></td></tr></table></body></html>'
-              })
-            });
-            if (mkRes.ok) {
-              const mkData = await mkRes.json();
-              emailSent = mkData.id;
-            }
-          } catch (ignored) {}
-        }
-        if (emailSent) {
-          return jsonResponse({ ok: true, message: "登录链接已发送" });
-        }
-        return jsonResponse({ ok: true, magicLink: magicLink, verifyCode: verifyCode, message: "邮件发送失败，请使用下方验证码或链接登录" });
-      } catch (e) {
-        return jsonResponse({ error: "发送失败: " + (e.message || "未知错误") }, 500);
-      }
-    }
 
     // ========== 老用户绑定邮箱（发送验证码） ==========
     if (path === "/oauth/email/bind" && req.method === "POST") {
