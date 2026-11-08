@@ -83,6 +83,8 @@ export default async function (req) {
       return jsonResponse({ ok: true, time: new Date().toISOString() });
     }
 
+    try { await execTurso("ALTER TABLE oauth_tokens ADD COLUMN last_used_at TEXT DEFAULT ''", []); } catch (e) {}
+
     // ========== 密码哈希：SHA-256(盐 + 密码) ==========
     const SALT = "yuguo-jr-salt-2024";
     async function hashPassword(password) {
