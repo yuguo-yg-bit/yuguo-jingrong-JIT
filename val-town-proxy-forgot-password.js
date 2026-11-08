@@ -259,9 +259,10 @@ export default async function (req) {
         ? newPasswordHash
         : await hashPassword(newPassword);
 
+      // registrations 表没有 updated_at 列（见 turso-schema.sql），只更新密码
       await execTurso(
-        "UPDATE registrations SET password_hash=?, updated_at=? WHERE (oauth_email=? OR email=?) AND review_status='approved'",
-        [passwordHash, now, emailLower, emailLower]
+        "UPDATE registrations SET password_hash=? WHERE (oauth_email=? OR email=?) AND review_status='approved'",
+        [passwordHash, emailLower, emailLower]
       );
 
       await execTurso(
