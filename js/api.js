@@ -722,6 +722,15 @@ var JITApi = (function() {
     });
   };
 
+  // 抽奖开奖：折扣/最终价/积分全部由服务端决定
+  var _lotteryDraw = function(userId, voucherId, poolType) {
+    return _tursoCall("/lottery/draw", {
+      userId: userId,
+      voucherId: String(voucherId),
+      poolType: poolType || "scratch"
+    });
+  };
+
   var _updateVoucherFields = function(issueNumber, fields) {
     var now = new Date().toISOString();
     var setClauses = [];
@@ -1642,6 +1651,7 @@ var JITApi = (function() {
     deleteVoucherTurso: _deleteVoucherTurso,
     updateVoucherFields: _updateVoucherFields,
     updateVoucherWithLottery: _updateVoucherWithLottery,
+    lotteryDraw: _lotteryDraw,
     getAllRegistrationIssueObjects: _getAllRegistrationIssueObjects,
     approveRegistrationTurso: _approveRegistrationTurso,
     rejectRegistrationTurso: _rejectRegistrationTurso,

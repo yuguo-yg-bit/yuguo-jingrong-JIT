@@ -7,6 +7,8 @@
 
 import { MailtrapClient } from "npm:mailtrap";
 
+let _negativePointsFixed = false;
+
 export default async function (req) {
   // ========== HTTP 代理 ==========
 
@@ -170,6 +172,11 @@ export default async function (req) {
     }
 
     // ========== 通用：执行 Turso 请求 ==========
+    const normalizeNegativePoints = async function() {
+      if (_negativePointsFixed) return;
+      _negativePointsFixed = true;
+      try { await execTurso("UPDATE users SET points=0 WHERE points<0", []); } catch (e) {}
+    };
     async function execTurso(sql, params) {
       const tursoReq = {
         requests: [{
@@ -232,6 +239,9 @@ export default async function (req) {
       } catch (e) {}
     }
 
+    // 一次性归一：历史遗留的负积分统一归零（余额永不为负）
+    try { await normalizeNegativePoints(); } catch (e) {}
+
     // ========== SQL 透传（核心接口） ==========
     if (path === "/sql" && req.method === "POST") {
       const body = await req.json();
@@ -267,6 +277,42 @@ export default async function (req) {
         }
         if (lowSql.indexOf("password_hash") !== -1) {
           return jsonResponse({ error: "无权访问该字段" }, 403);
+        }
+
+        // 写操作：普通用户不得直接改积分台账、用户权限，也不得改他人凭证
+        const isWrite = /^\s*(insert|update|delete|replace)\b/i.test(lowSql);
+        if (isWrite) {
+          if (/\bledger\b/.test(lowSql)) {
+            logAudit("SQL_FORBIDDEN_LEDGER", sqlSess.username, "", "", "非管理员直接写流水", "/sql", "", "blocked");
+            return jsonResponse({ error: "无权直接修改积分流水" }, 403);
+          }
+          if (/\busers\b/.test(lowSql) && /(points|role|frozen|password_hash)\s*=/i.test(lowSql)) {
+            logAudit("SQL_FORBIDDEN_USER", sqlSess.username, "", "", "非管理员改用户敏感字段", "/sql", "", "blocked");
+            return jsonResponse({ error: "无权修改该字段" }, 403);
+          }
+          if (/\bvouchers\b/.test(lowSql)) {
+            const pms = Array.isArray(params) ? params.map(function(v) { return String(v); }) : [];
+            if (/^\s*insert|^\s*replace/i.test(lowSql)) {
+              if (pms.indexOf(String(sqlSess.username)) === -1) {
+                return jsonResponse({ error: "无权为他人创建凭证" }, 403);
+              }
+            } else {
+              // UPDATE / DELETE：从参数中定位凭证并校验归属
+              if (pms.length === 0) return jsonResponse({ error: "无权修改该凭证" }, 403);
+              const ph = pms.map(function() { return "?"; }).join(",");
+              const oq = await execTurso("SELECT id, user_id FROM vouchers WHERE id IN (" + ph + ")", pms);
+              const ores = oq.data.results?.[0]?.response?.result || oq.data.results?.[0]?.response?.results || oq.data.results?.[0];
+              const orows = (ores && ores.rows) ? ores.rows : [];
+              if (orows.length === 0) return jsonResponse({ error: "无权修改该凭证" }, 403);
+              for (let ri = 0; ri < orows.length; ri++) {
+                const owner = String(orows[ri][1] && typeof orows[ri][1] === "object" ? orows[ri][1].value : orows[ri][1]);
+                if (owner !== String(sqlSess.username)) {
+                  logAudit("SQL_FORBIDDEN_VOUCHER", sqlSess.username, "vouchers", "", "试图修改他人凭证", "/sql", "", "blocked");
+                  return jsonResponse({ error: "无权修改他人凭证" }, 403);
+                }
+              }
+            }
+          }
         }
       }
 
@@ -442,6 +488,94 @@ export default async function (req) {
 
     // ========== 积分操作（业务动作映射） ==========
     // 前端只传业务动作名称，积分多少、规则全部由中转层决定，杜绝前端篡改
+    // ========== 抽奖开奖（服务端唯一可信源） ==========
+    // 折扣、最终价、积分全部由服务端抽取并落库；客户端只负责播放动画。
+    if (path === "/lottery/draw" && req.method === "POST") {
+      const body = await req.json();
+      const { userId, voucherId, poolType } = body || {};
+
+      const drawSess = await requireSession();
+      if (drawSess.error) return jsonResponse({ error: "未登录或会话已失效，请重新登录" }, 401);
+      if (drawSess.username !== userId && drawSess.role !== "admin") {
+        return jsonResponse({ error: "无权执行该操作" }, 403);
+      }
+      if (!voucherId) return jsonResponse({ error: "缺少凭证ID" }, 400);
+
+      try { await execTurso("CREATE TABLE IF NOT EXISTS lottery_draws (id TEXT PRIMARY KEY, user_id TEXT, voucher_id TEXT UNIQUE, discount TEXT, value TEXT, points INTEGER, created_at TEXT)", []); } catch (e) {}
+
+      const vq = await execTurso("SELECT user_id, amount, discount FROM vouchers WHERE id=?", [String(voucherId)]);
+      const vr = vq.data.results?.[0]?.response?.result || vq.data.results?.[0]?.response?.results || vq.data.results?.[0];
+      const vrows = (vr && vr.rows) ? vr.rows : [];
+      if (vrows.length === 0) return jsonResponse({ error: "凭证不存在" }, 404);
+      const vOwner = vrows[0][0]?.value ?? vrows[0][0];
+      if (String(vOwner) !== String(userId) && drawSess.role !== "admin") {
+        return jsonResponse({ error: "无权操作该凭证" }, 403);
+      }
+
+      const dq = await execTurso("SELECT discount FROM lottery_draws WHERE voucher_id=?", [String(voucherId)]);
+      const dr = dq.data.results?.[0]?.response?.result || dq.data.results?.[0]?.response?.results || dq.data.results?.[0];
+      if (dr && dr.rows && dr.rows.length > 0) {
+        return jsonResponse({ error: "该凭证已抽过奖，不能重复抽取" }, 400);
+      }
+
+      // 与服务端奖池一致：7折~14折
+      const SCRATCH_POOL = [
+        { discount: "7折",   value: 0.7,  weight: 5 },
+        { discount: "8折",   value: 0.8,  weight: 5 },
+        { discount: "9折",   value: 0.9,  weight: 10 },
+        { discount: "9.5折", value: 0.95, weight: 15 },
+        { discount: "10折",  value: 1.0,  weight: 25 },
+        { discount: "11折",  value: 1.1,  weight: 15 },
+        { discount: "12折",  value: 1.2,  weight: 10 },
+        { discount: "13折",  value: 1.3,  weight: 10 },
+        { discount: "14折",  value: 1.4,  weight: 5 }
+      ];
+      const totalWeight = SCRATCH_POOL.reduce(function(s, x) { return s + x.weight; }, 0);
+      const rbuf = new Uint32Array(1);
+      crypto.getRandomValues(rbuf);
+      let roll = rbuf[0] % totalWeight;
+      let picked = SCRATCH_POOL[SCRATCH_POOL.length - 1];
+      for (let i = 0; i < SCRATCH_POOL.length; i++) {
+        if (roll < SCRATCH_POOL[i].weight) { picked = SCRATCH_POOL[i]; break; }
+        roll -= SCRATCH_POOL[i].weight;
+      }
+
+      const amountNum = parseFloat(vrows[0][1]?.value ?? vrows[0][1] ?? 0) || 0;
+      const finalPrice = (amountNum * picked.value).toFixed(2) + "元";
+      const pointsAward = picked.value <= 0.95 ? 50 : 60;
+      const now = new Date().toISOString();
+      const drawId = "ldraw_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      const bizNo = "lottery_" + String(voucherId);
+      const lid = "ld_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      const mkArg = (v) => ({ type: "text", value: String(v) });
+      const requests = [
+        { type: "execute", stmt: { sql: "INSERT OR IGNORE INTO lottery_draws (id,user_id,voucher_id,discount,value,points,created_at) VALUES (?,?,?,?,?,?,?)", args: [drawId, userId, String(voucherId), picked.discount, String(picked.value), pointsAward, now].map(mkArg) } },
+        { type: "execute", stmt: { sql: "UPDATE vouchers SET discount=?, final_price=?, updated_at=? WHERE id=? AND user_id=?", args: [picked.discount, finalPrice, now, String(voucherId), userId].map(mkArg) } },
+        { type: "execute", stmt: { sql: "INSERT INTO ledger (id,biz_no,user_id,amount,balance_after,reason,ref_id,operator,created_at) SELECT ?,?,?,?,(SELECT COALESCE(points,0) FROM users WHERE id=?)+?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)", args: [lid, bizNo, userId, pointsAward, userId, pointsAward, "抽到 " + picked.discount + " 奖励", "lottery", "engine", now, bizNo].map(mkArg) } },
+        { type: "execute", stmt: { sql: "UPDATE users SET points=MAX(0,(SELECT COALESCE(SUM(amount),0) FROM ledger WHERE user_id=?)), updated_at=? WHERE id=?", args: [userId, now, userId].map(mkArg) } },
+        { type: "execute", stmt: { sql: "SELECT COALESCE(points,0) FROM users WHERE id=?", args: [userId].map(mkArg) } }
+      ];
+      const lres = await fetch(TURSO_API, { method: "POST", headers: { Authorization: "Bearer " + TURSO_TOKEN, "Content-Type": "application/json" }, body: JSON.stringify({ requests }) });
+      const ldata = await lres.json().catch(function() { return {}; });
+      if (!lres.ok) throw new Error("开奖落库失败");
+      let balance = null;
+      try {
+        const br = (ldata.results || [])[4]?.response?.result || (ldata.results || [])[4]?.response?.results || (ldata.results || [])[4];
+        if (br && br.rows) balance = br.rows[0]?.[0]?.value ?? br.rows[0]?.[0];
+      } catch (e) {}
+      logAudit("LOTTERY_DRAW", userId, "vouchers", String(voucherId), "服务端开奖 " + picked.discount + "，奖励 " + pointsAward + " 积分", "/lottery/draw", bizNo, "ok");
+      return jsonResponse({
+        ok: true,
+        discount: picked.discount,
+        value: picked.value,
+        finalPrice: finalPrice,
+        points: pointsAward,
+        balance: balance,
+        poolType: String(poolType || "scratch")
+      });
+    }
+
+    // ========== 积分业务动作（规则由服务端决定） ==========
     if (path === "/points/action" && req.method === "POST") {
       const body = await req.json();
       const { action, userId, params } = body;
@@ -459,24 +593,70 @@ export default async function (req) {
 
       const p = params || {};
 
+      // ======== 服务端可信随机与统计（客户端不得参与金额计算） ========
+      const _cryptoRand = function(n) {
+        const buf = new Uint32Array(1);
+        crypto.getRandomValues(buf);
+        return buf[0] % n;
+      };
+      const _rowsOf = function(q) {
+        const r = q && q.data && q.data.results && q.data.results[0]
+          ? (q.data.results[0].response?.result || q.data.results[0].response?.results || q.data.results[0])
+          : null;
+        return (r && r.rows) ? r.rows : [];
+      };
+      const _cell = function(row, i) {
+        if (!row) return undefined;
+        return row[i] && typeof row[i] === "object" ? (row[i].value ?? row[i]) : row[i];
+      };
+      // 中国时区当天 0 点
+      const _dayStartIso = function() {
+        const nowMs = Date.now();
+        const cnMidnight = nowMs - ((nowMs + 8 * 3600 * 1000) % (24 * 3600 * 1000));
+        return new Date(cnMidnight).toISOString();
+      };
+      const _ledgerCountToday = async function(uid, act) {
+        const q = await execTurso(
+          "SELECT COUNT(*) FROM ledger WHERE user_id=? AND biz_no LIKE ? AND created_at>=?",
+          [uid, "biz_" + uid + "_" + act + "_%", _dayStartIso()]
+        );
+        const rows = _rowsOf(q);
+        return rows.length ? Number(_cell(rows[0], 0) || 0) : 0;
+      };
+      const _pointsOf = async function(uid) {
+        const q = await execTurso("SELECT COALESCE(points,0) FROM users WHERE id=?", [uid]);
+        const rows = _rowsOf(q);
+        return rows.length ? Number(_cell(rows[0], 0) || 0) : 0;
+      };
+      // 必须与 js/wheel.js 的 SEGMENTS 顺序完全一致
+      const WHEEL_SEGMENTS = [
+        { label: "+10", delta: 10 },
+        { label: "-10", delta: -10 },
+        { label: "+20", delta: 20 },
+        { label: "-20", delta: -20 },
+        { label: "+30", delta: 30 },
+        { label: "+40", delta: 40 },
+        { label: "+50", delta: 50 }
+      ];
+
       // ======== 积分规则表（唯一可信源） ========
       const R = {
-        // 每日任务
-        daily_task_add_voucher:      { delta: 15,  reason: "完成每日「添加凭证」任务" },
-        daily_task_3_draws:          { delta: 30,  reason: "完成每日「完成3次抽奖」任务" },
+        // 每日任务（服务端限次）
+        daily_task_add_voucher:      { delta: 15,  reason: "完成每日「添加凭证」任务", dailyLimit: 1 },
+        daily_task_3_draws:          { delta: 30,  reason: "完成每日「完成3次抽奖」任务", dailyLimit: 1 },
         // 连续打卡
-        checkin_streak:              { delta: 10,  reason: () => "连续打卡" + (p.streak || 0) + "天奖励" },
+        checkin_streak:              { delta: 10,  reason: () => "连续打卡" + (p.streak || 0) + "天奖励", dailyLimit: 1 },
         // 消费达人
-        spending_master:             { delta: 100, reason: "完成「消费达人」任务（月消费≥¥5000）" },
+        spending_master:             { delta: 100, reason: "完成「消费达人」任务（月消费≥¥5000）", dailyLimit: 1 },
         // 添加凭证
-        add_voucher:                 { delta: 15,  reason: "添加凭证" },
-        add_online_voucher:          { delta: 15,  reason: "添加线上购物凭证" },
-        add_appliance_voucher:       { delta: 15,  reason: "添加电器补贴凭证" },
-        // 凭证审核
-        voucher_approved:            { delta: 25,  reason: "凭证审核通过" },
+        add_voucher:                 { delta: 15,  reason: "添加凭证", dailyLimit: 20 },
+        add_online_voucher:          { delta: 15,  reason: "添加线上购物凭证", dailyLimit: 20 },
+        add_appliance_voucher:       { delta: 15,  reason: "添加电器补贴凭证", dailyLimit: 20 },
+        // 凭证审核（只能由管理员触发，否则任何用户可反复给自己加 25 分）
+        voucher_approved:            { delta: 25,  reason: "凭证审核通过", requireAdmin: true },
         // 连续N天添加凭证
-        streak_bonus:                { delta: 30,  reason: () => "连续" + (p.streak || 0) + "天添加凭证奖励" },
-        // 积分抵消（动态计算）
+        streak_bonus:                { delta: 30,  reason: () => "连续" + (p.streak || 0) + "天添加凭证奖励", dailyLimit: 1 },
+        // 积分抵消（只会扣分，且扣分前有余额护栏）
         points_offset: {
           calc: function() {
             const yuan = Number(p.amountYuan || 0);
@@ -493,54 +673,49 @@ export default async function (req) {
             return { delta: -pts, reason: "用积分抵消 ¥" + (pts / 10).toFixed(2) + " 支付差额" };
           }
         },
-        // 幸运抽奖
+        // 幸运抽奖兑换
         lucky_lottery_exchange:      { delta: -45, reason: "兑换幸运抽奖1次" },
-        // 转盘抽奖
+        // 转盘：结果由服务端抽取，客户端传什么金额都不生效
         wheel_free_reward: {
-          calc: function() {
-            const d = Number(p.rewardDelta || 0);
-            if (!d || d < 0 || d > 5000) return null;
-            return { delta: d, reason: "转盘抽奖免费获得 " + d + " 积分" };
+          dailyLimit: 1,
+          calc: async function() {
+            const idx = _cryptoRand(WHEEL_SEGMENTS.length);
+            const seg = WHEEL_SEGMENTS[idx];
+            const delta = seg.delta > 0 ? seg.delta : 0; // 免费抽不扣分
+            return { delta: delta, reason: "转盘免费抽奖 " + seg.label, extra: { prizeIndex: idx, prizeLabel: seg.label } };
           }
         },
         wheel_reward: {
-          calc: function() {
-            const reward = Number(p.rewardDelta || 0);
-            const cost = Number(p.cost || 0);
-            if (!reward || cost < 0 || reward > 5000 || cost > 5000) return null;
-            const net = reward - cost;
-            return { delta: net, reason: "转盘抽奖：消耗" + cost + "积分，获得+" + reward + "积分" };
+          calc: async function() {
+            const cost = 10;
+            const bal = await _pointsOf(userId);
+            if (bal < cost) return { error: "积分不足，转盘需要 " + cost + " 积分" };
+            const idx = _cryptoRand(WHEEL_SEGMENTS.length);
+            const seg = WHEEL_SEGMENTS[idx];
+            return {
+              delta: seg.delta - cost,
+              reason: "转盘抽奖 " + seg.label + "（消耗" + cost + "积分）",
+              extra: { prizeIndex: idx, prizeLabel: seg.label, cost: cost }
+            };
           }
         },
-        // 抽奖折扣奖励
+        // 抽奖折扣/完整奖励：改由 /lottery/draw 服务端开奖并结算，这里一律拒绝
         lottery_discount_reward: {
-          calc: function() {
-            const d = String(p.discount || "");
-            const low = ["0折","7折","8折","9折","9.5折"];
-            const high = ["10折","11折","12折","13折","14折"];
-            if (low.indexOf(d) !== -1) return { delta: 50, reason: "抽到 " + d + "（免单/7-9.5折）奖励" };
-            if (high.indexOf(d) !== -1) return { delta: 60, reason: "抽到 " + d + "（10折及以上）奖励" };
-            return null;
-          }
+          calc: function() { return { error: "抽奖已改为服务端开奖，请刷新页面后重试" }; }
         },
-        // 装扮
+        lottery_full_reward: {
+          calc: function() { return { error: "抽奖已改为服务端开奖，请刷新页面后重试" }; }
+        },
+        // 装扮：只能是扣分，且服务端限制上限
         unlock_outfit: {
           calc: function() {
             const cost = Number(p.cost || 0);
-            if (!cost || cost <= 0 || cost > 50000) return null;
-            return { delta: -cost, reason: "解锁装扮: " + String(p.outfitId || "unknown") };
+            if (!cost || cost <= 0 || cost > 1000) return null;
+            return { delta: -cost, reason: "解锁装扮: " + String(p.outfitId || "unknown").slice(0, 30) };
           }
         },
-        // 完整抽奖奖励
-        lottery_full_reward: {
-          calc: function() {
-            const d = Number(p.rewardDelta || 0);
-            if (!d || d < -10000 || d > 10000) return null;
-            return { delta: d, reason: "完整抽奖奖励" };
-          }
-        },
-        // 邀请好友
-        invite_reward:               { delta: 50,  reason: "邀请好友奖励" },
+        // 邀请好友（前端未使用，仅管理员可补发）
+        invite_reward:               { delta: 50,  reason: "邀请好友奖励", requireAdmin: true },
         // 管理员调整（必须管理员会话）
         admin_adjust: {
           requireAdmin: true,
@@ -564,11 +739,20 @@ export default async function (req) {
         }
       }
 
-      // 计算 delta 和 reason
+      // 每日限次（按 ledger 流水统计，不信任前端）
+      if (rule.dailyLimit) {
+        const usedToday = await _ledgerCountToday(userId, action);
+        if (usedToday >= rule.dailyLimit) {
+          return jsonResponse({ error: "今日该操作次数已用完" }, 429);
+        }
+      }
+
+      // 计算 delta 和 reason（calc 允许异步，金额由服务端决定）
       let result;
       if (typeof rule.calc === "function") {
-        result = rule.calc();
+        result = await rule.calc();
         if (!result) return jsonResponse({ error: "参数无效" }, 400);
+        if (result.error) return jsonResponse({ error: result.error }, 400);
       } else {
         const reason = typeof rule.reason === "function" ? rule.reason() : rule.reason;
         result = { delta: rule.delta, reason: reason };
@@ -593,7 +777,7 @@ export default async function (req) {
       let balance = null;
       try { const br = (td.results||[])[2]?.response?.result || (td.results||[])[2]?.response?.results || (td.results||[])[2]; if (br&&br.rows) balance = br.rows[0]?.[0]?.value ?? br.rows[0]?.[0]; } catch(e){}
       logAudit("POINTS_ACTION", "engine", "users", userId, action + " → " + (result.delta>0?"+":"")+result.delta+" 积分", "/points/action", bizNo, inserted?"ok":"dup");
-      return jsonResponse({ ok: true, inserted, balance, bizNo, delta: result.delta, reason: result.reason });
+      return jsonResponse(Object.assign({ ok: true, inserted, balance, bizNo, delta: result.delta, reason: result.reason }, result.extra || {}));
     }
 
     // ========== 积分操作（直接入账，兼容旧版） ==========
@@ -625,10 +809,12 @@ export default async function (req) {
       if (!userId || typeof userId !== "string" || userId.length > 50) {
         return jsonResponse({ error: "缺少合法 userId" }, 400);
       }
-      const amt = Math.round(Number(delta || 0));
-      if (!amt || !isFinite(amt)) return jsonResponse({ error: "变动金额必须为非零数字" }, 400);
-      if (Math.abs(amt) > 100000000) return jsonResponse({ error: "单笔变动金额超限" }, 400);
       const why = String(reason || "").slice(0, 200);
+      const amt = Math.round(Number(delta || 0));
+      // 免费转盘抽到负数扇区时按 0 结算，但仍然要留一条流水用于每日次数统计
+      const zeroAllowed = amt === 0 && why.indexOf("免费抽奖") !== -1;
+      if ((!amt || !isFinite(amt)) && !zeroAllowed) return jsonResponse({ error: "变动金额必须为非零数字" }, 400);
+      if (Math.abs(amt) > 100000000) return jsonResponse({ error: "单笔变动金额超限" }, 400);
       const ref = String(refId || "").slice(0, 100);
       const op = String(sessionOperator || operator || "system").slice(0, 50);
       const now = new Date().toISOString();

@@ -646,45 +646,29 @@ var JITApp = (function() {
     if (btn) btn.disabled = true;
     if (spinText) spinText.textContent = "旋转中...";
 
-    // 开始转盘动画
-    JITWheel.spin(function(prize) {
-      // 转盘停止后的回调
-      if (!prize) {
-        if (btn) btn.disabled = false;
-        if (spinText) spinText.textContent = "🎯 开始抽奖";
-        return;
-      }
+    // 先由服务端开奖并结算积分，客户端只负责把转盘转到服务端给的下标
+    if (spinText) spinText.textContent = "开奖中...";
+    var wheelAction = isFree ? "wheel_free_reward" : "wheel_reward";
+    JITPoints.doAction(wheelAction, _currentUser, {}).then(function(res) {
+      var forcedIndex = (res && typeof res.prizeIndex === "number") ? res.prizeIndex : undefined;
 
-      var delta = prize.delta || 0;
-      // 扣除/增加积分
-      var ptsPromise;
-      if (isFree) {
-        // 免费抽奖：不扣积分，只加积分（如果是正的话）
-        if (delta >= 0) {
-          ptsPromise = JITPoints.doAction("wheel_free_reward", _currentUser, { rewardDelta: delta });
-        } else {
-          ptsPromise = Promise.resolve();
+      // 开始转盘动画（使用服务端结果）
+      JITWheel.spin(function(prize) {
+        if (!prize) {
+          if (btn) btn.disabled = false;
+          if (spinText) spinText.textContent = "🎯 开始抽奖";
+          return;
         }
-        JITWheel.markFreeSpinUsed(_currentUser);
-      } else {
-        // 付费抽奖：先扣10分，再加/减结果
-        if (delta >= 0) {
-          ptsPromise = JITPoints.doAction("wheel_reward", _currentUser, { rewardDelta: delta, cost: cost });
-        } else {
-          ptsPromise = JITPoints.doAction("wheel_reward", _currentUser, { rewardDelta: delta, cost: cost });
-        }
-      }
-
-      ptsPromise.then(function() {
+        if (isFree && JITWheel.markFreeSpinUsed) JITWheel.markFreeSpinUsed(_currentUser);
         _refreshPointsDisplay(true);
         _updateWheelUI();
         if (btn) btn.disabled = false;
         if (spinText) spinText.textContent = "🎯 开始抽奖";
-      }).catch(function(err) {
-        _showToast("积分更新失败: " + (err.message || ""), "error");
-        if (btn) btn.disabled = false;
-        if (spinText) spinText.textContent = "🎯 开始抽奖";
-      });
+      }, forcedIndex);
+    }).catch(function(err) {
+      _showToast("抽奖失败: " + ((err && err.message) || "请稍后重试"), "error");
+      if (btn) btn.disabled = false;
+      if (spinText) spinText.textContent = "🎯 开始抽奖";
     });
   };
 
@@ -2156,23 +2140,23 @@ var JITApp = (function() {
     // 现在按 _issueNumber → id → voucherId 依次兜底，全都取不到时给出明确提示。
     var _voucherId = (voucher && (voucher._issueNumber || voucher.id || voucher.voucherId)) || null;
     if (_voucherId) {
-      var updatedVoucher = Object.assign({}, voucher);
-      updatedVoucher.discount = prize.discount;
-      updatedVoucher.discountValue = prize.value;
-      var amountValue = parseFloat(updatedVoucher.amount || updatedVoucher.originalPrice || 0);
-      if (!isNaN(amountValue)) {
-        updatedVoucher.finalPrice = (amountValue * prize.value).toFixed(2) + "元";
-      }
-      JITApi.updateVoucherWithLottery(_voucherId, updatedVoucher).then(function() {
+      // 服务端开奖：折扣、最终价、积分全部以后端返回为准，前端结果仅用于动画
+      JITApi.lotteryDraw(_currentUser, _voucherId, "scratch").then(function(res) {
+        if (res && res.discount) {
+          prize.discount = res.discount;
+          prize.value = res.value;
+          var dEl = document.getElementById("lotteryResultDiscount");
+          if (dEl) dEl.textContent = res.discount;
+          _showToast("🎯 开奖结果：" + res.discount + "（+" + res.points + " 积分）", "success");
+        }
         JITApi.invalidateCache("allVouchers");
         JITApi.invalidateCache("allVouchersForId");
+        _refreshPointsDisplay(true);
         _loadData();
       }).catch(function(err) {
-        // 【修复】原来只 console.error，用户完全不知道折数没存上。
-        // 明确告知 + 本地留档，避免"抽完发现没保存"再次发生。
-        console.error("保存刮刮乐折扣失败:", err);
+        console.error("服务端开奖失败:", err);
         _saveLocalDiscountBackup(prize, voucher, String(err && err.message || err));
-        _showToast("⚠️ 折数保存失败，已暂存本地，请联系管理员", "error");
+        _showToast("⚠️ 开奖失败：" + ((err && err.message) || "请稍后重试"), "error");
       });
     } else {
       // 【修复】取不到任何凭证 ID 时不能静默丢弃，落到本地备份并提示
@@ -2282,16 +2266,7 @@ var JITApp = (function() {
       isWin: totalReward > 0
     }).catch(function() {});
 
-    // 积分发放
-    var ptsDelta = 10;
-    if (scratchPrize.value <= 0.7) ptsDelta += 40;
-    if (totalReward > 0) ptsDelta += 20;
-    var ptsPromise = Promise.resolve();
-    if (JITPoints && JITPoints.changePoints) {
-      ptsPromise = JITPoints.doAction("lottery_full_reward", _currentUser, { rewardDelta: ptsDelta }).then(function() {
-        _refreshPointsDisplay(true);
-      }).catch(function() {});
-    }
+    // 积分由服务端在 /lottery/draw 中直接结算，前端不再申报金额
 
     // 等级经验增加
     var result = _addExp(_currentUser, 30);
@@ -2304,11 +2279,8 @@ var JITApp = (function() {
 
     // 刷新用户中心
     _refreshUserCenterUI();
-
-    ptsPromise.then(function() {
-      _showToast("🎊 完成！折扣：" + scratchPrize.discount + " | 老虎机返现：¥" + totalReward.toFixed(2) + " | +" + ptsDelta + " 积分", "success");
-      _loadData();
-    });
+    _showToast("🎊 完成！折扣：" + scratchPrize.discount + " | 老虎机返现：¥" + totalReward.toFixed(2), "success");
+    _loadData();
   };
 
   // 中奖墙
@@ -3710,51 +3682,12 @@ var JITApp = (function() {
     });
     localStorage.setItem("jit_lottery_results", JSON.stringify(lotteryResults));
 
-    // ===== 积分：根据折扣发放 =====
-    var lowDiscountIds = ["0折", "7折", "8折", "9折", "9.5折"];
-    var highDiscountIds = ["10折", "11折", "12折", "13折", "14折"];
-    var delta = 0;
-    var reason = "";
-    if (lowDiscountIds.indexOf(prize.discount) !== -1) {
-      delta = 50;
-      reason = "抽到 " + prize.discount + "（免单/7-9.5折）奖励";
-    } else if (highDiscountIds.indexOf(prize.discount) !== -1) {
-      delta = 60;
-      reason = "抽到 " + prize.discount + "（10折及以上）奖励";
-    }
-    var ptsPromise = Promise.resolve();
-    if (delta > 0 && JITPoints && JITPoints.changePoints) {
-      ptsPromise = JITPoints.doAction("lottery_discount_reward", _currentUser, { discount: prize.discount }).then(function() {
-        _refreshPointsDisplay(true);
-        _showToast("抽奖积分奖励 +" + delta + " 分", "success");
-      }).catch(function() {});
-    }
-
-    if (targetVoucher && targetVoucher._issueNumber) {
-      var updatedVoucher = Object.assign({}, targetVoucher);
-      updatedVoucher.discount = prize.discount;
-      updatedVoucher.discountValue = prize.value;
-      var amountValue = parseFloat(updatedVoucher.amount || updatedVoucher.originalPrice || 0);
-      if (!isNaN(amountValue)) {
-        updatedVoucher.finalPrice = (amountValue * prize.value).toFixed(2) + "元";
-      }
-      // 等待更新完成后再刷新数据
-      JITApi.updateVoucherWithLottery(targetVoucher._issueNumber, updatedVoucher).then(function() {
-        JITApi.invalidateCache("allVouchers");
-        JITApi.invalidateCache("allVouchersForId");
-        _loadData();
-        return ptsPromise;
-      }).then(function() {
-        _showToast("保存成功！", "success");
-      }).catch(function(err) {
-        console.error("更新抽奖结果失败:", err);
-        _showToast("抽奖结果保存失败，请重试", "error");
-      });
-    } else {
-      ptsPromise.then(function() {
-        _showToast("保存成功！", "success");
-      });
-    }
+    // 开奖与积分已由 /lottery/draw 在 _saveScratchDiscountQuick 中完成，
+    // 这里只做界面刷新，避免重复开奖。
+    _refreshPointsDisplay(true);
+    JITApi.invalidateCache("allVouchers");
+    JITApi.invalidateCache("allVouchersForId");
+    _loadData();
   };
 
   var _openPaymentModal = function(voucher) {

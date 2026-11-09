@@ -150,13 +150,15 @@ var JITWheel = (function() {
   };
 
   // ======= 开始抽奖 =======
-  var _startSpin = function(onResult) {
+  var _startSpin = function(onResult, forcedIndex) {
     if (_isSpinning) return;
     _isSpinning = true;
     _onResult = onResult;
 
-    // 随机选择结果扇区
-    var winIndex = Math.floor(Math.random() * SEG_COUNT);
+    // 结果扇区：服务端开奖时传入下标，未传时才本地随机（兼容旧调用）
+    var winIndex = (typeof forcedIndex === "number" && forcedIndex >= 0 && forcedIndex < SEG_COUNT)
+      ? Math.floor(forcedIndex)
+      : Math.floor(Math.random() * SEG_COUNT);
 
     // 计算目标角度：使指针指到 winIndex 扇区的中间
     // 指针在顶部（0度），扇区 i 的中间角度 = rotation + (i + 0.5) * ARC

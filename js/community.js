@@ -168,7 +168,11 @@ var JITCommunity = (function() {
     avatarEl.className = "profile-avatar";
     if (frame && frame !== "none") avatarEl.classList.add("frame-" + frame);
     if (avatarSaved) {
-      avatarEl.innerHTML = '<img src="' + avatarSaved + '" alt="avatar">';
+      avatarEl.innerHTML = "";
+      var avatarImg = document.createElement("img");
+      avatarImg.src = String(avatarSaved);
+      avatarImg.alt = "avatar";
+      avatarEl.appendChild(avatarImg);
     } else {
       avatarEl.innerHTML = '<span id="profileAvatarInitial">' + _escapeHtml(_getInitial(_currentUser)) + "</span>";
       avatarEl.style.background = _getAvatarColor(_currentUser);
@@ -222,7 +226,12 @@ var JITCommunity = (function() {
     var composerAvatar = document.getElementById("composerAvatar");
     if (composerAvatar) {
       if (avatarSaved) {
-        composerAvatar.innerHTML = '<img src="' + avatarSaved + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
+        composerAvatar.innerHTML = "";
+        var composerImg = document.createElement("img");
+        composerImg.src = String(avatarSaved);
+        composerImg.alt = "";
+        composerImg.style.cssText = "width:100%;height:100%;object-fit:cover;border-radius:50%;";
+        composerAvatar.appendChild(composerImg);
       } else {
         composerAvatar.textContent = _getInitial(_currentUser);
         composerAvatar.style.background = _getAvatarColor(_currentUser);
