@@ -666,7 +666,13 @@ var JITApp = (function() {
         if (spinText) spinText.textContent = "🎯 开始抽奖";
       }, forcedIndex);
     }).catch(function(err) {
-      _showToast("抽奖失败: " + ((err && err.message) || "请稍后重试"), "error");
+      var msg = (err && err.message) || "请稍后重试";
+      // 服务端判定今日免费次数已用尽时，同步本地状态，避免反复点击
+      if (msg.indexOf("次数已用完") !== -1 && isFree && JITWheel.markFreeSpinUsed) {
+        JITWheel.markFreeSpinUsed(_currentUser);
+        _updateWheelUI();
+      }
+      _showToast("抽奖失败: " + msg, "error");
       if (btn) btn.disabled = false;
       if (spinText) spinText.textContent = "🎯 开始抽奖";
     });
