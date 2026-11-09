@@ -178,6 +178,9 @@ export default async function (req) {
       try {
         await execTurso("ALTER TABLE email_verifications ADD COLUMN purpose TEXT DEFAULT ''", []);
       } catch (e) {}
+      try {
+        await execTurso("ALTER TABLE email_verifications ADD COLUMN attempts INTEGER DEFAULT 0", []);
+      } catch (e) {}
 
       const code = String(Math.floor(100000 + Math.random() * 900000));
 
@@ -258,13 +261,20 @@ export default async function (req) {
       }
 
       logAudit("FORGOT_PWD_SEND", emailLower, "users", "", "发送重置验证码", "/oauth/email/forgot-password", "", mailSent ? "ok" : "mail_fail");
+      // 安全：验证码永远不出现在响应体里（历史漏洞：发信失败时回传 code，可接管任意账号）
+      if (!mailSent) {
+        return jsonResponse({
+          ok: false,
+          email: emailLower,
+          mailSent: false,
+          error: "验证码发送失败，请稍后重试或联系管理员"
+        }, 502);
+      }
       return jsonResponse({
         ok: true,
         email: emailLower,
-        mailSent: mailSent,
-        skipMailtrap: skipMailtrap || false,
-        code: mailSent ? undefined : code,
-        message: mailSent ? "重置密码验证码已发送到您的邮箱" : "验证码已生成" + (mailError ? "（" + mailError + "）" : ""),
+        mailSent: true,
+        message: "重置密码验证码已发送到您的邮箱"
       });
     }
 
@@ -279,11 +289,35 @@ export default async function (req) {
       const now = new Date().toISOString();
 
       const { data: verData } = await execTurso(
-        "SELECT code FROM email_verifications WHERE email=? AND code=? AND status='pending' AND purpose='reset'",
+        "SELECT code, created_at, attempts FROM email_verifications WHERE email=? AND code=? AND status='pending' AND purpose='reset'",
         [emailLower, code]
       );
       const vrows = verData.results?.[0]?.response?.result?.rows || [];
-      if (vrows.length === 0) return jsonResponse({ error: "验证码错误或已过期" }, 400);
+      if (vrows.length === 0) {
+        // 失败计数：同一邮箱累计 5 次错误即作废当前验证码
+        try {
+          const { data: cData } = await execTurso(
+            "SELECT attempts FROM email_verifications WHERE email=? AND status='pending' AND purpose='reset'",
+            [emailLower]
+          );
+          const crows = cData.results?.[0]?.response?.result?.rows || [];
+          const cur = crows.length > 0 ? Number(crows[0][0]?.value ?? crows[0][0] ?? 0) : 0;
+          const next = cur + 1;
+          await execTurso(
+            "UPDATE email_verifications SET attempts=?, status=CASE WHEN ? >= 5 THEN 'locked' ELSE status END WHERE email=? AND status='pending' AND purpose='reset'",
+            [next, next, emailLower]
+          );
+        } catch (ignored) {}
+        return jsonResponse({ error: "验证码错误或已过期" }, 400);
+      }
+
+      // 有效期 15 分钟（历史漏洞：验证码永久有效）
+      const createdRaw = vrows[0][1]?.value ?? vrows[0][1];
+      const createdMs = new Date(createdRaw).getTime();
+      if (!createdMs || isNaN(createdMs) || Date.now() - createdMs > 15 * 60 * 1000) {
+        await execTurso("UPDATE email_verifications SET status='expired' WHERE email=? AND purpose='reset' AND status='pending'", [emailLower]);
+        return jsonResponse({ error: "验证码已过期，请重新获取" }, 400);
+      }
 
       const passwordHash = (newPasswordHash && String(newPasswordHash).startsWith("sha256$"))
         ? newPasswordHash

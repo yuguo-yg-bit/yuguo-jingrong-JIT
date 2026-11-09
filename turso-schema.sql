@@ -386,6 +386,7 @@ CREATE TABLE IF NOT EXISTS email_verifications (
   code TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending',
   purpose TEXT DEFAULT '',
+  attempts INTEGER DEFAULT 0,
   created_at TEXT NOT NULL,
   verified_at TEXT
 );

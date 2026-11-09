@@ -26,6 +26,15 @@ export default async function (req) {
     };
   }
 
+  // return_url 只允许精确匹配白名单 origin，防止开放重定向把 token 送到攻击者域名
+  function safeReturnUrl(raw) {
+    try {
+      const u = new URL(String(raw || ""));
+      if (ALLOW_ORIGINS.includes(u.origin)) return u.origin;
+    } catch (e) {}
+    return ALLOW_ORIGINS[0];
+  }
+
   function jsonResponse(data, status = 200) {
     const origin = req.headers.get("origin") || "";
     return new Response(JSON.stringify(data), {
@@ -233,6 +242,34 @@ export default async function (req) {
         return jsonResponse({ error: "缺少 sql 参数" }, 400);
       }
 
+      // 鉴权：/sql 不再允许匿名访问（历史漏洞：通用 SQL 通道等于数据库公网入口）
+      const sqlSess = await requireSession();
+      if (sqlSess.error) {
+        // 唯一例外：首页公共留言板只读（仅 chat_messages 的 SELECT）
+        const anonSql = String(sql);
+        const anonAllowed = /^\s*select\b/i.test(anonSql) &&
+          /\bchat_messages\b/i.test(anonSql) &&
+          !/\b(sessions|oauth_tokens|registrations|users|vouchers|ledger|audit_logs|password_hash)\b/i.test(anonSql);
+        if (!anonAllowed) {
+          logAudit("SQL_UNAUTHORIZED", op, "", "", sqlSess.error + " | " + String(sql).slice(0, 80), "/sql", "", "blocked");
+          return jsonResponse({ error: "未登录或会话已失效，请重新登录" }, 401);
+        }
+      }
+      // 非管理员禁止触达认证/审计类数据
+      if (sqlSess.role !== "admin") {
+        const lowSql = String(sql).toLowerCase();
+        const forbiddenTables = ["sessions", "oauth_tokens", "audit_logs"];
+        for (let fi = 0; fi < forbiddenTables.length; fi++) {
+          if (new RegExp("\\b" + forbiddenTables[fi] + "\\b").test(lowSql)) {
+            logAudit("SQL_FORBIDDEN_TABLE", sqlSess.username, "", "", "访问受限表: " + forbiddenTables[fi], "/sql", "", "blocked");
+            return jsonResponse({ error: "无权访问该数据表" }, 403);
+          }
+        }
+        if (lowSql.indexOf("password_hash") !== -1) {
+          return jsonResponse({ error: "无权访问该字段" }, 403);
+        }
+      }
+
       // 安全校验：危险语句 / 多语句 / 全表修改 / 非法表名一律拒绝（拦截行为记日志）
       try {
         assertSqlSafe(sql);
@@ -410,6 +447,16 @@ export default async function (req) {
       const { action, userId, params } = body;
       if (!action || !userId) return jsonResponse({ error: "缺少 action 或 userId" }, 400);
 
+      // 鉴权：所有积分动作必须登录，且只能作用于本人（管理员可代操作）
+      const actSess = await requireSession();
+      if (actSess.error) {
+        return jsonResponse({ error: "未登录或会话已失效，请重新登录" }, 401);
+      }
+      if (actSess.username !== userId && actSess.role !== "admin") {
+        logAudit("POINTS_ACTION_FORBIDDEN", actSess.username, "users", String(userId), "越权执行积分动作: " + String(action), "/points/action", "", "blocked");
+        return jsonResponse({ error: "无权执行该操作" }, 403);
+      }
+
       const p = params || {};
 
       // ======== 积分规则表（唯一可信源） ========
@@ -556,28 +603,20 @@ export default async function (req) {
       const body = await req.json();
       const { bizNo, userId, delta, reason, refId, operator } = body;
 
-      // 会话校验：有会话 → 校验身份；无会话 → 放行但记警告（后续完善登录后收紧）
-      // 注意：/points 本就允许无会话调用，所以“会话属于别的账号”时 403 只会误伤
-      // （退出登录没清 token、换账号登录等），按无会话处理即可，安全等级不变。
-      let sessionOperator = "";
+      // 会话校验：必须登录；普通用户只能操作自己的积分
       const sess = await requireSession();
-      if (!sess.error) {
-        const isAdminSession = sess.role === "admin";
-        if (sess.username === userId || isAdminSession) {
-          // 身份一致（或管理员代操作）：入账操作人以会话为准，不信任前端传的 operator
-          sessionOperator = isAdminSession ? "admin" : sess.username;
-        } else {
-          logAudit("POINTS_SESSION_MISMATCH", sess.username, "users", String(userId || ""), "会话与操作用户不一致（按无会话放行）", "/points", String(bizNo || ""), "warn");
-        }
-        if (await rateLimitPoints(sessionOperator || String(operator || userId || "anonymous"))) {
-          return jsonResponse({ error: "操作过于频繁，请稍后再试" }, 429);
-        }
-      } else {
-        // 无会话：暂放行，记警告日志
-        logAudit("POINTS_NO_SESSION", String(operator || "anonymous"), "users", String(userId || ""), "无会话操作积分（已暂放行）", "/points", String(bizNo || ""), "warn");
-        if (await rateLimitPoints(String(operator || "anonymous"))) {
-          return jsonResponse({ error: "操作过于频繁，请稍后再试" }, 429);
-        }
+      if (sess.error) {
+        logAudit("POINTS_NO_SESSION", String(operator || "anonymous"), "users", String(userId || ""), sess.error, "/points", String(bizNo || ""), "blocked");
+        return jsonResponse({ error: "未登录或会话已失效，请重新登录" }, 401);
+      }
+      const isAdminSession = sess.role === "admin";
+      if (sess.username !== userId && !isAdminSession) {
+        logAudit("POINTS_FORBIDDEN", sess.username, "users", String(userId || ""), "越权操作他人积分", "/points", String(bizNo || ""), "blocked");
+        return jsonResponse({ error: "无权操作他人积分" }, 403);
+      }
+      const sessionOperator = isAdminSession ? "admin" : sess.username;
+      if (await rateLimitPoints(sessionOperator)) {
+        return jsonResponse({ error: "操作过于频繁，请稍后再试" }, 429);
       }
 
       if (!bizNo || typeof bizNo !== "string" || bizNo.length > 64) {
@@ -686,26 +725,8 @@ export default async function (req) {
 
     // ========== 批量建表 ==========
     if (path === "/init" && req.method === "POST") {
-      const body = await req.json();
-      const { statements } = body;
-
-      if (!statements || !Array.isArray(statements)) {
-        return jsonResponse({ error: "缺少 statements 数组" }, 400);
-      }
-
-      const results = [];
-      for (const stmt of statements) {
-        const tursoReq = { requests: [{ type: "execute", stmt: { sql: stmt } }] };
-        const tursoRes = await fetch(TURSO_API, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${TURSO_TOKEN}`, "Content-Type": "application/json" },
-          body: JSON.stringify(tursoReq),
-        });
-        const data = await tursoRes.json();
-        results.push({ sql: stmt.substring(0, 60), ok: tursoRes.ok, result: data.results?.[0] });
-      }
-
-      return jsonResponse({ ok: true, results });
+      // 已下线：任意 SQL 批量执行接口，等同 DROP DATABASE 公网入口
+      return jsonResponse({ error: "接口已下线" }, 410);
     }
 
     // ========== 图片上传（GitHub API） ==========
@@ -715,6 +736,11 @@ export default async function (req) {
 
       if (!base64Data) {
         return jsonResponse({ error: "缺少 base64Data" }, 400);
+      }
+      // 鉴权：上传必须登录，否则等于把仓库当公开图床
+      const upSess = await requireSession();
+      if (upSess.error) {
+        return jsonResponse({ error: "未登录或会话已失效，请重新登录" }, 401);
       }
 
       const ts = Date.now();
@@ -750,7 +776,7 @@ export default async function (req) {
       const clientId = process.env.GITHUB_OAUTH_CLIENT_ID;
       if (!clientId) return jsonResponse({ error: "GitHub OAuth 未配置，请设置 GITHUB_OAUTH_CLIENT_ID 环境变量" }, 500);
       const state = url.searchParams.get("state") || "default";
-      const returnUrl = url.searchParams.get("return_url") || ALLOW_ORIGINS[0];
+      const returnUrl = safeReturnUrl(url.searchParams.get("return_url") || ALLOW_ORIGINS[0]);
       const githubAuthUrl = "https://github.com/login/oauth/authorize?" +
         "client_id=" + encodeURIComponent(clientId) +
         "&redirect_uri=" + encodeURIComponent("https://yuguoygbit--efeee912c58011f1af2f1607ee4eb77e.web.val.run/oauth/github/callback") +
@@ -765,7 +791,7 @@ export default async function (req) {
       const fullState = url.searchParams.get("state") || "default|" + ALLOW_ORIGINS[0];
       const stateParts = fullState.split("|");
       const state = stateParts[0] || "default";
-      const returnUrl = stateParts.slice(1).join("|") || ALLOW_ORIGINS[0];
+      const returnUrl = safeReturnUrl(stateParts.slice(1).join("|") || ALLOW_ORIGINS[0]);
 
       if (!code) {
         const redirectUrl = returnUrl + "/login?oauth_error=" + encodeURIComponent("授权被取消");
@@ -886,7 +912,7 @@ export default async function (req) {
       const clientId = process.env.MICROSOFT_OAUTH_CLIENT_ID;
       if (!clientId) return jsonResponse({ error: "Microsoft OAuth 未配置，请设置 MICROSOFT_OAUTH_CLIENT_ID 环境变量" }, 500);
       const state = url.searchParams.get("state") || "default";
-      const returnUrl = url.searchParams.get("return_url") || ALLOW_ORIGINS[0];
+      const returnUrl = safeReturnUrl(url.searchParams.get("return_url") || ALLOW_ORIGINS[0]);
       const msAuthUrl = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?" +
         "client_id=" + encodeURIComponent(clientId) +
         "&response_type=code" +
@@ -902,7 +928,7 @@ export default async function (req) {
       const fullState = url.searchParams.get("state") || "default|" + ALLOW_ORIGINS[0];
       const stateParts = fullState.split("|");
       const state = stateParts[0] || "default";
-      const returnUrl = stateParts.slice(1).join("|") || ALLOW_ORIGINS[0];
+      const returnUrl = safeReturnUrl(stateParts.slice(1).join("|") || ALLOW_ORIGINS[0]);
 
       if (!code) {
         const redirectUrl = returnUrl + "/login?oauth_error=" + encodeURIComponent("授权被取消");
