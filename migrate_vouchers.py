@@ -16,7 +16,8 @@ REPO_OWNER = "yuguo-yg-bit"
 REPO_NAME = "yuguo-jingrong-JIT"
 
 TURSO_PROXY = "https://yuguoygbit--efeee912c58011f1af2f1607ee4eb77e.web.val.run"
-TURSO_AUTH = "Jrb@025808"
+# 通用令牌已下线：/sql 仅限管理员登录会话，需设置 JIT_ADMIN_SESSION
+TURSO_AUTH = os.environ.get("JIT_ADMIN_SESSION", "")
 
 VOUCHER_LABEL = "voucher"
 
@@ -231,7 +232,7 @@ def turso_sql(sql, params=None):
         f"{TURSO_PROXY}/sql",
         headers={
             "Content-Type": "application/json",
-            "X-Auth-Token": TURSO_AUTH,
+            "X-Session-Token": TURSO_AUTH,
         },
         json=body,
         timeout=30

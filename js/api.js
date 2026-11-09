@@ -9,7 +9,6 @@ var JITApi = (function() {
   var _gameProxy = "https://yuguoygbit--8f55f7b6d02111f18f891607ee4eb77e.web.val.run";
   // 忘记密码代理：部署 val-town-proxy-forgot-password.js 后替换此 URL
   var _fpProxy = "https://yuguoygbit--b8ff89d6dac311f1a0cd1607ee4eb77e.web.val.run";
-  var _tursoAuth = "Jrb@025808";
 
   // ========== Turso 代理调用 ==========
   var _currentOperator = function() {
@@ -56,7 +55,6 @@ var JITApi = (function() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Auth-Token": _tursoAuth,
         "X-Session-Token": _sessionToken()
       },
       body: JSON.stringify(payload)
@@ -79,7 +77,95 @@ var JITApi = (function() {
     });
   };
 
+  // SQL → 具名操作映射：普通业务只把 op 名发到 /db，SQL 文本只存在于服务端
+  var _SQL_TO_OP = {
+  "SELECT * FROM vouchers WHERE user_id=? AND user_id NOT LIKE '【%】%' AND shop_name NOT LIKE '【%】%' ORDER BY created_at DESC LIMIT 500": "vouchers.list_mine",
+  "SELECT * FROM vouchers WHERE user_id NOT LIKE '【%】%' AND shop_name NOT LIKE '【%】%' ORDER BY created_at DESC LIMIT 500": "vouchers.list_all",
+  "SELECT COALESCE(MAX(CAST(id AS INTEGER)), 0) + 1 AS next_id FROM vouchers": "vouchers.next_id",
+  "UPDATE vouchers SET payment_status='completed', payment_method=COALESCE(NULLIF(?,''),payment_method), status='已完成交易', updated_at=? WHERE id=?": "vouchers.mark_completed",
+  "UPDATE vouchers SET payment_status='paid', payment_method=COALESCE(NULLIF(?,''),payment_method), status='已付款·待确认', updated_at=? WHERE id=?": "vouchers.mark_paid",
+  "SELECT * FROM chat_messages WHERE user_id=? ORDER BY created_at ASC LIMIT 500": "chat.list",
+  "INSERT INTO chat_messages (id, user_id, sender, content, image_url, is_read, created_at) VALUES (?,?,?,?,?,0,?)": "chat.send",
+  "SELECT user_id, MAX(created_at) AS last_at FROM chat_messages GROUP BY user_id ORDER BY last_at DESC": "chat.users",
+  "SELECT DISTINCT user_id FROM vouchers ORDER BY user_id ASC LIMIT 1000": "vouchers.users",
+  "UPDATE chat_messages SET is_read=1 WHERE user_id=?": "chat.mark_read",
+  "SELECT * FROM user_levels WHERE user_id=? LIMIT 1": "levels.get",
+  "DELETE FROM vouchers WHERE id=?": "vouchers.delete",
+  "UPDATE vouchers SET discount=?, final_price=?, updated_at=? WHERE id=?": "vouchers.update_lottery",
+  "SELECT * FROM registrations ORDER BY created_at DESC LIMIT 500": "reg.list",
+  "UPDATE registrations SET review_status='approved' WHERE id=?": "reg.approve",
+  "UPDATE registrations SET review_status='rejected' WHERE id=?": "reg.reject",
+  "SELECT id, username, full_name, review_status, created_at FROM registrations WHERE username=? AND review_status='approved' LIMIT 1": "reg.find_approved",
+  "SELECT id, username, created_at FROM registrations WHERE username=? AND review_status='pending' LIMIT 1": "reg.find_pending",
+  "INSERT INTO registrations (id, username, password_hash, full_name, birthdate, country, province, city, referrer, review_status, created_at) VALUES (?,?,?,?,?,?,?,?,?,'pending',?)": "reg.create",
+  "SELECT * FROM registrations WHERE review_status='pending' ORDER BY created_at DESC": "reg.pending_list",
+  "SELECT * FROM registrations WHERE referrer=? AND review_status='approved' ORDER BY created_at DESC": "reg.referrals",
+  "INSERT INTO notifications (id, title, content, target_users, created_at) VALUES (?,?,?,?,?)": "notif.send",
+  "SELECT * FROM notifications ORDER BY created_at DESC LIMIT 200": "notif.list",
+  "INSERT INTO notification_replies (notification_id, username, message, created_at) VALUES (?,?,?,?)": "notif.reply",
+  "SELECT * FROM notification_replies WHERE notification_id=? ORDER BY created_at ASC": "notif.replies",
+  "UPDATE vouchers SET is_urgent=1, urgent_reason=?, urgent_username=?, urgent_time=?, updated_at=? WHERE id=?": "vouchers.urgent_mark",
+  "UPDATE vouchers SET is_urgent=0, urgent_reason='', urgent_username='', urgent_time='', updated_at=? WHERE id=?": "vouchers.urgent_remove",
+  "SELECT is_urgent, urgent_reason, urgent_username, urgent_time FROM vouchers WHERE id=? LIMIT 1": "vouchers.urgent_info",
+  "INSERT OR REPLACE INTO users (id, password_hash, updated_at) VALUES (?,?,?)": "users.update_password",
+  "SELECT * FROM users WHERE id=? LIMIT 1": "users.profile",
+  "SELECT * FROM oauth_tokens WHERE token=? LIMIT 1": "oauth.token_get",
+  "DELETE FROM oauth_tokens WHERE token=?": "oauth.token_delete",
+  "UPDATE oauth_tokens SET last_used_at=? WHERE token=?": "oauth.token_touch",
+  "SELECT value FROM admin_config WHERE key=?": "admin_config.get",
+  "INSERT OR REPLACE INTO admin_config (key, value, updated_at) VALUES (?,?,?)": "admin_config.set",
+  "SELECT key, value FROM admin_config": "admin_config.list",
+  "INSERT OR REPLACE INTO urgent_blacklist (username, reason, from_time, until, operator, created_at) VALUES (?,?,?,?,?,?)": "bl.urgent_add",
+  "DELETE FROM urgent_blacklist WHERE username=?": "bl.urgent_remove",
+  "SELECT * FROM urgent_blacklist ORDER BY created_at DESC LIMIT 500": "bl.urgent_list",
+  "INSERT OR REPLACE INTO blacklist (username, reason, time, type, until, created_at) VALUES (?,?,?,?,?,?)": "bl.add",
+  "DELETE FROM blacklist WHERE username=?": "bl.remove",
+  "SELECT * FROM blacklist ORDER BY created_at DESC LIMIT 500": "bl.list",
+  "SELECT * FROM community_statuses ORDER BY created_at DESC LIMIT 200": "community.list",
+  "INSERT INTO community_statuses (username, content, created_at) VALUES (?,?,?)": "community.post",
+  "SELECT * FROM community_bans ORDER BY created_at DESC LIMIT 500": "community.bans",
+  "SELECT * FROM community_bans WHERE user_id=? ORDER BY id DESC LIMIT 1": "community.ban_get",
+  "SELECT id FROM community_bans WHERE user_id=? LIMIT 1": "community.ban_find",
+  "INSERT INTO community_bans (user_id, banned_until, reason, created_by, created_at) VALUES (?,?,?,?,?)": "community.ban_insert",
+  "UPDATE community_bans SET banned_until=?, reason=?, created_by=?, created_at=? WHERE id=?": "community.ban_update",
+  "DELETE FROM community_bans WHERE user_id=?": "community.ban_remove",
+  "DELETE FROM community_statuses WHERE id=?": "community.status_delete",
+  "SELECT * FROM user_levels LIMIT 500": "levels.list",
+  "INSERT OR REPLACE INTO user_levels (user_id, level, exp, streak_days, total_vouchers, basic_tickets, rare_tickets, last_login, last_upload, badges, avatar, theme, avatar_frame, bio, location, joined_at, cover, last_wheel_free, discount_backup, nickname, real_name, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)": "levels.upsert",
+  "SELECT COUNT(*) AS cnt FROM lottery_tickets WHERE user_id=? AND status='unused' AND expires_at > ?": "tickets.count",
+  "SELECT COUNT(*) AS cnt FROM lottery_tickets WHERE user_id=? AND (status='expired' OR expires_at <= ?)": "tickets.expired_count",
+  "INSERT INTO lottery_tickets (id, user_id, ticket_type, source, status, expires_at, created_at) VALUES (?,?,?,?,'unused',?,?)": "tickets.add",
+  "UPDATE lottery_tickets SET status='used', used_at=? WHERE id=(SELECT id FROM lottery_tickets WHERE user_id=? AND status='unused' AND expires_at > ? LIMIT 1)": "tickets.use",
+  "UPDATE lottery_tickets SET status='expired' WHERE status IN ('unused','used') AND expires_at <= ? AND user_id=?": "tickets.expire_old",
+  "INSERT INTO lottery_records (id, user_id, voucher_id, pool_type, prize_id, prize_name, prize_cash, prize_rate, voucher_amount, final_reward, is_win, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)": "lottery.record_add",
+  "SELECT * FROM win_wall ORDER BY created_at DESC LIMIT 200": "winwall.list",
+  "INSERT INTO win_wall (id, user_id, prize_name, prize_cash, pool_type, voucher_amount, created_at) VALUES (?,?,?,?,?,?,?)": "winwall.add",
+  "SELECT * FROM task_rewards WHERE user_id=? ORDER BY created_at DESC": "tasks.list",
+  "INSERT INTO task_rewards (id, user_id, task_id, reward_type, reward_amount, claimed_at, created_at) VALUES (?,?,?,?,?,?,?)": "tasks.add",
+  "SELECT outfit_id FROM user_outfits WHERE user_id=? ORDER BY unlocked_at ASC": "outfits.list",
+  "INSERT OR IGNORE INTO user_outfits (id, user_id, outfit_id, unlocked_at) VALUES (?,?,?,?)": "outfits.unlock",
+  "SELECT * FROM risk_control WHERE id='global' LIMIT 1": "risk.get",
+  "INSERT OR REPLACE INTO risk_control (id, monthly_budget, monthly_spent, per_user_monthly_cap, per_ticket_cap, rare_pool_open, month_key, updated_at) VALUES ('global',?,?,?,?,?,?,?)": "risk.update",
+  "SELECT * FROM user_monthly_rewards WHERE user_id=? AND month_key=? LIMIT 1": "monthly.get",
+  "INSERT INTO user_monthly_rewards (id, user_id, month_key, total_reward, draw_count, updated_at) VALUES (?,?,?,?,1,?) ON CONFLICT(id) DO UPDATE SET total_reward = total_reward + ?, draw_count = draw_count + 1, updated_at=?": "monthly.add",
+  "INSERT INTO users (id, password_hash, points, sign_ins, last_sign_in, streak_days, frozen, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)": "users.create_account",
+  "INSERT INTO points_records (id, user_id, delta, reason, created_at) VALUES (?,?,?,?,?)": "points.log_add",
+  "UPDATE users SET sign_ins = ?, last_sign_in = ?, streak_days = ?, updated_at = ? WHERE id = ?": "users.signin_update",
+  "UPDATE users SET frozen = ?, updated_at = ? WHERE id = ?": "users.set_frozen",
+  "SELECT id, points, sign_ins, last_sign_in, streak_days, frozen FROM users WHERE id = ?": "points.account_get",
+  "SELECT delta, reason, created_at FROM points_records WHERE user_id = ? ORDER BY created_at DESC LIMIT ?": "points.logs_recent",
+  "SELECT delta, reason, created_at FROM points_records WHERE user_id = ? ORDER BY created_at DESC": "points.logs_all",
+  "SELECT id, points, sign_ins, last_sign_in, streak_days, frozen FROM users": "users.list_points"
+};
+
+  var _dbCall = function(op, params) {
+    return _tursoCall("/db", { op: op, params: params || [] });
+  };
+
   var _tursoSql = function(sql, params) {
+    var op = _SQL_TO_OP[sql];
+    if (op) return _dbCall(op, params);
+    // 未登记的 SQL 只供管理员后台使用（服务端 /sql 已限制管理员）
     return _tursoCall("/sql", { sql: sql, params: params || [] });
   };
 
@@ -452,7 +538,7 @@ var JITApi = (function() {
       voucherData.paymentStatus || "pending",
       now, now
     ];
-    return _tursoSql(sql, params).then(function() {
+    return _dbCall("vouchers.create", params).then(function() {
       _invalidateCache();
       return _dbRowToVoucherData({
         id: id,
@@ -526,7 +612,6 @@ var JITApi = (function() {
   var _updateVoucherIssueBody = function(voucherData) {
     var id = voucherData._issueNumber || voucherData.voucherId || "";
     var now = new Date().toISOString();
-    var sql = "UPDATE vouchers SET shop_name=?, shop_photo=?, order_photos=?, latitude=?, longitude=?, amount=?, discount=?, payment_method=?, remark=?, signature=?, reject_reason=?, platform=?, order_no=?, product_photo=?, shopping_photos=?, electric_category=?, electric_brand=?, electric_apply_amount=?, electric_subsidy_rate=?, electric_subsidy_amount=?, review_result=?, final_price=?, updated_at=? WHERE id=?";
     var params = [
       voucherData.shopName || "",
       voucherData.shopPhoto || "",
@@ -552,7 +637,7 @@ var JITApi = (function() {
       voucherData.finalPrice || "",
       now, id
     ];
-    return _tursoSql(sql, params).then(function() {
+    return _dbCall("vouchers.update_full", params).then(function() {
       _invalidateCache("allVouchers");
       return { number: id, html_url: "#" };
     });
@@ -696,14 +781,14 @@ var JITApi = (function() {
     else if (action === "completed") newStatus = "completed";
     else if (action === "paid") newStatus = "paid";
     else newStatus = "pending";
-    var sql = "UPDATE vouchers SET status=?, reject_reason=COALESCE(NULLIF(?,''),reject_reason), updated_at=? WHERE id=?";
+    var opName = "vouchers.update_status";
     var params = [newStatus, reason || "", now, String(issueNumber)];
     // 电器补贴：额外更新补贴比例和金额
     if (extra && extra.isElectric) {
-      sql = "UPDATE vouchers SET status=?, reject_reason=COALESCE(NULLIF(?,''),reject_reason), electric_subsidy_rate=?, electric_subsidy_amount=?, updated_at=? WHERE id=?";
+      opName = "vouchers.update_status_electric";
       params = [newStatus, reason || "", String(extra.subsidyRate || ""), String(extra.subsidyAmount || ""), now, String(issueNumber)];
     }
-    return _tursoSql(sql, params).then(function() { _invalidateCache("allVouchers"); });
+    return _dbCall(opName, params).then(function() { _invalidateCache("allVouchers"); });
   };
 
   var _deleteVoucherTurso = function(issueNumber) {
@@ -732,21 +817,15 @@ var JITApi = (function() {
   };
 
   var _updateVoucherFields = function(issueNumber, fields) {
-    var now = new Date().toISOString();
-    var setClauses = [];
-    var params = [];
     var allowedFields = ["shop_name", "shop_photo", "order_photos", "latitude", "longitude", "amount", "discount", "payment_method", "remark", "signature", "reject_reason", "platform", "order_no", "product_photo", "shopping_photos", "electric_category", "electric_brand", "electric_apply_amount", "electric_subsidy_rate", "electric_subsidy_amount", "review_result", "final_price", "status", "order_type", "payment_status"];
-    Object.keys(fields).forEach(function(key) {
+    var safeFields = {};
+    Object.keys(fields || {}).forEach(function(key) {
       if (allowedFields.indexOf(key) > -1) {
-        setClauses.push(key + "=?");
-        params.push(fields[key] === undefined ? "" : fields[key]);
+        safeFields[key] = fields[key] === undefined ? "" : fields[key];
       }
     });
-    if (setClauses.length === 0) return Promise.resolve();
-    setClauses.push("updated_at=?");
-    params.push(now);
-    params.push(String(issueNumber));
-    return _tursoSql("UPDATE vouchers SET " + setClauses.join(",") + " WHERE id=?", params).then(function() {
+    if (Object.keys(safeFields).length === 0) return Promise.resolve();
+    return _dbCall("vouchers.update_fields", [String(issueNumber), safeFields]).then(function() {
       _invalidateCache("allVouchers");
     });
   };
@@ -767,7 +846,7 @@ var JITApi = (function() {
 
   // ========== 注册系统（Turso） ==========
   var _findRegisteredUser = function(username) {
-    return _tursoSql("SELECT * FROM registrations WHERE username=? AND review_status='approved' LIMIT 1", [username]).then(function(result) {
+    return _tursoSql("SELECT id, username, full_name, review_status, created_at FROM registrations WHERE username=? AND review_status='approved' LIMIT 1", [username]).then(function(result) {
       var objs = _tursoRowsToObjects(result.columns, result.rows);
       if (objs.length > 0) return objs[0];
       return null;
@@ -775,7 +854,7 @@ var JITApi = (function() {
   };
 
   var _findPendingRegistration = function(username) {
-    return _tursoSql("SELECT * FROM registrations WHERE username=? AND review_status='pending' LIMIT 1", [username]).then(function(result) {
+    return _tursoSql("SELECT id, username, created_at FROM registrations WHERE username=? AND review_status='pending' LIMIT 1", [username]).then(function(result) {
       var objs = _tursoRowsToObjects(result.columns, result.rows);
       if (objs.length > 0) return objs[0];
       return null;
@@ -786,7 +865,8 @@ var JITApi = (function() {
     var username = data.username || "";
     return _findRegisteredUser(username).then(function(existing) {
       if (existing) {
-        return _submitVoucher({ username: username, shopName: "【注册已通过】请勿重复注册", amount: "0", status: "registration-duplicate" });
+        // 已通过审核：直接提示，不再写入任何凭证
+        return { number: "", html_url: "#", alreadyRegistered: true };
       }
       return _findPendingRegistration(username);
     }).then(function(pending) {
@@ -829,22 +909,13 @@ var JITApi = (function() {
   };
 
   var _verifyRegisteredUser = function(username, password) {
-    return _findRegisteredUser(username).then(function(result) {
-      if (!result) return { valid: false, reason: "not_found" };
-      var stored = String(result.password_hash || "");
-      if (stored.indexOf("sha256$") === 0) {
-        // 哈希存储：比对哈希
-        return _hashPw(password, username).then(function(hash) {
-          if (stored !== "sha256$" + hash) return { valid: false, reason: "wrong_password" };
-          return { valid: true, user: result, fullName: result.full_name || result.username || "" };
-        });
-      }
-      // 旧明文数据：比对明文，成功后就地升级为哈希
-      if (stored !== password) return { valid: false, reason: "wrong_password" };
-      _hashPw(password, username).then(function(hash) {
-        return _tursoSql("UPDATE registrations SET password_hash=? WHERE username=? AND review_status='approved'", ["sha256$" + hash, username]).catch(function() {});
-      });
-      return { valid: true, user: result, fullName: result.full_name || result.username || "" };
+    return _hashPw(password, username).then(function(hash) {
+      // 密码比对全部在服务端完成，前端拿不到 password_hash
+      return _dbCall("reg.verify_password", [String(username), "sha256$" + hash, String(password)]);
+    }).then(function(res) {
+      if (!res || !res.valid) return { valid: false, reason: (res && res.reason) || "wrong_password" };
+      var user = { username: username, full_name: res.fullName || username };
+      return { valid: true, user: user, fullName: res.fullName || username };
     });
   };
 
@@ -977,10 +1048,21 @@ var JITApi = (function() {
   // ========== 用户档案（Turso） ==========
   var _updateUserPassword = function(username, newPasswordHash) {
     var now = new Date().toISOString();
-    return _tursoSql(
-      "INSERT OR REPLACE INTO users (id, password_hash, updated_at) VALUES (?,?,?)",
-      [username, newPasswordHash, now]
-    );
+    var input = String(newPasswordHash || "");
+    // 管理后台传入的既有 SHA-256 哈希：原样保存（管理员登录按此值比对）
+    if (/^[0-9a-f]{64}$/i.test(input)) {
+      return _dbCall("users.update_password", [input, now, String(username)]).then(function() { return { ok: true }; });
+    }
+    // 明文先哈希；登录校验读取 registrations.password_hash
+    var hashed = input.indexOf("sha256$") === 0
+      ? Promise.resolve(input)
+      : _hashPw(input, String(username)).then(function(h) { return "sha256$" + h; });
+    return hashed.then(function(hash) {
+      return _dbCall("reg.update_password", [hash, String(username)]).then(function() {
+        // 同步 users 表（管理员账号使用），失败不影响主流程
+        return _dbCall("users.update_password", [hash, now, String(username)]).catch(function() {});
+      }).then(function() { return { ok: true }; });
+    });
   };
 
   var _getUserProfile = function(username) {
@@ -1023,25 +1105,7 @@ var JITApi = (function() {
     });
   };
 
-  // ===== OAuth 迁移（确保 oauth_tokens 表存在） =====
-  var _runOAuthMigration = function() {
-    var chain = Promise.resolve();
-    chain = chain.then(function() {
-      return _tursoCall("/sql", { sql: "SELECT 1 FROM oauth_tokens LIMIT 1", params: [] }).catch(function(err) {
-        if (err.message && err.message.indexOf("no such table") > -1) {
-          return _tursoCall("/sql", { sql: "CREATE TABLE oauth_tokens (token TEXT PRIMARY KEY, username TEXT NOT NULL, expires_at INTEGER DEFAULT 0, created_at TEXT, last_used_at TEXT)", params: [] });
-        }
-        throw err;
-      });
-    });
-    return chain;
-  };
-
-  _runOAuthMigration().catch(function(err) {
-    console.warn("OAuth 迁移跳过（可能已执行过）:", err.message);
-  });
-
-  // ===== 积分+装扮+社区迁移（确保 users/user_levels 有新列） =====
+  // ===== 表结构迁移已统一收归服务端（代理启动时执行），前端不再直连 /sql =====
   // ===== 管理员系统配置 =====
   var _getAdminConfig = function(key) {
     return _tursoSql("SELECT value FROM admin_config WHERE key=?", [key]).then(function(result) {
@@ -1067,29 +1131,7 @@ var JITApi = (function() {
     });
   };
 
-  var _runPointsMigration = function() {
-    var chain = Promise.resolve();
-    var migrateCol = function(table, col, def) {
-      return _tursoCall("/sql", { sql: "ALTER TABLE " + table + " ADD COLUMN " + col + " " + def, params: [] }).catch(function(err) {
-        if (err.message && err.message.indexOf("duplicate column") > -1) return;
-        console.warn(col + " 列迁移跳过:", err.message);
-      });
-    };
-    chain = chain.then(function() { return migrateCol("users", "frozen", "INTEGER DEFAULT 0"); });
-    chain = chain.then(function() { return migrateCol("user_levels", "theme", "TEXT DEFAULT 'default'"); });
-    chain = chain.then(function() { return migrateCol("user_levels", "avatar_frame", "TEXT DEFAULT 'none'"); });
-    chain = chain.then(function() { return migrateCol("user_levels", "bio", "TEXT DEFAULT ''"); });
-    chain = chain.then(function() { return migrateCol("user_levels", "location", "TEXT DEFAULT ''"); });
-    chain = chain.then(function() { return migrateCol("user_levels", "joined_at", "TEXT DEFAULT ''"); });
-    chain = chain.then(function() { return migrateCol("user_levels", "cover", "TEXT DEFAULT ''"); });
-    chain = chain.then(function() { return migrateCol("user_levels", "last_wheel_free", "TEXT DEFAULT ''"); });
-    chain = chain.then(function() { return migrateCol("user_levels", "discount_backup", "TEXT DEFAULT '[]'"); });
-    return chain;
-  };
-
-  _runPointsMigration().catch(function(err) {
-    console.warn("积分迁移跳过（可能已执行过）:", err.message);
-  });
+  var _runPointsMigration = function() { return Promise.resolve(); };
 
   // ========== 加急黑名单（Turso） ==========
   var _addToUrgentBlacklistTurso = function(username, reason, until, operator) {
@@ -1322,15 +1364,10 @@ var JITApi = (function() {
   };
 
   var _incrementUserLevelField = function(userId, field, delta) {
-    var now = new Date().toISOString();
-    // 严格白名单：非法字段直接拒绝，防列名注入
+    // 字段白名单由服务端二次校验
     var columnMap = { exp: "exp", streak: "streak_days", totalVouchers: "total_vouchers", basicTickets: "basic_tickets", rareTickets: "rare_tickets" };
-    var column = columnMap[field];
-    if (!column) return Promise.reject(new Error("非法字段: " + field));
-    return _tursoSql(
-      "INSERT INTO user_levels (user_id, " + column + ", updated_at) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET " + column + " = COALESCE(user_levels." + column + ",0) + ?, updated_at=?",
-      [userId, delta||0, now, delta||0, now]
-    );
+    if (!columnMap[field]) return Promise.reject(new Error("非法字段: " + field));
+    return _dbCall("levels.increment", [String(userId), field, delta || 0]);
   };
 
   // ========== 抽奖券（Turso lottery_tickets 表） ==========
@@ -1349,19 +1386,12 @@ var JITApi = (function() {
   };
 
   var _addTickets = function(userId, count, ticketType, source) {
-    var now = new Date().toISOString();
-    var expire = new Date(Date.now() + 30*24*60*60*1000).toISOString();
     var type = ticketType || "basic";
     var src = source || "system";
-    var inserts = [];
-    for (var i = 0; i < (count||1); i++) {
-      var tid = "t_" + Date.now().toString(36) + Math.random().toString(36).slice(2,8) + "_" + i;
-      inserts.push(_tursoSql(
-        "INSERT INTO lottery_tickets (id, user_id, ticket_type, source, status, expires_at, created_at) VALUES (?,?,?,?,'unused',?,?)",
-        [tid, userId, type, src, expire, now]
-      ));
-    }
-    return Promise.all(inserts).then(function() { return count; });
+    // 数量与发放来源由服务端校验（每日登录券每天只能领一次，迁移券只能补一次）
+    return _dbCall("tickets.grant", [String(userId), count || 1, type, src]).then(function(res) {
+      return (res && typeof res.granted === "number") ? res.granted : (count || 1);
+    });
   };
 
   var _useTicket = function(userId) {
@@ -1373,14 +1403,12 @@ var JITApi = (function() {
 
   var _expireOldTickets = function() {
     var now = new Date().toISOString();
-    return _tursoSql("UPDATE lottery_tickets SET status='expired' WHERE status IN ('unused','used') AND expires_at <= ?", [now]);
+    return _tursoSql("UPDATE lottery_tickets SET status='expired' WHERE status IN ('unused','used') AND expires_at <= ? AND user_id=?", [now, _currentOperator()]);
   };
 
   // ========== 抽奖记录（Turso lottery_records 表） ==========
   var _getLotteryRecords = function(userId) {
-    var sql = userId ? "SELECT * FROM lottery_records WHERE user_id=? ORDER BY created_at DESC LIMIT 200" : "SELECT * FROM lottery_records ORDER BY created_at DESC LIMIT 500";
-    var params = userId ? [userId] : [];
-    return _tursoSql(sql, params).then(function(result) {
+    return _dbCall(userId ? "lottery.records_mine" : "lottery.records_all", userId ? [userId] : []).then(function(result) {
       return _tursoRowsToObjects(result.columns, result.rows);
     });
   };

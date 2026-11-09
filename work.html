@@ -1539,12 +1539,12 @@
 })();
 </script>
 <script src="js/config.js?v=3.5.1"></script>
-<script src="js/api.js?v=3.6.0"></script>
-<script src="js/points.js?v=3.6.0"></script>
+<script src="js/api.js?v=3.6.1"></script>
+<script src="js/points.js?v=3.6.1"></script>
 <script src="js/lottery.js?v=3.5.1"></script>
-<script src="js/wheel.js?v=3.6.0"></script>
-<script src="js/app.js?v=3.6.0"></script>
-<script src="js/community.js?v=3.6.0"></script>
+<script src="js/wheel.js?v=3.6.1"></script>
+<script src="js/app.js?v=3.6.1"></script>
+<script src="js/community.js?v=3.6.1"></script>
 <script src="js/community-loader.js?v=3.5.2"></script>
 <script>
 (function() {
@@ -1823,11 +1823,9 @@
   }
   // 首页社区动态：从数据库读取真实动态（原来读的全局变量从未被赋值）
   function loadDashCommunity() {
-    if (!window.JITApi || !JITApi.getTursoHelpers) return;
-    var help = JITApi.getTursoHelpers();
-    help("SELECT username, content, created_at FROM community_statuses ORDER BY created_at DESC LIMIT 5", []).then(function(r) {
-      var rows = help.rowsToObjects(r.columns, r.rows);
-      _dashCommunity = rows || [];
+    if (!window.JITApi || !JITApi.getCommunityStatuses) return;
+    JITApi.getCommunityStatuses().then(function(rows) {
+      _dashCommunity = (rows || []).slice(0, 5);
       updateDashboardFeed();
     }).catch(function() {});
   }

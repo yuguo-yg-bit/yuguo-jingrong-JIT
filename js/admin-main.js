@@ -590,8 +590,9 @@ var JITAdmin = (function() {
     });
 
     // 2. 从 Turso users 表补充（已审核通过的注册用户）
-    JITApi._tursoSql("SELECT id FROM users WHERE review_status='approved' ORDER BY created_at DESC", []).then(function(result) {
-      var objs = JITApi._tursoRowsToObjects(result.columns, result.rows);
+    var help = JITApi.getTursoHelpers();
+    help("SELECT id FROM users WHERE review_status='approved' ORDER BY created_at DESC", []).then(function(result) {
+      var objs = help.rowsToObjects(result.columns, result.rows);
       (objs || []).forEach(function(row) {
         if (row.id) addOption(row.id);
       });

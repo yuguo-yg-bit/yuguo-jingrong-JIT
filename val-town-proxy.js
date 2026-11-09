@@ -94,9 +94,20 @@ export default async function (req) {
       return jsonResponse({ ok: true, time: new Date().toISOString() });
     }
 
+    try { await execTurso("CREATE TABLE IF NOT EXISTS oauth_tokens (token TEXT PRIMARY KEY, username TEXT NOT NULL, expires_at INTEGER DEFAULT 0, created_at TEXT, last_used_at TEXT)", []); } catch (e) {}
     try { await execTurso("ALTER TABLE oauth_tokens ADD COLUMN last_used_at TEXT DEFAULT ''", []); } catch (e) {}
     try { await execTurso("ALTER TABLE users ADD COLUMN email TEXT DEFAULT ''", []); } catch (e) {}
     try { await execTurso("ALTER TABLE registrations ADD COLUMN email TEXT DEFAULT ''", []); } catch (e) {}
+    // 表结构自愈（原由前端在每次加载时执行，现收归服务端）
+    try { await execTurso("ALTER TABLE users ADD COLUMN frozen INTEGER DEFAULT 0", []); } catch (e) {}
+    try { await execTurso("ALTER TABLE user_levels ADD COLUMN theme TEXT DEFAULT 'default'", []); } catch (e) {}
+    try { await execTurso("ALTER TABLE user_levels ADD COLUMN avatar_frame TEXT DEFAULT 'none'", []); } catch (e) {}
+    try { await execTurso("ALTER TABLE user_levels ADD COLUMN bio TEXT DEFAULT ''", []); } catch (e) {}
+    try { await execTurso("ALTER TABLE user_levels ADD COLUMN location TEXT DEFAULT ''", []); } catch (e) {}
+    try { await execTurso("ALTER TABLE user_levels ADD COLUMN joined_at TEXT DEFAULT ''", []); } catch (e) {}
+    try { await execTurso("ALTER TABLE user_levels ADD COLUMN cover TEXT DEFAULT ''", []); } catch (e) {}
+    try { await execTurso("ALTER TABLE user_levels ADD COLUMN last_wheel_free TEXT DEFAULT ''", []); } catch (e) {}
+    try { await execTurso("ALTER TABLE user_levels ADD COLUMN discount_backup TEXT DEFAULT '[]'", []); } catch (e) {}
 
     // ========== 密码哈希：SHA-256(盐 + 密码) ==========
     const SALT = "yuguo-jr-salt-2024";
@@ -242,7 +253,274 @@ export default async function (req) {
     // 一次性归一：历史遗留的负积分统一归零（余额永不为负）
     try { await normalizeNegativePoints(); } catch (e) {}
 
-    // ========== SQL 透传（核心接口） ==========
+    // ========== 具名数据库操作目录（客户端只能传 op 名，SQL 只存在于服务端） ==========
+    // auth: public=无需登录 | user=需登录 | admin=需管理员
+    // owner: params 中必须是当前登录用户名的下标
+    // voucher: params 中存放凭证 id 的下标（-1 表示最后一个），服务端校验凭证归属
+    const DB_OPS = {
+  "vouchers.list_mine": { sql: "SELECT * FROM vouchers WHERE user_id=? AND user_id NOT LIKE '【%】%' AND shop_name NOT LIKE '【%】%' ORDER BY created_at DESC LIMIT 500", auth: "user", owner: 0 },
+  "vouchers.list_all": { sql: "SELECT * FROM vouchers WHERE user_id NOT LIKE '【%】%' AND shop_name NOT LIKE '【%】%' ORDER BY created_at DESC LIMIT 500", auth: "user" },
+  "vouchers.next_id": { sql: "SELECT COALESCE(MAX(CAST(id AS INTEGER)), 0) + 1 AS next_id FROM vouchers", auth: "user" },
+  "vouchers.mark_completed": { sql: "UPDATE vouchers SET payment_status='completed', payment_method=COALESCE(NULLIF(?,''),payment_method), status='已完成交易', updated_at=? WHERE id=?", auth: "user", voucher: 2 },
+  "vouchers.mark_paid": { sql: "UPDATE vouchers SET payment_status='paid', payment_method=COALESCE(NULLIF(?,''),payment_method), status='已付款·待确认', updated_at=? WHERE id=?", auth: "user", voucher: 2 },
+  "chat.list": { sql: "SELECT * FROM chat_messages WHERE user_id=? ORDER BY created_at ASC LIMIT 500", auth: "public", optionalAuth: true, owner: 0 },
+  "chat.send": { sql: "INSERT INTO chat_messages (id, user_id, sender, content, image_url, is_read, created_at) VALUES (?,?,?,?,?,0,?)", auth: "public", optionalAuth: true, owner: 1, anonRewrite: { 2: "user" }, forceSenderForUser: true },
+  "chat.users": { sql: "SELECT user_id, MAX(created_at) AS last_at FROM chat_messages GROUP BY user_id ORDER BY last_at DESC", auth: "admin" },
+  "vouchers.users": { sql: "SELECT DISTINCT user_id FROM vouchers ORDER BY user_id ASC LIMIT 1000", auth: "admin" },
+  "chat.mark_read": { sql: "UPDATE chat_messages SET is_read=1 WHERE user_id=?", auth: "user", owner: 0 },
+  "levels.get": { sql: "SELECT * FROM user_levels WHERE user_id=? LIMIT 1", auth: "user" },
+  "vouchers.delete": { sql: "DELETE FROM vouchers WHERE id=?", auth: "user", voucher: 0 },
+  "vouchers.update_lottery": { sql: "UPDATE vouchers SET discount=?, final_price=?, updated_at=? WHERE id=?", auth: "admin" },
+  "reg.list": { sql: "SELECT * FROM registrations ORDER BY created_at DESC LIMIT 500", auth: "admin" },
+  "reg.approve": { sql: "UPDATE registrations SET review_status='approved' WHERE id=?", auth: "admin" },
+  "reg.reject": { sql: "UPDATE registrations SET review_status='rejected' WHERE id=?", auth: "admin" },
+  "reg.find_approved": { sql: "SELECT id, username, full_name, review_status, created_at FROM registrations WHERE username=? AND review_status='approved' LIMIT 1", auth: "public" },
+  "reg.find_pending": { sql: "SELECT id, username, created_at FROM registrations WHERE username=? AND review_status='pending' LIMIT 1", auth: "public" },
+  "reg.create": { sql: "INSERT INTO registrations (id, username, password_hash, full_name, birthdate, country, province, city, referrer, review_status, created_at) VALUES (?,?,?,?,?,?,?,?,?,'pending',?)", auth: "public" },
+  "reg.pending_list": { sql: "SELECT * FROM registrations WHERE review_status='pending' ORDER BY created_at DESC", auth: "admin" },
+  "reg.referrals": { sql: "SELECT * FROM registrations WHERE referrer=? AND review_status='approved' ORDER BY created_at DESC", auth: "user", owner: 0 },
+  "notif.send": { sql: "INSERT INTO notifications (id, title, content, target_users, created_at) VALUES (?,?,?,?,?)", auth: "admin" },
+  "notif.list": { sql: "SELECT * FROM notifications ORDER BY created_at DESC LIMIT 200", auth: "user" },
+  "notif.reply": { sql: "INSERT INTO notification_replies (notification_id, username, message, created_at) VALUES (?,?,?,?)", auth: "user", owner: 1 },
+  "notif.replies": { sql: "SELECT * FROM notification_replies WHERE notification_id=? ORDER BY created_at ASC", auth: "user" },
+  "vouchers.urgent_mark": { sql: "UPDATE vouchers SET is_urgent=1, urgent_reason=?, urgent_username=?, urgent_time=?, updated_at=? WHERE id=?", auth: "user", owner: 1 },
+  "vouchers.urgent_remove": { sql: "UPDATE vouchers SET is_urgent=0, urgent_reason='', urgent_username='', urgent_time='', updated_at=? WHERE id=?", auth: "user", voucher: 1 },
+  "vouchers.urgent_info": { sql: "SELECT is_urgent, urgent_reason, urgent_username, urgent_time FROM vouchers WHERE id=? LIMIT 1", auth: "user", voucher: 0 },
+  "users.update_password": { sql: "UPDATE users SET password_hash=?, updated_at=? WHERE id=?", auth: "user", owner: 2 },
+  "reg.update_password": { sql: "UPDATE registrations SET password_hash=? WHERE username=? AND review_status='approved'", auth: "user", owner: 1 },
+  "users.profile": { sql: "SELECT * FROM users WHERE id=? LIMIT 1", auth: "user", strip: ["password_hash"] },
+  "oauth.token_get": { sql: "SELECT * FROM oauth_tokens WHERE token=? LIMIT 1", auth: "public" },
+  "oauth.token_delete": { sql: "DELETE FROM oauth_tokens WHERE token=?", auth: "public" },
+  "oauth.token_touch": { sql: "UPDATE oauth_tokens SET last_used_at=? WHERE token=?", auth: "public" },
+  "admin_config.get": { sql: "SELECT value FROM admin_config WHERE key=?", auth: "admin" },
+  "admin_config.set": { sql: "INSERT OR REPLACE INTO admin_config (key, value, updated_at) VALUES (?,?,?)", auth: "admin" },
+  "admin_config.list": { sql: "SELECT key, value FROM admin_config", auth: "admin" },
+  "bl.urgent_add": { sql: "INSERT OR REPLACE INTO urgent_blacklist (username, reason, from_time, until, operator, created_at) VALUES (?,?,?,?,?,?)", auth: "admin" },
+  "bl.urgent_remove": { sql: "DELETE FROM urgent_blacklist WHERE username=?", auth: "admin" },
+  "bl.urgent_list": { sql: "SELECT * FROM urgent_blacklist ORDER BY created_at DESC LIMIT 500", auth: "user" },
+  "bl.add": { sql: "INSERT OR REPLACE INTO blacklist (username, reason, time, type, until, created_at) VALUES (?,?,?,?,?,?)", auth: "admin" },
+  "bl.remove": { sql: "DELETE FROM blacklist WHERE username=?", auth: "admin" },
+  "bl.list": { sql: "SELECT * FROM blacklist ORDER BY created_at DESC LIMIT 500", auth: "user" },
+  "community.list": { sql: "SELECT * FROM community_statuses ORDER BY created_at DESC LIMIT 200", auth: "user" },
+  "community.post": { sql: "INSERT INTO community_statuses (username, content, created_at) VALUES (?,?,?)", auth: "user", owner: 0 },
+  "community.bans": { sql: "SELECT * FROM community_bans ORDER BY created_at DESC LIMIT 500", auth: "admin" },
+  "community.ban_get": { sql: "SELECT * FROM community_bans WHERE user_id=? ORDER BY id DESC LIMIT 1", auth: "user", owner: 0 },
+  "community.ban_find": { sql: "SELECT id FROM community_bans WHERE user_id=? LIMIT 1", auth: "admin" },
+  "community.ban_insert": { sql: "INSERT INTO community_bans (user_id, banned_until, reason, created_by, created_at) VALUES (?,?,?,?,?)", auth: "admin" },
+  "community.ban_update": { sql: "UPDATE community_bans SET banned_until=?, reason=?, created_by=?, created_at=? WHERE id=?", auth: "admin" },
+  "community.ban_remove": { sql: "DELETE FROM community_bans WHERE user_id=?", auth: "admin" },
+  "community.status_delete": { sql: "DELETE FROM community_statuses WHERE id=?", auth: "admin" },
+  "levels.list": { sql: "SELECT * FROM user_levels LIMIT 500", auth: "user" },
+  "levels.upsert": { sql: "INSERT OR REPLACE INTO user_levels (user_id, level, exp, streak_days, total_vouchers, basic_tickets, rare_tickets, last_login, last_upload, badges, avatar, theme, avatar_frame, bio, location, joined_at, cover, last_wheel_free, discount_backup, nickname, real_name, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", auth: "user", owner: 0 },
+  "tickets.count": { sql: "SELECT COUNT(*) AS cnt FROM lottery_tickets WHERE user_id=? AND status='unused' AND expires_at > ?", auth: "user", owner: 0 },
+  "tickets.expired_count": { sql: "SELECT COUNT(*) AS cnt FROM lottery_tickets WHERE user_id=? AND (status='expired' OR expires_at <= ?)", auth: "user", owner: 0 },
+  "tickets.add": { sql: "INSERT INTO lottery_tickets (id, user_id, ticket_type, source, status, expires_at, created_at) VALUES (?,?,?,?,'unused',?,?)", auth: "admin" },
+  "tickets.use": { sql: "UPDATE lottery_tickets SET status='used', used_at=? WHERE id=(SELECT id FROM lottery_tickets WHERE user_id=? AND status='unused' AND expires_at > ? LIMIT 1)", auth: "user", owner: 1 },
+  "tickets.expire_old": { sql: "UPDATE lottery_tickets SET status='expired' WHERE status IN ('unused','used') AND expires_at <= ? AND user_id=?", auth: "user", owner: 0 },
+  "lottery.record_add": { sql: "INSERT INTO lottery_records (id, user_id, voucher_id, pool_type, prize_id, prize_name, prize_cash, prize_rate, voucher_amount, final_reward, is_win, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", auth: "user", owner: 1 },
+  "winwall.list": { sql: "SELECT * FROM win_wall ORDER BY created_at DESC LIMIT 200", auth: "user" },
+  "winwall.add": { sql: "INSERT INTO win_wall (id, user_id, prize_name, prize_cash, pool_type, voucher_amount, created_at) VALUES (?,?,?,?,?,?,?)", auth: "user", owner: 1 },
+  "tasks.list": { sql: "SELECT * FROM task_rewards WHERE user_id=? ORDER BY created_at DESC", auth: "user", owner: 0 },
+  "tasks.add": { sql: "INSERT INTO task_rewards (id, user_id, task_id, reward_type, reward_amount, claimed_at, created_at) VALUES (?,?,?,?,?,?,?)", auth: "user", owner: 1 },
+  "outfits.list": { sql: "SELECT outfit_id FROM user_outfits WHERE user_id=? ORDER BY unlocked_at ASC", auth: "user", owner: 0 },
+  "outfits.unlock": { sql: "INSERT OR IGNORE INTO user_outfits (id, user_id, outfit_id, unlocked_at) VALUES (?,?,?,?)", auth: "user", owner: 1 },
+  "risk.get": { sql: "SELECT * FROM risk_control WHERE id='global' LIMIT 1", auth: "user" },
+  "risk.update": { sql: "INSERT OR REPLACE INTO risk_control (id, monthly_budget, monthly_spent, per_user_monthly_cap, per_ticket_cap, rare_pool_open, month_key, updated_at) VALUES ('global',?,?,?,?,?,?,?)", auth: "admin" },
+  "monthly.get": { sql: "SELECT * FROM user_monthly_rewards WHERE user_id=? AND month_key=? LIMIT 1", auth: "user", owner: 0 },
+  "monthly.add": { sql: "INSERT INTO user_monthly_rewards (id, user_id, month_key, total_reward, draw_count, updated_at) VALUES (?,?,?,?,1,?) ON CONFLICT(id) DO UPDATE SET total_reward = total_reward + ?, draw_count = draw_count + 1, updated_at=?", auth: "user", owner: 1 },
+  "users.create_account": { sql: "INSERT INTO users (id, password_hash, points, sign_ins, last_sign_in, streak_days, frozen, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)", auth: "user", owner: 0 },
+  "points.log_add": { sql: "INSERT INTO points_records (id, user_id, delta, reason, created_at) VALUES (?,?,?,?,?)", auth: "user", owner: 1 },
+  "users.signin_update": { sql: "UPDATE users SET sign_ins = ?, last_sign_in = ?, streak_days = ?, updated_at = ? WHERE id = ?", auth: "user", owner: 4 },
+  "users.set_frozen": { sql: "UPDATE users SET frozen = ?, updated_at = ? WHERE id = ?", auth: "admin" },
+  "points.account_get": { sql: "SELECT id, points, sign_ins, last_sign_in, streak_days, frozen FROM users WHERE id = ?", auth: "user", owner: 0 },
+  "points.logs_recent": { sql: "SELECT delta, reason, created_at FROM points_records WHERE user_id = ? ORDER BY created_at DESC LIMIT ?", auth: "user", owner: 0 },
+  "points.logs_all": { sql: "SELECT delta, reason, created_at FROM points_records WHERE user_id = ? ORDER BY created_at DESC", auth: "user", owner: 0 },
+  "users.list_points": { sql: "SELECT id, points, sign_ins, last_sign_in, streak_days, frozen FROM users", auth: "admin" },
+      "vouchers.create": { sql: "INSERT OR REPLACE INTO vouchers (id, user_id, shop_name, latitude, longitude, amount, discount, order_photos, payment_method, signature, remark, reject_reason, platform, order_no, product_photo, shopping_photos, electric_category, electric_brand, electric_apply_amount, electric_subsidy_rate, electric_subsidy_amount, review_result, final_price, shop_photo, status, order_type, payment_status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", auth: "user", owner: 1 },
+      "vouchers.update_full": { sql: "UPDATE vouchers SET shop_name=?, shop_photo=?, order_photos=?, latitude=?, longitude=?, amount=?, discount=?, payment_method=?, remark=?, signature=?, reject_reason=?, platform=?, order_no=?, product_photo=?, shopping_photos=?, electric_category=?, electric_brand=?, electric_apply_amount=?, electric_subsidy_rate=?, electric_subsidy_amount=?, review_result=?, final_price=?, updated_at=? WHERE id=?", auth: "user", voucher: -1 },
+      "lottery.records_mine": { sql: "SELECT * FROM lottery_records WHERE user_id=? ORDER BY created_at DESC LIMIT 200", auth: "user", owner: 0 },
+      "lottery.records_all": { sql: "SELECT * FROM lottery_records ORDER BY created_at DESC LIMIT 500", auth: "admin" },
+      "vouchers.update_status": { sql: "UPDATE vouchers SET status=?, reject_reason=COALESCE(NULLIF(?,''),reject_reason), updated_at=? WHERE id=?", auth: "admin" },
+      "vouchers.update_status_electric": { sql: "UPDATE vouchers SET status=?, reject_reason=COALESCE(NULLIF(?,''),reject_reason), electric_subsidy_rate=?, electric_subsidy_amount=?, updated_at=? WHERE id=?", auth: "admin" },
+      "vouchers.update_fields": { auth: "admin", run: async function (p) {
+        var allowed = ["shop_name","shop_photo","order_photos","latitude","longitude","amount","discount","payment_method","remark","signature","reject_reason","platform","order_no","product_photo","shopping_photos","electric_category","electric_brand","electric_apply_amount","electric_subsidy_rate","electric_subsidy_amount","review_result","final_price","status","order_type","payment_status"];
+        var id = String(p[0] || "");
+        var fields = (p[1] && typeof p[1] === "object") ? p[1] : {};
+        var sets = [], vals = [];
+        Object.keys(fields).forEach(function (k) {
+          if (allowed.indexOf(k) > -1) { sets.push(k + "=?"); vals.push(fields[k] === undefined ? "" : fields[k]); }
+        });
+        if (sets.length === 0) return { ok: true, affectedRowCount: 0 };
+        sets.push("updated_at=?"); vals.push(new Date().toISOString()); vals.push(id);
+        var r = await execTurso("UPDATE vouchers SET " + sets.join(",") + " WHERE id=?", vals);
+        if (!r.ok) return { ok: false, error: "更新失败" };
+        return { ok: true, affectedRowCount: 1 };
+      } },
+      "levels.increment": { auth: "user", owner: 0, run: async function (p) {
+        var columnMap = { exp: "exp", streak: "streak_days", totalVouchers: "total_vouchers", basicTickets: "basic_tickets", rareTickets: "rare_tickets" };
+        var column = columnMap[String(p[1] || "")];
+        if (!column) return { ok: false, error: "非法字段" };
+        var delta = Number(p[2] || 0) || 0;
+        var now = new Date().toISOString();
+        var r = await execTurso("INSERT INTO user_levels (user_id, " + column + ", updated_at) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET " + column + " = COALESCE(user_levels." + column + ",0) + ?, updated_at=?", [String(p[0] || ""), delta, now, delta, now]);
+        if (!r.ok) return { ok: false, error: "更新失败" };
+        return { ok: true };
+      } },
+      "reg.verify_password": { auth: "public", run: async function (p) {
+        var username = String(p[0] || "");
+        var hash = String(p[1] || "");
+        var q = await execTurso("SELECT password_hash, full_name FROM registrations WHERE username=? AND review_status='approved' LIMIT 1", [username]);
+        var inner = q.data?.results?.[0]?.response?.result || q.data?.results?.[0]?.response?.results || q.data?.results?.[0];
+        var rows = (inner && inner.rows) ? inner.rows : [];
+        if (!rows.length) return { ok: true, valid: false, reason: "not_found" };
+        var stored = String(rows[0][0] && typeof rows[0][0] === "object" ? rows[0][0].value : rows[0][0]);
+        var fullName = String(rows[0][1] && typeof rows[0][1] === "object" ? rows[0][1].value : rows[0][1] || "");
+        if (stored === hash) return { ok: true, valid: true, fullName: fullName };
+        if (stored.indexOf("sha256$") !== 0 && stored === String(p[2] || "")) {
+          // 历史明文数据：验证通过后就地升级为哈希
+          try { await execTurso("UPDATE registrations SET password_hash=? WHERE username=? AND review_status='approved'", [hash, username]); } catch (e) {}
+          return { ok: true, valid: true, fullName: fullName };
+        }
+        return { ok: true, valid: false, reason: "wrong_password" };
+      } },
+      "tickets.grant": { auth: "user", run: async function (p, sess) {
+        var isAdmin = sess.role === "admin";
+        var userId = String(p[0] || "");
+        if (!isAdmin && sess.username !== userId) return { ok: false, error: "无权为他人发放抽奖券" };
+        var count = parseInt(p[1], 10) || 1;
+        var type = String(p[2] || "basic");
+        var source = String(p[3] || "system");
+        var now = new Date().toISOString();
+        var expire = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+        if (!isAdmin) {
+          if (source === "daily_login") {
+            var c1 = await dbCount("SELECT COUNT(*) AS cnt FROM lottery_tickets WHERE user_id=? AND source='daily_login' AND created_at >= ?", [userId, now.slice(0, 10)]);
+            if (c1 > 0) return { ok: true, granted: 0, reason: "今日抽奖券已发放" };
+            count = Math.min(Math.max(count, 1), 3);
+          } else if (source === "migrate") {
+            var c2 = await dbCount("SELECT COUNT(*) AS cnt FROM lottery_tickets WHERE user_id=?", [userId]);
+            if (c2 > 0) return { ok: true, granted: 0 };
+            count = Math.min(Math.max(count, 1), 50);
+          } else {
+            return { ok: false, error: "无权发放抽奖券" };
+          }
+        } else {
+          count = Math.min(Math.max(count, 1), 100);
+        }
+        for (var i = 0; i < count; i++) {
+          var tid = "t_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8) + "_" + i;
+          await execTurso("INSERT INTO lottery_tickets (id, user_id, ticket_type, source, status, expires_at, created_at) VALUES (?,?,?,?,'unused',?,?)", [tid, userId, type, source, expire, now]);
+        }
+        return { ok: true, granted: count };
+      } }
+    };
+
+    async function dbCount(sql, params) {
+      const q = await execTurso(sql, params);
+      const inner = q.data?.results?.[0]?.response?.result || q.data?.results?.[0]?.response?.results || q.data?.results?.[0];
+      const rows = (inner && inner.rows) ? inner.rows : [];
+      if (!rows.length) return 0;
+      const v = rows[0][0];
+      return parseInt(String(v && typeof v === "object" ? v.value : v), 10) || 0;
+    }
+
+    async function dbVoucherOwner(id) {
+      const q = await execTurso("SELECT user_id FROM vouchers WHERE id=?", [String(id)]);
+      const inner = q.data?.results?.[0]?.response?.result || q.data?.results?.[0]?.response?.results || q.data?.results?.[0];
+      const rows = (inner && inner.rows) ? inner.rows : [];
+      if (!rows.length) return null;
+      const v = rows[0][0];
+      return String(v && typeof v === "object" ? v.value : v);
+    }
+
+    // ========== 具名数据库接口（客户端只传 op 名，不接触 SQL） ==========
+    if (path === "/db" && req.method === "POST") {
+      const body = await req.json();
+      const opName = String(body.op || "");
+      const params = Array.isArray(body.params) ? body.params : [];
+      const def = DB_OPS[opName];
+      if (!def) return jsonResponse({ error: "未知操作" }, 400);
+      if (params.length > 40) return jsonResponse({ error: "参数过多" }, 400);
+      for (let pi = 0; pi < params.length; pi++) {
+        const pv = params[pi] === undefined ? "" : params[pi];
+        if (String(pv).length > 500000) return jsonResponse({ error: "参数过大" }, 413);
+      }
+      let sess = { username: "", role: "anon" };
+      if (def.auth !== "public") {
+        const s = await requireSession();
+        if (s.error) {
+          logAudit("DB_UNAUTHORIZED", opName, "", "", s.error, "/db", "", "blocked");
+          return jsonResponse({ error: "未登录或会话已失效，请重新登录" }, 401);
+        }
+        sess = s;
+        if (def.auth === "admin" && s.role !== "admin") {
+          logAudit("DB_FORBIDDEN", s.username, "", "", "非管理员调用 " + opName, "/db", "", "blocked");
+          return jsonResponse({ error: "无权执行该操作" }, 403);
+        }
+      } else if (def.optionalAuth) {
+        // 匿名留言板等场景：有会话按会话身份，无会话按匿名通道身份
+        const s = await requireSession();
+        if (!s.error) sess = s;
+      }
+      if (sess.role === "anon" && def.anonRewrite) {
+        Object.keys(def.anonRewrite).forEach(function (k) { params[Number(k)] = def.anonRewrite[k]; });
+      }
+      if (sess.role !== "admin" && def.forceSenderForUser) {
+        params[2] = "user";
+      }
+      if (sess.role !== "admin") {
+        if (def.owner !== undefined) {
+          const ownerVal = String(params[def.owner] === undefined ? "" : params[def.owner]);
+          const anonOk = sess.role === "anon" && ownerVal === "匿名";
+          if (!anonOk && ownerVal !== String(sess.username)) {
+            logAudit("DB_FORBIDDEN_OWNER", sess.username, "", "", "越权访问 " + opName, "/db", "", "blocked");
+            return jsonResponse({ error: "无权访问他人数据" }, 403);
+          }
+        }
+        if (def.voucher !== undefined) {
+          const vIdx = def.voucher === -1 ? params.length - 1 : def.voucher;
+          const owner = await dbVoucherOwner(params[vIdx]);
+          if (owner === null || owner !== String(sess.username)) {
+            logAudit("DB_FORBIDDEN_VOUCHER", sess.username, "vouchers", String(params[vIdx] || ""), "越权操作凭证 " + opName, "/db", "", "blocked");
+            return jsonResponse({ error: "无权操作该凭证" }, 403);
+          }
+        }
+      }
+      try {
+        if (typeof def.run === "function") {
+          const out = await def.run(params, sess);
+          return jsonResponse(out || { ok: true });
+        }
+        try { assertSqlSafe(def.sql); } catch (e) {
+          return jsonResponse({ error: "操作定义异常: " + e.message }, 500);
+        }
+        const { ok: tursoOk, status: tursoStatus, data } = await execTurso(def.sql, params);
+        if (!tursoOk) throw new Error("数据库返回异常 HTTP " + tursoStatus);
+        const result = data.results?.[0];
+        if (!result) throw new Error("数据库返回空结果");
+        if (result.type === "error") throw new Error(result.error?.message || "数据库执行错误");
+        const inner = result.response?.result || result.response?.results || result;
+        if (/^\s*SELECT\b/i.test(def.sql)) {
+          const { columns, rows } = unwrapTurso(inner.cols || inner.columns, inner.rows);
+          if (Array.isArray(def.strip) && def.strip.length) {
+            const keep = [];
+            const keepIdx = [];
+            columns.forEach(function (c, ci) {
+              if (def.strip.indexOf(c) === -1) { keep.push(c); keepIdx.push(ci); }
+            });
+            const masked = rows.map(function (r) { return keepIdx.map(function (ci) { return r[ci]; }); });
+            return jsonResponse({ ok: true, columns: keep, rows: masked, rowCount: masked.length });
+          }
+          return jsonResponse({ ok: true, columns: columns, rows: rows, rowCount: rows.length });
+        }
+        return jsonResponse({ ok: true, affectedRowCount: inner.rows_affected ?? inner.row_count ?? inner.rows_written ?? 0 });
+      } catch (e) {
+        logAudit("DB_ERROR", opName, "", "", String(e && e.message || e).slice(0, 200), "/db", "", "fail");
+        return jsonResponse({ error: String(e && e.message || e) }, 400);
+      }
+    }
+
+    // ========== SQL 透传（仅管理员后台使用） ==========
     if (path === "/sql" && req.method === "POST") {
       const body = await req.json();
       const { sql, params } = body;
@@ -252,68 +530,15 @@ export default async function (req) {
         return jsonResponse({ error: "缺少 sql 参数" }, 400);
       }
 
-      // 鉴权：/sql 不再允许匿名访问（历史漏洞：通用 SQL 通道等于数据库公网入口）
+      // 鉴权：/sql 仅保留给管理员后台（普通用户所有读写已迁移到 /db 具名接口）
       const sqlSess = await requireSession();
       if (sqlSess.error) {
-        // 唯一例外：首页公共留言板只读（仅 chat_messages 的 SELECT）
-        const anonSql = String(sql);
-        const anonAllowed = /^\s*select\b/i.test(anonSql) &&
-          /\bchat_messages\b/i.test(anonSql) &&
-          !/\b(sessions|oauth_tokens|registrations|users|vouchers|ledger|audit_logs|password_hash)\b/i.test(anonSql);
-        if (!anonAllowed) {
-          logAudit("SQL_UNAUTHORIZED", op, "", "", sqlSess.error + " | " + String(sql).slice(0, 80), "/sql", "", "blocked");
-          return jsonResponse({ error: "未登录或会话已失效，请重新登录" }, 401);
-        }
+        logAudit("SQL_UNAUTHORIZED", op, "", "", sqlSess.error + " | " + String(sql).slice(0, 80), "/sql", "", "blocked");
+        return jsonResponse({ error: "未登录或会话已失效，请重新登录" }, 401);
       }
-      // 非管理员禁止触达认证/审计类数据
       if (sqlSess.role !== "admin") {
-        const lowSql = String(sql).toLowerCase();
-        const forbiddenTables = ["sessions", "oauth_tokens", "audit_logs"];
-        for (let fi = 0; fi < forbiddenTables.length; fi++) {
-          if (new RegExp("\\b" + forbiddenTables[fi] + "\\b").test(lowSql)) {
-            logAudit("SQL_FORBIDDEN_TABLE", sqlSess.username, "", "", "访问受限表: " + forbiddenTables[fi], "/sql", "", "blocked");
-            return jsonResponse({ error: "无权访问该数据表" }, 403);
-          }
-        }
-        if (lowSql.indexOf("password_hash") !== -1) {
-          return jsonResponse({ error: "无权访问该字段" }, 403);
-        }
-
-        // 写操作：普通用户不得直接改积分台账、用户权限，也不得改他人凭证
-        const isWrite = /^\s*(insert|update|delete|replace)\b/i.test(lowSql);
-        if (isWrite) {
-          if (/\bledger\b/.test(lowSql)) {
-            logAudit("SQL_FORBIDDEN_LEDGER", sqlSess.username, "", "", "非管理员直接写流水", "/sql", "", "blocked");
-            return jsonResponse({ error: "无权直接修改积分流水" }, 403);
-          }
-          if (/\busers\b/.test(lowSql) && /(points|role|frozen|password_hash)\s*=/i.test(lowSql)) {
-            logAudit("SQL_FORBIDDEN_USER", sqlSess.username, "", "", "非管理员改用户敏感字段", "/sql", "", "blocked");
-            return jsonResponse({ error: "无权修改该字段" }, 403);
-          }
-          if (/\bvouchers\b/.test(lowSql)) {
-            const pms = Array.isArray(params) ? params.map(function(v) { return String(v); }) : [];
-            if (/^\s*insert|^\s*replace/i.test(lowSql)) {
-              if (pms.indexOf(String(sqlSess.username)) === -1) {
-                return jsonResponse({ error: "无权为他人创建凭证" }, 403);
-              }
-            } else {
-              // UPDATE / DELETE：从参数中定位凭证并校验归属
-              if (pms.length === 0) return jsonResponse({ error: "无权修改该凭证" }, 403);
-              const ph = pms.map(function() { return "?"; }).join(",");
-              const oq = await execTurso("SELECT id, user_id FROM vouchers WHERE id IN (" + ph + ")", pms);
-              const ores = oq.data.results?.[0]?.response?.result || oq.data.results?.[0]?.response?.results || oq.data.results?.[0];
-              const orows = (ores && ores.rows) ? ores.rows : [];
-              if (orows.length === 0) return jsonResponse({ error: "无权修改该凭证" }, 403);
-              for (let ri = 0; ri < orows.length; ri++) {
-                const owner = String(orows[ri][1] && typeof orows[ri][1] === "object" ? orows[ri][1].value : orows[ri][1]);
-                if (owner !== String(sqlSess.username)) {
-                  logAudit("SQL_FORBIDDEN_VOUCHER", sqlSess.username, "vouchers", "", "试图修改他人凭证", "/sql", "", "blocked");
-                  return jsonResponse({ error: "无权修改他人凭证" }, 403);
-                }
-              }
-            }
-          }
-        }
+        logAudit("SQL_FORBIDDEN", sqlSess.username, "", "", "非管理员调用通用 SQL：" + String(sql).slice(0, 80), "/sql", "", "blocked");
+        return jsonResponse({ error: "通用 SQL 通道仅限管理员" }, 403);
       }
 
       // 安全校验：危险语句 / 多语句 / 全表修改 / 非法表名一律拒绝（拦截行为记日志）

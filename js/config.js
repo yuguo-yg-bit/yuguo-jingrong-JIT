@@ -17,10 +17,11 @@ var JITConfig = (function() {
     communityStatus: "community-status"
   };
 
+  // 仅用于注册时检查内置用户名是否被占用（不再保存任何密码）
   var _users = {
-    "admin": "admin123",
-    "谭绣云": "123321",
-    "江睿博": "27015150111"
+    "admin": true,
+    "谭绣云": true,
+    "江睿博": true
   };
 
   // ======= 黑名单/白名单 =======
