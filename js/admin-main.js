@@ -2500,17 +2500,8 @@ var JITAdmin = (function() {
     var username = _saCurrentUserData.id;
     var newPwd = prompt("请输入用户 [" + username + "] 的新密码（最少3位）:");
     if (!newPwd || newPwd.length < 3) { _showToast("密码至少3位"); return; }
-    if (!window.crypto || !window.crypto.subtle) {
-      _showToast("浏览器不支持安全哈希");
-      return;
-    }
-    var encoder = new TextEncoder();
-    crypto.subtle.digest("SHA-256", encoder.encode("yuguo-jr-salt-2024" + newPwd)).then(function(buf) {
-      var hex = "";
-      var bytes = new Uint8Array(buf);
-      for (var j = 0; j < bytes.length; j++) { hex += ("00" + bytes[j].toString(16)).slice(-2); }
-      return JITApi.getTursoHelpers()("UPDATE users SET password_hash=? WHERE id=?", ["sha256$" + hex, username]);
-    }).then(function() {
+    // 统一走 API：按登录校验使用的盐重新哈希，并写入 registrations（登录读取的就是这张表）
+    JITApi.updateUserPassword(username, newPwd).then(function() {
       _showToast("用户 [" + username + "] 密码已重置为: " + newPwd);
     }).catch(function(e) {
       _showToast("重置失败: " + e.message);

@@ -81,6 +81,7 @@ var JITApi = (function() {
   var _SQL_TO_OP = {
   "SELECT * FROM vouchers WHERE user_id=? AND user_id NOT LIKE '【%】%' AND shop_name NOT LIKE '【%】%' ORDER BY created_at DESC LIMIT 500": "vouchers.list_mine",
   "SELECT * FROM vouchers WHERE user_id NOT LIKE '【%】%' AND shop_name NOT LIKE '【%】%' ORDER BY created_at DESC LIMIT 500": "vouchers.list_all",
+  "SELECT * FROM vouchers WHERE id=? LIMIT 1": "vouchers.get_by_id",
   "SELECT COALESCE(MAX(CAST(id AS INTEGER)), 0) + 1 AS next_id FROM vouchers": "vouchers.next_id",
   "UPDATE vouchers SET payment_status='completed', payment_method=COALESCE(NULLIF(?,''),payment_method), status='已完成交易', updated_at=? WHERE id=?": "vouchers.mark_completed",
   "UPDATE vouchers SET payment_status='paid', payment_method=COALESCE(NULLIF(?,''),payment_method), status='已付款·待确认', updated_at=? WHERE id=?": "vouchers.mark_paid",
@@ -122,6 +123,7 @@ var JITApi = (function() {
   "DELETE FROM blacklist WHERE username=?": "bl.remove",
   "SELECT * FROM blacklist ORDER BY created_at DESC LIMIT 500": "bl.list",
   "SELECT * FROM community_statuses ORDER BY created_at DESC LIMIT 200": "community.list",
+  "SELECT rowid AS rid, * FROM community_statuses ORDER BY created_at DESC LIMIT 200": "community.list_rowid",
   "INSERT INTO community_statuses (username, content, created_at) VALUES (?,?,?)": "community.post",
   "SELECT * FROM community_bans ORDER BY created_at DESC LIMIT 500": "community.bans",
   "SELECT * FROM community_bans WHERE user_id=? ORDER BY id DESC LIMIT 1": "community.ban_get",
@@ -197,6 +199,10 @@ var JITApi = (function() {
     // 查自己余额（代理端校验 viewer===target，越权拒绝+留痕）
     fn.getBalance = function(username) {
       return _tursoCall("/balance", { userId: username, viewer: _currentOperator() });
+    };
+    // 签到：签到日期、连续天数全部由服务端计算与写入
+    fn.signIn = function(username) {
+      return _dbCall("users.signin", [String(username)]);
     };
     // 显式审计日志
     fn.audit = function(action, detail, targetType, targetId, bizNo) {
@@ -499,8 +505,11 @@ var JITApi = (function() {
   };
 
   var _getVoucherById = function(id) {
-    return _getAllVouchers().then(function(vouchers) {
-      return vouchers.find(function(v) { return String(v.voucherId) === String(id); });
+    return _tursoSql("SELECT * FROM vouchers WHERE id=? LIMIT 1", [String(id)]).then(function(result) {
+      var objs = _tursoRowsToObjects(result.columns, result.rows);
+      return objs.length ? _dbRowToVoucherData(objs[0]) : null;
+    }).catch(function() {
+      return null;
     });
   };
 
@@ -1357,10 +1366,19 @@ var JITApi = (function() {
 
   var _updateUserLevel = function(userId, data) {
     var now = new Date().toISOString();
-    return _tursoSql(
-      "INSERT OR REPLACE INTO user_levels (user_id, level, exp, streak_days, total_vouchers, basic_tickets, rare_tickets, last_login, last_upload, badges, avatar, theme, avatar_frame, bio, location, joined_at, cover, last_wheel_free, discount_backup, nickname, real_name, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-      [userId, data.level||0, data.exp||0, data.streak||0, data.totalVouchers||0, data.basicTickets||0, data.rareTickets||0, data.lastLogin||"", data.lastUpload||"", JSON.stringify(data.badges||[]), data.avatar||"", data.theme||"default", data.avatarFrame||"none", data.bio||"", data.location||"", data.joinedAt||"", data.cover||"", data.lastWheelFree||"", JSON.stringify(data.discountBackup||[]), data.nickname||"", data.realName||"", now]
-    );
+    // 先读取现有资料再合并，避免局部更新（如登录只更新 level/exp）把头像、主题、昵称等清空
+    return _getUserLevel(userId).catch(function() { return null; }).then(function(cur) {
+      cur = cur || {};
+      var pick = function(key, def) {
+        if (data[key] !== undefined && data[key] !== null) return data[key];
+        if (cur[key] !== undefined && cur[key] !== null) return cur[key];
+        return def;
+      };
+      return _tursoSql(
+        "INSERT OR REPLACE INTO user_levels (user_id, level, exp, streak_days, total_vouchers, basic_tickets, rare_tickets, last_login, last_upload, badges, avatar, theme, avatar_frame, bio, location, joined_at, cover, last_wheel_free, discount_backup, nickname, real_name, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [userId, pick("level",0), pick("exp",0), pick("streak",0), pick("totalVouchers",0), pick("basicTickets",0), pick("rareTickets",0), pick("lastLogin",""), pick("lastUpload",""), JSON.stringify(pick("badges",[])), pick("avatar",""), pick("theme","default"), pick("avatarFrame","none"), pick("bio",""), pick("location",""), pick("joinedAt",""), pick("cover",""), pick("lastWheelFree",""), JSON.stringify(pick("discountBackup",[])), pick("nickname",""), pick("realName",""), now]
+      );
+    });
   };
 
   var _incrementUserLevelField = function(userId, field, delta) {

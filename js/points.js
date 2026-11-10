@@ -47,7 +47,7 @@ var JITPoints = (function() {
   };
 
   var _todayStr = function() {
-    return new Date().toISOString().split("T")[0];
+    return new Date(Date.now() + 8 * 3600 * 1000).toISOString().split("T")[0];
   };
 
   var _localKey = function(username) {
@@ -157,7 +157,7 @@ var JITPoints = (function() {
     if (!helper || !helper.postPoints) return;
     var delta = Math.abs(Math.round(rawPts));
     if (!delta) return;
-    var day = new Date().toISOString().slice(0, 10);
+    var day = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
     helper.postPoints({
       bizNo: "biz_clamp_" + username + "_" + delta + "_" + day,
       userId: username,
@@ -245,57 +245,41 @@ var JITPoints = (function() {
     });
   };
 
-  // ------- 对外：签到 -------
+  // ------- 对外：签到（签到日期与连续天数由服务端计算，前端只做展示缓存） -------
   var _signIn = function(username) {
-    var today = _todayStr();
     return _ensureAccount(username).then(function(account) {
-      var signIns = _parseSignIns(account.sign_ins);
-      if (signIns.indexOf(today) !== -1) {
-        return { signedIn: false, streakDays: account.streak_days || 0, bonusGranted: false };
+      var helper = (typeof JITApi !== "undefined" && JITApi.getTursoHelpers) ? JITApi.getTursoHelpers() : null;
+      if (!helper || !helper.signIn) {
+        return { signedIn: false, streakDays: account.streak_days || 0, bonusGranted: false, bonusEarned: false };
       }
-      signIns.push(today);
-      if (signIns.length > 30) signIns = signIns.slice(-30);
-
-      var streak = 0;
-      var yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      var yStr = yesterday.toISOString().split("T")[0];
-      if (account.last_sign_in === yStr) {
-        streak = (account.streak_days || 0) + 1;
-      } else if (account.last_sign_in === today) {
-        streak = account.streak_days || 0;
-      } else {
-        streak = 1;
-      }
-
-      var now = new Date().toISOString();
-      return _turso(
-        "UPDATE users SET sign_ins = ?, last_sign_in = ?, streak_days = ?, updated_at = ? WHERE id = ?",
-        [JSON.stringify(signIns), today, streak, now, username]
-      ).then(function() {
-        var result = { signedIn: true, streakDays: streak, bonusGranted: false, bonusPoints: 0 };
+      return helper.signIn(username).then(function(res) {
+        if (!res || !res.signedIn) {
+          return { signedIn: false, streakDays: (res && res.streakDays) || account.streak_days || 0, bonusGranted: false, bonusEarned: false };
+        }
+        var streak = _num(res.streakDays) || 1;
+        var today = res.today || _todayStr();
+        var result = { signedIn: true, streakDays: streak, bonusGranted: false, bonusEarned: false, bonusPoints: 0 };
+        var finish = function() {
+          var cached = _loadLocal(username);
+          if (cached) {
+            var si = _parseSignIns(account.sign_ins);
+            if (si.indexOf(today) === -1) si.push(today);
+            cached.signIns = si.slice(-30);
+            cached.streakDays = streak;
+            cached.lastSignIn = today;
+            _saveLocal(username, cached);
+          }
+          return result;
+        };
         if (streak > 0 && streak % 3 === 0) {
-          result.bonusGranted = true;
-          result.bonusPoints = RULES.STREAK_BONUS;
           return _doAction("streak_bonus", username, { streak: streak }).then(function() {
-            var cached = _loadLocal(username);
-            if (cached) {
-              cached.signIns = signIns.slice();
-              cached.streakDays = streak;
-              cached.lastSignIn = today;
-              _saveLocal(username, cached);
-            }
-            return result;
-          });
+            result.bonusGranted = true;
+            result.bonusEarned = true;
+            result.bonusPoints = RULES.STREAK_BONUS;
+            return finish();
+          }, function() { return finish(); });
         }
-        var cached = _loadLocal(username);
-        if (cached) {
-          cached.signIns = signIns.slice();
-          cached.streakDays = streak;
-          cached.lastSignIn = today;
-          _saveLocal(username, cached);
-        }
-        return result;
+        return finish();
       });
     });
   };

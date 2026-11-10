@@ -1,5 +1,5 @@
 var JITApp = (function() {
-  window._JIT_APP_VERSION = "3.5.2";
+  window._JIT_APP_VERSION = "3.6.2";
 
   var _notifyShell = function(name) {
     try { document.dispatchEvent(new CustomEvent(name)); } catch (e) {}
@@ -11,6 +11,13 @@ var JITApp = (function() {
     var _c = "TAIL";
     return _a + _b + _c;
   })();
+
+  // 统一按中国时区（UTC+8）计算日期，避免 0-8 点出现跨天判断错误
+  var _cnDateOf = function(iso) {
+    var t = iso ? new Date(iso).getTime() : Date.now();
+    if (isNaN(t)) t = Date.now();
+    return new Date(t + 8 * 3600 * 1000).toISOString().slice(0, 10);
+  };
 
   var _currentUser = null;
   var _currentPage = 1;
@@ -2127,7 +2134,7 @@ var JITApp = (function() {
       discount: prize.discount,
       value: prize.value,
       label: prize.label,
-      date: new Date().toISOString().split("T")[0],
+      date: _cnDateOf(),
       username: _currentUser
     });
     localStorage.setItem("jit_lottery_results", JSON.stringify(lotteryResults));
@@ -2495,7 +2502,7 @@ var JITApp = (function() {
   };
 
   var _renderTasks = function(levelData) {
-    var today = new Date().toISOString().split("T")[0];
+    var today = _cnDateOf();
     var thisMonth = today.substring(0, 7);
     var rewards = _getTaskRewards();
     var userId = _currentUser;
@@ -2504,7 +2511,7 @@ var JITApp = (function() {
 
     // 任务1: 今日添加凭证
     var todayVouchers = (_allVouchers || []).filter(function(v) {
-      return v.date && v.date.substring(0, 10) === today;
+      return _cnDateOf(v._createdAt || v.date) === today;
     }).length;
     var taskVoucher = document.getElementById("taskVoucher");
     if (taskVoucher) {
@@ -2512,20 +2519,23 @@ var JITApp = (function() {
       if (todayVouchers >= 1) taskVoucher.classList.add("task-done");
       else taskVoucher.classList.remove("task-done");
     }
-    // 发放任务1奖励
+    // 发放任务1奖励（服务端发放成功后再落本地，避免请求失败导致奖励永久丢失）
     if (todayVouchers >= 1 && !userRewards["task_voucher_" + today]) {
-      userRewards["task_voucher_" + today] = true;
-      _addExp(_currentUser, 50);
-      if (JITPoints && JITPoints.changePoints) {
-        JITPoints.doAction("daily_task_add_voucher", _currentUser).then(function() { _refreshPointsDisplay(true); }).catch(function() {});
+      if (JITPoints && JITPoints.doAction) {
+        JITPoints.doAction("daily_task_add_voucher", _currentUser).then(function() {
+          userRewards["task_voucher_" + today] = true;
+          _setTaskRewards(rewards);
+          _addExp(_currentUser, 50);
+          _refreshPointsDisplay(true);
+          _showToast("✅ 完成任务：添加凭证！+50经验 +15积分", "success");
+        }).catch(function() {});
       }
-      _showToast("✅ 完成任务：添加凭证！+50经验 +15积分", "success");
     }
 
     // 任务2: 今日完成抽奖
     var slotRecords = JSON.parse(localStorage.getItem("jit_slot_records") || "[]");
     var todaySlots = slotRecords.filter(function(r) {
-      return r.username === _currentUser && r.date && r.date.substring(0, 10) === today;
+      return r.username === _currentUser && _cnDateOf(r.date) === today;
     }).length;
     var taskLottery = document.getElementById("taskLottery");
     if (taskLottery) {
@@ -2533,14 +2543,17 @@ var JITApp = (function() {
       if (todaySlots >= 3) taskLottery.classList.add("task-done");
       else taskLottery.classList.remove("task-done");
     }
-    // 发放任务2奖励
+    // 发放任务2奖励（服务端发放成功后再落本地）
     if (todaySlots >= 3 && !userRewards["task_lottery_" + today]) {
-      userRewards["task_lottery_" + today] = true;
-      _addExp(_currentUser, 100);
-      if (JITPoints && JITPoints.changePoints) {
-        JITPoints.doAction("daily_task_3_draws", _currentUser).then(function() { _refreshPointsDisplay(true); }).catch(function() {});
+      if (JITPoints && JITPoints.doAction) {
+        JITPoints.doAction("daily_task_3_draws", _currentUser).then(function() {
+          userRewards["task_lottery_" + today] = true;
+          _setTaskRewards(rewards);
+          _addExp(_currentUser, 100);
+          _refreshPointsDisplay(true);
+          _showToast("🔮 完成任务：完成3次抽奖！+100经验 +30积分", "success");
+        }).catch(function() {});
       }
-      _showToast("🔮 完成任务：完成3次抽奖！+100经验 +30积分", "success");
     }
 
     // 任务3: 连续打卡
@@ -2549,16 +2562,19 @@ var JITApp = (function() {
     if (taskStreak) {
       taskStreak.textContent = streak + "天";
     }
-    // 发放打卡奖励（每日）
+    // 发放打卡奖励（每日，服务端签到成功后才会校验通过）
     if (streak > 0 && !userRewards["task_streak_" + today]) {
-      userRewards["task_streak_" + today] = true;
-      var streakBonus = Math.min(streak * 5, 50);
-      _addExp(_currentUser, streakBonus);
-      if (JITPoints && JITPoints.changePoints) {
-        JITPoints.doAction("checkin_streak", _currentUser, { streak: streak }).then(function() { _refreshPointsDisplay(true); }).catch(function() {});
-      }
-      if (streak >= 7) {
-        _showToast("🔥 连续打卡" + streak + "天！+" + streakBonus + "经验 +10积分", "success");
+      if (JITPoints && JITPoints.doAction) {
+        JITPoints.doAction("checkin_streak", _currentUser, { streak: streak }).then(function() {
+          userRewards["task_streak_" + today] = true;
+          _setTaskRewards(rewards);
+          var streakBonus = Math.min(streak * 5, 50);
+          _addExp(_currentUser, streakBonus);
+          _refreshPointsDisplay(true);
+          if (streak >= 7) {
+            _showToast("🔥 连续打卡" + streak + "天！+" + streakBonus + "经验 +10积分", "success");
+          }
+        }).catch(function() {});
       }
     }
 
@@ -2572,14 +2588,17 @@ var JITApp = (function() {
       if (monthSpend >= 5000) taskSpend.classList.add("task-done");
       else taskSpend.classList.remove("task-done");
     }
-    // 发放任务4奖励（每月一次）
+    // 发放任务4奖励（每月一次，服务端校验月消费后发放）
     if (monthSpend >= 5000 && !userRewards["task_spend_" + thisMonth]) {
-      userRewards["task_spend_" + thisMonth] = true;
-      _addExp(_currentUser, 200);
-      if (JITPoints && JITPoints.changePoints) {
-        JITPoints.doAction("spending_master", _currentUser).then(function() { _refreshPointsDisplay(true); }).catch(function() {});
+      if (JITPoints && JITPoints.doAction) {
+        JITPoints.doAction("spending_master", _currentUser).then(function() {
+          userRewards["task_spend_" + thisMonth] = true;
+          _setTaskRewards(rewards);
+          _addExp(_currentUser, 200);
+          _refreshPointsDisplay(true);
+          _showToast("🏆 消费达人！月消费≥¥5000！+200经验 +100积分", "success");
+        }).catch(function() {});
       }
-      _showToast("🏆 消费达人！月消费≥¥5000！+200经验 +100积分", "success");
     }
 
     // 保存奖励记录
@@ -2608,11 +2627,11 @@ var JITApp = (function() {
     var riskBarFill = document.getElementById("riskBarFill");
     if (!riskRemain) return;
 
-    var today = new Date().toISOString().split("T")[0];
+    var today = _cnDateOf();
     var thisMonth = today.substring(0, 7);
     var slotRecords = JSON.parse(localStorage.getItem("jit_slot_records") || "[]");
     var monthSpent = slotRecords.filter(function(r) {
-      return r.date && r.date.substring(0, 7) === thisMonth;
+      return _cnDateOf(r.date).substring(0, 7) === thisMonth;
     }).reduce(function(sum, r) { return sum + parseFloat(r.totalReward || 0); }, 0);
     monthSpent = Math.round(monthSpent * 100) / 100;
     var remain = Math.max(0, budget - monthSpent);
@@ -2982,13 +3001,13 @@ var JITApp = (function() {
   // 每日签到/登录奖励抽奖券
   var _dailyLoginBonus = function() {
     if (!_currentUser) return;
-    var today = new Date().toISOString().split("T")[0];
+    var today = _cnDateOf();
     var lastLogin = localStorage.getItem("jit_last_login_" + _currentUser);
     if (lastLogin === today) return; // 今天已经领过了
 
     var levelData = _getUserLevel(_currentUser);
     // 更新连续打卡
-    var yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+    var yesterday = _cnDateOf(new Date(Date.now() - 86400000).toISOString());
     if (lastLogin === yesterday) {
       levelData.streak = (levelData.streak || 0) + 1;
     } else {
@@ -3000,6 +3019,23 @@ var JITApp = (function() {
     localStorage.setItem("jit_user_levels", JSON.stringify(allLevels));
     localStorage.setItem("jit_last_login_" + _currentUser, today);
     JITApi.updateUserLevel(_currentUser, { level: levelData.level, exp: levelData.exp, streak: levelData.streak, lastLogin: today }).catch(function() {});
+
+    // 服务端记录签到（签到日期/连续天数以服务端为准），否则签到奖励的服务端校验无法通过
+    if (JITPoints && JITPoints.signIn) {
+      JITPoints.signIn(_currentUser).then(function(r) {
+        if (!r) return;
+        var s = Number(r.streakDays) || 0;
+        if (s > 0) {
+          levelData.streak = s;
+          var lv = {};
+          try { lv = JSON.parse(localStorage.getItem("jit_user_levels") || "{}"); } catch (e) {}
+          lv[_currentUser] = levelData;
+          localStorage.setItem("jit_user_levels", JSON.stringify(lv));
+          JITApi.updateUserLevel(_currentUser, { level: levelData.level, exp: levelData.exp, streak: s, lastLogin: today }).catch(function() {});
+        }
+        _refreshPointsDisplay(true);
+      }).catch(function() {});
+    }
 
     // 根据等级发抽奖券
     var tickets = JSON.parse(localStorage.getItem("jit_user_tickets") || "{}");
@@ -3175,7 +3211,7 @@ var JITApp = (function() {
 
     var voucherData = {
       shopName: shopName,
-      date: new Date().toISOString().split("T")[0],
+      date: _cnDateOf(),
       shopPhoto: "",
       orderPhotos: [],
       latitude: latitude,
@@ -3392,7 +3428,7 @@ var JITApp = (function() {
       platform: platform,
       orderNo: orderNo,
       shopName: shopName,
-      date: new Date().toISOString().split("T")[0],
+      date: _cnDateOf(),
       shopPhoto: "", // 线上购物不用店铺照片，复用 shopPhoto 字段存商品截图
       orderPhotos: [], // 复用 orderPhotos 字段存购物截图
       productPhoto: "",
@@ -3623,7 +3659,7 @@ var JITApp = (function() {
       electricSubsidyRate: "",          // 留空，管理员审核填写（%）
       electricSubsidyAmount: "",        // 留空，管理员审核时算
       shopName: shop,
-      date: new Date().toISOString().split("T")[0],
+      date: _cnDateOf(),
       shopPhoto: "",
       orderPhotos: [],
       amount: amtNum.toFixed(2) + "元",
@@ -3683,7 +3719,7 @@ var JITApp = (function() {
       discount: prize.discount,
       value: prize.value,
       label: prize.label,
-      date: new Date().toISOString().split("T")[0],
+      date: _cnDateOf(),
       username: _currentUser
     });
     localStorage.setItem("jit_lottery_results", JSON.stringify(lotteryResults));

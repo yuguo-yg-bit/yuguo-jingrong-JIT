@@ -259,12 +259,13 @@ export default async function (req) {
     // voucher: params 中存放凭证 id 的下标（-1 表示最后一个），服务端校验凭证归属
     const DB_OPS = {
   "vouchers.list_mine": { sql: "SELECT * FROM vouchers WHERE user_id=? AND user_id NOT LIKE '【%】%' AND shop_name NOT LIKE '【%】%' ORDER BY created_at DESC LIMIT 500", auth: "user", owner: 0 },
-  "vouchers.list_all": { sql: "SELECT * FROM vouchers WHERE user_id NOT LIKE '【%】%' AND shop_name NOT LIKE '【%】%' ORDER BY created_at DESC LIMIT 500", auth: "user" },
+  "vouchers.list_all": { sql: "SELECT * FROM vouchers WHERE user_id NOT LIKE '【%】%' AND shop_name NOT LIKE '【%】%' ORDER BY created_at DESC LIMIT 500", auth: "admin" },
+  "vouchers.get_by_id": { sql: "SELECT * FROM vouchers WHERE id=? LIMIT 1", auth: "user" },
   "vouchers.next_id": { sql: "SELECT COALESCE(MAX(CAST(id AS INTEGER)), 0) + 1 AS next_id FROM vouchers", auth: "user" },
   "vouchers.mark_completed": { sql: "UPDATE vouchers SET payment_status='completed', payment_method=COALESCE(NULLIF(?,''),payment_method), status='已完成交易', updated_at=? WHERE id=?", auth: "user", voucher: 2 },
   "vouchers.mark_paid": { sql: "UPDATE vouchers SET payment_status='paid', payment_method=COALESCE(NULLIF(?,''),payment_method), status='已付款·待确认', updated_at=? WHERE id=?", auth: "user", voucher: 2 },
-  "chat.list": { sql: "SELECT * FROM chat_messages WHERE user_id=? ORDER BY created_at ASC LIMIT 500", auth: "public", optionalAuth: true, owner: 0 },
-  "chat.send": { sql: "INSERT INTO chat_messages (id, user_id, sender, content, image_url, is_read, created_at) VALUES (?,?,?,?,?,0,?)", auth: "public", optionalAuth: true, owner: 1, anonRewrite: { 2: "user" }, forceSenderForUser: true },
+  "chat.list": { sql: "SELECT * FROM chat_messages WHERE user_id=? ORDER BY created_at ASC LIMIT 500", auth: "public", optionalAuth: true, owner: 0, allowAnonChannel: true },
+  "chat.send": { sql: "INSERT INTO chat_messages (id, user_id, sender, content, image_url, is_read, created_at) VALUES (?,?,?,?,?,0,?)", auth: "public", optionalAuth: true, owner: 1, anonRewrite: { 2: "user" }, forceSenderForUser: true, allowAnonChannel: true },
   "chat.users": { sql: "SELECT user_id, MAX(created_at) AS last_at FROM chat_messages GROUP BY user_id ORDER BY last_at DESC", auth: "admin" },
   "vouchers.users": { sql: "SELECT DISTINCT user_id FROM vouchers ORDER BY user_id ASC LIMIT 1000", auth: "admin" },
   "chat.mark_read": { sql: "UPDATE chat_messages SET is_read=1 WHERE user_id=?", auth: "user", owner: 0 },
@@ -283,12 +284,12 @@ export default async function (req) {
   "notif.list": { sql: "SELECT * FROM notifications ORDER BY created_at DESC LIMIT 200", auth: "user" },
   "notif.reply": { sql: "INSERT INTO notification_replies (notification_id, username, message, created_at) VALUES (?,?,?,?)", auth: "user", owner: 1 },
   "notif.replies": { sql: "SELECT * FROM notification_replies WHERE notification_id=? ORDER BY created_at ASC", auth: "user" },
-  "vouchers.urgent_mark": { sql: "UPDATE vouchers SET is_urgent=1, urgent_reason=?, urgent_username=?, urgent_time=?, updated_at=? WHERE id=?", auth: "user", owner: 1 },
+  "vouchers.urgent_mark": { sql: "UPDATE vouchers SET is_urgent=1, urgent_reason=?, urgent_username=?, urgent_time=?, updated_at=? WHERE id=?", auth: "user", owner: 1, voucher: 4 },
   "vouchers.urgent_remove": { sql: "UPDATE vouchers SET is_urgent=0, urgent_reason='', urgent_username='', urgent_time='', updated_at=? WHERE id=?", auth: "user", voucher: 1 },
   "vouchers.urgent_info": { sql: "SELECT is_urgent, urgent_reason, urgent_username, urgent_time FROM vouchers WHERE id=? LIMIT 1", auth: "user", voucher: 0 },
   "users.update_password": { sql: "UPDATE users SET password_hash=?, updated_at=? WHERE id=?", auth: "user", owner: 2 },
   "reg.update_password": { sql: "UPDATE registrations SET password_hash=? WHERE username=? AND review_status='approved'", auth: "user", owner: 1 },
-  "users.profile": { sql: "SELECT * FROM users WHERE id=? LIMIT 1", auth: "user", strip: ["password_hash"] },
+  "users.profile": { sql: "SELECT * FROM users WHERE id=? LIMIT 1", auth: "user", owner: 0, strip: ["password_hash"] },
   "oauth.token_get": { sql: "SELECT * FROM oauth_tokens WHERE token=? LIMIT 1", auth: "public" },
   "oauth.token_delete": { sql: "DELETE FROM oauth_tokens WHERE token=?", auth: "public" },
   "oauth.token_touch": { sql: "UPDATE oauth_tokens SET last_used_at=? WHERE token=?", auth: "public" },
@@ -302,6 +303,7 @@ export default async function (req) {
   "bl.remove": { sql: "DELETE FROM blacklist WHERE username=?", auth: "admin" },
   "bl.list": { sql: "SELECT * FROM blacklist ORDER BY created_at DESC LIMIT 500", auth: "user" },
   "community.list": { sql: "SELECT * FROM community_statuses ORDER BY created_at DESC LIMIT 200", auth: "user" },
+  "community.list_rowid": { sql: "SELECT rowid AS rid, * FROM community_statuses ORDER BY created_at DESC LIMIT 200", auth: "user" },
   "community.post": { sql: "INSERT INTO community_statuses (username, content, created_at) VALUES (?,?,?)", auth: "user", owner: 0 },
   "community.bans": { sql: "SELECT * FROM community_bans ORDER BY created_at DESC LIMIT 500", auth: "admin" },
   "community.ban_get": { sql: "SELECT * FROM community_bans WHERE user_id=? ORDER BY id DESC LIMIT 1", auth: "user", owner: 0 },
@@ -316,7 +318,7 @@ export default async function (req) {
   "tickets.expired_count": { sql: "SELECT COUNT(*) AS cnt FROM lottery_tickets WHERE user_id=? AND (status='expired' OR expires_at <= ?)", auth: "user", owner: 0 },
   "tickets.add": { sql: "INSERT INTO lottery_tickets (id, user_id, ticket_type, source, status, expires_at, created_at) VALUES (?,?,?,?,'unused',?,?)", auth: "admin" },
   "tickets.use": { sql: "UPDATE lottery_tickets SET status='used', used_at=? WHERE id=(SELECT id FROM lottery_tickets WHERE user_id=? AND status='unused' AND expires_at > ? LIMIT 1)", auth: "user", owner: 1 },
-  "tickets.expire_old": { sql: "UPDATE lottery_tickets SET status='expired' WHERE status IN ('unused','used') AND expires_at <= ? AND user_id=?", auth: "user", owner: 0 },
+  "tickets.expire_old": { sql: "UPDATE lottery_tickets SET status='expired' WHERE status IN ('unused','used') AND expires_at <= ? AND user_id=?", auth: "user", owner: 1 },
   "lottery.record_add": { sql: "INSERT INTO lottery_records (id, user_id, voucher_id, pool_type, prize_id, prize_name, prize_cash, prize_rate, voucher_amount, final_reward, is_win, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", auth: "user", owner: 1 },
   "winwall.list": { sql: "SELECT * FROM win_wall ORDER BY created_at DESC LIMIT 200", auth: "user" },
   "winwall.add": { sql: "INSERT INTO win_wall (id, user_id, prize_name, prize_cash, pool_type, voucher_amount, created_at) VALUES (?,?,?,?,?,?,?)", auth: "user", owner: 1 },
@@ -330,13 +332,37 @@ export default async function (req) {
   "monthly.add": { sql: "INSERT INTO user_monthly_rewards (id, user_id, month_key, total_reward, draw_count, updated_at) VALUES (?,?,?,?,1,?) ON CONFLICT(id) DO UPDATE SET total_reward = total_reward + ?, draw_count = draw_count + 1, updated_at=?", auth: "user", owner: 1 },
   "users.create_account": { sql: "INSERT INTO users (id, password_hash, points, sign_ins, last_sign_in, streak_days, frozen, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)", auth: "user", owner: 0 },
   "points.log_add": { sql: "INSERT INTO points_records (id, user_id, delta, reason, created_at) VALUES (?,?,?,?,?)", auth: "user", owner: 1 },
-  "users.signin_update": { sql: "UPDATE users SET sign_ins = ?, last_sign_in = ?, streak_days = ?, updated_at = ? WHERE id = ?", auth: "user", owner: 4 },
+  "users.signin_update": { sql: "UPDATE users SET sign_ins = ?, last_sign_in = ?, streak_days = ?, updated_at = ? WHERE id = ?", auth: "admin", owner: 4 },
+  "users.signin": { auth: "user", owner: 0, run: async function (p) {
+    var userId = String(p[0] || "");
+    var today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+    var q = await execTurso("SELECT sign_ins, last_sign_in, streak_days FROM users WHERE id=?", [userId]);
+    var inner = q.data?.results?.[0]?.response?.result || q.data?.results?.[0]?.response?.results || q.data?.results?.[0];
+    var rows = (inner && inner.rows) ? inner.rows : [];
+    if (!rows.length) return { ok: false, error: "账户不存在" };
+    var cell = function (r, i) { var v = r[i]; return (v && typeof v === "object") ? v.value : v; };
+    var signIns = [];
+    try { signIns = JSON.parse(String(cell(rows[0], 0) || "[]")); } catch (e) {}
+    if (!Array.isArray(signIns)) signIns = [];
+    var last = String(cell(rows[0], 1) || "");
+    var streak = Number(cell(rows[0], 2) || 0) || 0;
+    if (signIns.indexOf(today) > -1 || last === today) {
+      return { ok: true, signedIn: false, streakDays: streak, today: today };
+    }
+    var y = new Date(Date.now() - 24 * 3600 * 1000 + 8 * 3600 * 1000).toISOString().slice(0, 10);
+    streak = (last === y) ? streak + 1 : 1;
+    signIns.push(today);
+    if (signIns.length > 30) signIns = signIns.slice(-30);
+    var now = new Date().toISOString();
+    await execTurso("UPDATE users SET sign_ins=?, last_sign_in=?, streak_days=?, updated_at=? WHERE id=?", [JSON.stringify(signIns), today, streak, now, userId]);
+    return { ok: true, signedIn: true, streakDays: streak, today: today };
+  } },
   "users.set_frozen": { sql: "UPDATE users SET frozen = ?, updated_at = ? WHERE id = ?", auth: "admin" },
   "points.account_get": { sql: "SELECT id, points, sign_ins, last_sign_in, streak_days, frozen FROM users WHERE id = ?", auth: "user", owner: 0 },
   "points.logs_recent": { sql: "SELECT delta, reason, created_at FROM points_records WHERE user_id = ? ORDER BY created_at DESC LIMIT ?", auth: "user", owner: 0 },
   "points.logs_all": { sql: "SELECT delta, reason, created_at FROM points_records WHERE user_id = ? ORDER BY created_at DESC", auth: "user", owner: 0 },
   "users.list_points": { sql: "SELECT id, points, sign_ins, last_sign_in, streak_days, frozen FROM users", auth: "admin" },
-      "vouchers.create": { sql: "INSERT OR REPLACE INTO vouchers (id, user_id, shop_name, latitude, longitude, amount, discount, order_photos, payment_method, signature, remark, reject_reason, platform, order_no, product_photo, shopping_photos, electric_category, electric_brand, electric_apply_amount, electric_subsidy_rate, electric_subsidy_amount, review_result, final_price, shop_photo, status, order_type, payment_status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", auth: "user", owner: 1 },
+      "vouchers.create": { sql: "INSERT OR REPLACE INTO vouchers (id, user_id, shop_name, latitude, longitude, amount, discount, order_photos, payment_method, signature, remark, reject_reason, platform, order_no, product_photo, shopping_photos, electric_category, electric_brand, electric_apply_amount, electric_subsidy_rate, electric_subsidy_amount, review_result, final_price, shop_photo, status, order_type, payment_status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", auth: "user", owner: 1, createGuard: true },
       "vouchers.update_full": { sql: "UPDATE vouchers SET shop_name=?, shop_photo=?, order_photos=?, latitude=?, longitude=?, amount=?, discount=?, payment_method=?, remark=?, signature=?, reject_reason=?, platform=?, order_no=?, product_photo=?, shopping_photos=?, electric_category=?, electric_brand=?, electric_apply_amount=?, electric_subsidy_rate=?, electric_subsidy_amount=?, review_result=?, final_price=?, updated_at=? WHERE id=?", auth: "user", voucher: -1 },
       "lottery.records_mine": { sql: "SELECT * FROM lottery_records WHERE user_id=? ORDER BY created_at DESC LIMIT 200", auth: "user", owner: 0 },
       "lottery.records_all": { sql: "SELECT * FROM lottery_records ORDER BY created_at DESC LIMIT 500", auth: "admin" },
@@ -394,7 +420,10 @@ export default async function (req) {
         var expire = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
         if (!isAdmin) {
           if (source === "daily_login") {
-            var c1 = await dbCount("SELECT COUNT(*) AS cnt FROM lottery_tickets WHERE user_id=? AND source='daily_login' AND created_at >= ?", [userId, now.slice(0, 10)]);
+            // 按中国时区当天 0 点统计，避免 UTC 跨天导致同一天重复发放
+            const cnNow = Date.now();
+            const dayStart = new Date(cnNow - ((cnNow + 8 * 3600 * 1000) % (24 * 3600 * 1000))).toISOString();
+            var c1 = await dbCount("SELECT COUNT(*) AS cnt FROM lottery_tickets WHERE user_id=? AND source='daily_login' AND created_at >= ?", [userId, dayStart]);
             if (c1 > 0) return { ok: true, granted: 0, reason: "今日抽奖券已发放" };
             count = Math.min(Math.max(count, 1), 3);
           } else if (source === "migrate") {
@@ -472,7 +501,9 @@ export default async function (req) {
         if (def.owner !== undefined) {
           const ownerVal = String(params[def.owner] === undefined ? "" : params[def.owner]);
           const anonOk = sess.role === "anon" && ownerVal === "匿名";
-          if (!anonOk && ownerVal !== String(sess.username)) {
+          // 匿名留言板：登录用户同样可以访问「匿名」公共频道
+          const sharedAnonOk = def.allowAnonChannel && ownerVal === "匿名";
+          if (!anonOk && !sharedAnonOk && ownerVal !== String(sess.username)) {
             logAudit("DB_FORBIDDEN_OWNER", sess.username, "", "", "越权访问 " + opName, "/db", "", "blocked");
             return jsonResponse({ error: "无权访问他人数据" }, 403);
           }
@@ -483,6 +514,20 @@ export default async function (req) {
           if (owner === null || owner !== String(sess.username)) {
             logAudit("DB_FORBIDDEN_VOUCHER", sess.username, "vouchers", String(params[vIdx] || ""), "越权操作凭证 " + opName, "/db", "", "blocked");
             return jsonResponse({ error: "无权操作该凭证" }, 403);
+          }
+        }
+        // 新建凭证时若 id 已存在，禁止覆盖他人凭证（INSERT OR REPLACE 防越权改写）
+        if (def.createGuard) {
+          const existOwner = await dbVoucherOwner(params[0]);
+          if (existOwner !== null && existOwner !== String(sess.username)) {
+            logAudit("DB_FORBIDDEN_CREATE", sess.username, "vouchers", String(params[0] || ""), "试图覆盖他人凭证 " + opName, "/db", "", "blocked");
+            return jsonResponse({ error: "该凭证编号已被占用" }, 403);
+          }
+          // 普通用户新建凭证只能进入待审核，禁止自助设置审核结果/支付状态
+          if (sess.role !== "admin") {
+            if (params.length > 24) params[24] = "待审核";
+            if (params.length > 21) params[21] = "";
+            if (params.length > 26) params[26] = "pending";
           }
         }
       }
@@ -853,6 +898,53 @@ export default async function (req) {
         const rows = _rowsOf(q);
         return rows.length ? Number(_cell(rows[0], 0) || 0) : 0;
       };
+      // ======== 领取奖励前的服务端事实校验（防前端直接刷任务分） ========
+      const _cnToday = function() {
+        return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+      };
+      const _countToday = async function(table, uid, extraWhere) {
+        const q = await execTurso(
+          "SELECT COUNT(*) FROM " + table + " WHERE user_id=? AND created_at>=?" + (extraWhere || ""),
+          [uid, _dayStartIso()]
+        );
+        const rows = _rowsOf(q);
+        return rows.length ? Number(_cell(rows[0], 0) || 0) : 0;
+      };
+      const _vouchersToday = async function(uid) { return _countToday("vouchers", uid); };
+      const _drawsToday = async function(uid) { return _countToday("lottery_draws", uid); };
+      const _signedInToday = async function(uid) {
+        const q = await execTurso("SELECT sign_ins, last_sign_in FROM users WHERE id=?", [uid]);
+        const rows = _rowsOf(q);
+        if (!rows.length) return false;
+        let signIns = [];
+        try { signIns = JSON.parse(String(_cell(rows[0], 0) || "[]")); } catch (e) {}
+        if (!Array.isArray(signIns)) signIns = [];
+        return signIns.indexOf(_cnToday()) > -1 || String(_cell(rows[0], 1) || "") === _cnToday();
+      };
+      const _streakDays = async function(uid) {
+        const q = await execTurso("SELECT streak_days FROM users WHERE id=?", [uid]);
+        const rows = _rowsOf(q);
+        return rows.length ? Number(_cell(rows[0], 0) || 0) : 0;
+      };
+      const _monthSpend = async function(uid) {
+        const cn = new Date(Date.now() + 8 * 3600 * 1000);
+        const monthStart = Date.UTC(cn.getUTCFullYear(), cn.getUTCMonth(), 1) - 8 * 3600 * 1000;
+        const q = await execTurso(
+          "SELECT COALESCE(SUM(CAST(amount AS REAL)),0) FROM vouchers WHERE user_id=? AND created_at>=?",
+          [uid, new Date(monthStart).toISOString()]
+        );
+        const rows = _rowsOf(q);
+        return rows.length ? Number(_cell(rows[0], 0) || 0) : 0;
+      };
+      // 冻结账户禁止赚取/消耗积分（服务端强制执行，不能只依赖前端）
+      if (actSess.role !== "admin") {
+        const fq = await execTurso("SELECT COALESCE(frozen,0) FROM users WHERE id=? LIMIT 1", [userId]);
+        const frows = _rowsOf(fq);
+        if (frows.length && Number(_cell(frows[0], 0) || 0) === 1) {
+          logAudit("POINTS_ACTION_FROZEN", userId, "users", String(userId), "冻结账户尝试执行动作: " + String(action), "/points/action", "", "blocked");
+          return jsonResponse({ error: "积分账户已冻结，暂不可赚取或消耗积分" }, 403);
+        }
+      }
       // 必须与 js/wheel.js 的 SEGMENTS 顺序完全一致
       const WHEEL_SEGMENTS = [
         { label: "+10", delta: 10 },
@@ -866,21 +958,21 @@ export default async function (req) {
 
       // ======== 积分规则表（唯一可信源） ========
       const R = {
-        // 每日任务（服务端限次）
-        daily_task_add_voucher:      { delta: 15,  reason: "完成每日「添加凭证」任务", dailyLimit: 1 },
-        daily_task_3_draws:          { delta: 30,  reason: "完成每日「完成3次抽奖」任务", dailyLimit: 1 },
+        // 每日任务（服务端限次 + 服务端校验完成事实）
+        daily_task_add_voucher:      { delta: 15,  reason: "完成每日「添加凭证」任务", dailyLimit: 1, verify: async (uid) => (await _vouchersToday(uid)) >= 1 },
+        daily_task_3_draws:          { delta: 30,  reason: "完成每日「完成3次抽奖」任务", dailyLimit: 1, verify: async (uid) => (await _drawsToday(uid)) >= 3 },
         // 连续打卡
-        checkin_streak:              { delta: 10,  reason: () => "连续打卡" + (p.streak || 0) + "天奖励", dailyLimit: 1 },
+        checkin_streak:              { delta: 10,  reason: () => "连续打卡" + (p.streak || 0) + "天奖励", dailyLimit: 1, verify: async (uid) => await _signedInToday(uid) },
         // 消费达人
-        spending_master:             { delta: 100, reason: "完成「消费达人」任务（月消费≥¥5000）", dailyLimit: 1 },
-        // 添加凭证
-        add_voucher:                 { delta: 15,  reason: "添加凭证", dailyLimit: 20 },
-        add_online_voucher:          { delta: 15,  reason: "添加线上购物凭证", dailyLimit: 20 },
-        add_appliance_voucher:       { delta: 15,  reason: "添加电器补贴凭证", dailyLimit: 20 },
+        spending_master:             { delta: 100, reason: "完成「消费达人」任务（月消费≥¥5000）", dailyLimit: 1, verify: async (uid) => (await _monthSpend(uid)) >= 5000 },
+        // 添加凭证（每张凭证当天只能兑换一次奖励）
+        add_voucher:                 { delta: 15,  reason: "添加凭证", dailyLimit: 20, verify: async (uid, act) => (await _vouchersToday(uid)) > (await _ledgerCountToday(uid, act)) },
+        add_online_voucher:          { delta: 15,  reason: "添加线上购物凭证", dailyLimit: 20, verify: async (uid, act) => (await _vouchersToday(uid)) > (await _ledgerCountToday(uid, act)) },
+        add_appliance_voucher:       { delta: 15,  reason: "添加电器补贴凭证", dailyLimit: 20, verify: async (uid, act) => (await _vouchersToday(uid)) > (await _ledgerCountToday(uid, act)) },
         // 凭证审核（只能由管理员触发，否则任何用户可反复给自己加 25 分）
         voucher_approved:            { delta: 25,  reason: "凭证审核通过", requireAdmin: true },
-        // 连续N天添加凭证
-        streak_bonus:                { delta: 30,  reason: () => "连续" + (p.streak || 0) + "天添加凭证奖励", dailyLimit: 1 },
+        // 连续N天添加凭证（服务端校验：今天已签到且连续天数为3的倍数）
+        streak_bonus:                { delta: 30,  reason: () => "连续" + (p.streak || 0) + "天添加凭证奖励", dailyLimit: 1, verify: async (uid) => (await _signedInToday(uid)) && ((await _streakDays(uid)) % 3 === 0) },
         // 积分抵消（只会扣分，且扣分前有余额护栏）
         points_offset: {
           calc: function() {
@@ -964,6 +1056,16 @@ export default async function (req) {
         }
       }
 
+      // 完成事实校验：任务奖励必须有对应的服务端数据支撑
+      if (typeof rule.verify === "function") {
+        let passed = false;
+        try { passed = await rule.verify(userId, action); } catch (e) { passed = false; }
+        if (!passed) {
+          logAudit("POINTS_ACTION_REJECTED", String(actSess.username || ""), "users", String(userId), "任务条件未满足: " + action, "/points/action", "", "blocked");
+          return jsonResponse({ error: "任务条件未满足，暂时无法领取该奖励" }, 400);
+        }
+      }
+
       // 每日限次（按 ledger 流水统计，不信任前端）
       if (rule.dailyLimit) {
         const usedToday = await _ledgerCountToday(userId, action);
@@ -1019,11 +1121,12 @@ export default async function (req) {
         return jsonResponse({ error: "未登录或会话已失效，请重新登录" }, 401);
       }
       const isAdminSession = sess.role === "admin";
-      if (sess.username !== userId && !isAdminSession) {
-        logAudit("POINTS_FORBIDDEN", sess.username, "users", String(userId || ""), "越权操作他人积分", "/points", String(bizNo || ""), "blocked");
-        return jsonResponse({ error: "无权操作他人积分" }, 403);
+      // 该端点允许直接指定金额，仅服务端/管理员可用；普通用户只能走 /points/action 业务动作
+      if (!isAdminSession) {
+        logAudit("POINTS_FORBIDDEN", sess.username, "users", String(userId || ""), "普通用户禁止直接调用 /points", "/points", String(bizNo || ""), "blocked");
+        return jsonResponse({ error: "无权直接操作积分，请使用业务动作接口" }, 403);
       }
-      const sessionOperator = isAdminSession ? "admin" : sess.username;
+      const sessionOperator = "admin";
       if (await rateLimitPoints(sessionOperator)) {
         return jsonResponse({ error: "操作过于频繁，请稍后再试" }, 429);
       }
@@ -1125,12 +1228,15 @@ export default async function (req) {
       return jsonResponse({ ok: true, points });
     }
 
-    // ========== 显式审计日志端点（业务自定义动作） ==========
+    // ========== 显式审计日志端点（仅管理员，防止匿名刷日志） ==========
     if (path === "/audit" && req.method === "POST") {
+      const auditSess = await requireSession();
+      if (auditSess.error) return jsonResponse({ error: "请先登录" }, 401);
+      if (auditSess.role !== "admin") return jsonResponse({ error: "无权写入审计日志" }, 403);
       const body = await req.json();
-      const { action, operator, targetType, targetId, detail, bizNo } = body;
+      const { action, targetType, targetId, detail, bizNo } = body;
       if (!action || typeof action !== "string") return jsonResponse({ error: "缺少 action" }, 400);
-      logAudit(action, String(operator || "anonymous"), String(targetType || ""), String(targetId || ""), String(detail || ""), "/audit", String(bizNo || ""), "ok");
+      logAudit(String(action).slice(0, 80), String(auditSess.username || "admin"), String(targetType || "").slice(0, 60), String(targetId || "").slice(0, 60), String(detail || "").slice(0, 500), "/audit", String(bizNo || "").slice(0, 100), "ok");
       return jsonResponse({ ok: true });
     }
 
@@ -1143,10 +1249,19 @@ export default async function (req) {
     // ========== 图片上传（GitHub API） ==========
     if (path === "/upload-image" && req.method === "POST") {
       const body = await req.json();
-      const { base64Data, folder } = body;
+      const { base64Data } = body;
+      let folder = body.folder;
 
       if (!base64Data) {
         return jsonResponse({ error: "缺少 base64Data" }, 400);
+      }
+      // 只允许白名单目录，防止路径穿越写入仓库其他位置
+      if (typeof folder !== "string" || !/^[A-Za-z0-9_-]{1,40}(\/[A-Za-z0-9_-]{1,40})?$/.test(folder)) {
+        folder = "system";
+      }
+      // 限制单张图片体积（base64 约 12MB 上限）
+      if (String(base64Data).length > 12 * 1024 * 1024) {
+        return jsonResponse({ error: "图片过大，请压缩后再上传" }, 413);
       }
       // 鉴权：上传必须登录，否则等于把仓库当公开图床
       const upSess = await requireSession();
