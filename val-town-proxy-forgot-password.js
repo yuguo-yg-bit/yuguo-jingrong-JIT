@@ -282,7 +282,9 @@ export default async function (req) {
     if (path === "/oauth/email/reset-password" && req.method === "POST") {
       const { email, code, newPassword, newPasswordHash } = await req.json();
       if (!email || !code || !newPassword) return jsonResponse({ error: "缺少必填字段" }, 400);
-      if (newPassword.length < 6) return jsonResponse({ error: "新密码至少需要6位" }, 400);
+      if (newPassword.length < 8 || !/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) {
+        return jsonResponse({ error: "新密码至少 8 位，且必须包含字母和数字" }, 400);
+      }
       if (!/^\d{6}$/.test(code)) return jsonResponse({ error: "验证码格式不正确" }, 400);
 
       const emailLower = email.toLowerCase();
@@ -323,6 +325,17 @@ export default async function (req) {
         ? newPasswordHash
         : await hashPassword(newPassword);
 
+      // 先取出用户名，用于重置后强制回收旧会话
+      let resetUsername = "";
+      try {
+        const { data: uData } = await execTurso(
+          "SELECT username FROM registrations WHERE (oauth_email=? OR email=?) AND review_status='approved' LIMIT 1",
+          [emailLower, emailLower]
+        );
+        const urows = uData.results?.[0]?.response?.result?.rows || [];
+        if (urows.length > 0) resetUsername = String(urows[0][0]?.value ?? urows[0][0] ?? "");
+      } catch (e) {}
+
       // registrations 表没有 updated_at 列（见 turso-schema.sql），只更新密码
       await execTurso(
         "UPDATE registrations SET password_hash=? WHERE (oauth_email=? OR email=?) AND review_status='approved'",
@@ -334,14 +347,20 @@ export default async function (req) {
         [passwordHash, now, emailLower, emailLower]
       );
 
+      // 重置密码后旧 Token 全部作废，防止账号被旧会话继续接管
+      if (resetUsername) {
+        try { await execTurso("DELETE FROM sessions WHERE username=?", [resetUsername]); } catch (e) {}
+        try { await execTurso("DELETE FROM oauth_tokens WHERE username=?", [resetUsername]); } catch (e) {}
+      }
+
       await execTurso("UPDATE email_verifications SET status='verified', verified_at=? WHERE email=?", [now, emailLower]);
 
       logAudit("PASSWORD_RESET", emailLower, "users", "", "密码重置成功", "/oauth/email/reset-password", "", "ok");
       return jsonResponse({ ok: true, message: "密码重置成功，请使用新密码登录" });
     }
 
-    return jsonResponse({ error: "未找到路径: " + path }, 404);
+    return jsonResponse({ error: "请求路径不存在" }, 404);
   } catch (e) {
-    return jsonResponse({ error: "服务器错误: " + (e.message || "未知错误") }, 500);
+    return jsonResponse({ error: "服务器繁忙，请稍后重试" }, 500);
   }
 }

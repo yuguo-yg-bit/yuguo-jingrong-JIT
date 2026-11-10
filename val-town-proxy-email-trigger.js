@@ -30,68 +30,43 @@ export default async function (email) {
   console.log("[EMAIL-TRIGGER] 发件人原始值:", rawFrom);
   console.log("[EMAIL-TRIGGER] 邮件正文(前300字):", body.substring(0, 300));
 
-  // ========= 多途径提取发件人真实邮箱 =========
-  // 策略：邮件可能经过 yuconemail.cc.cd 转发，From 头可能被改写。
-  // 前端 mailto 链接的 body 里写了「注册邮箱：xxx@xxx.com」，从这里提取最可靠。
+  // ========= 只信任邮件 From 信头（真实发件人），不再从正文提取邮箱 =========
+  // 安全：正文里的邮箱可以被任意伪造；发件人身份必须以邮件信头为准，
+  // 这样攻击者最多只能验证自己可控的邮箱，无法冒充他人邮箱完成验证。
   var senderEmail = "";
-
-  // 途径1: 从邮件正文提取「注册邮箱：」后面的邮箱地址
-  var bodyEmailMatch = body.match(/注册邮箱[：:]\s*([^\s\n\r]+@[^\s\n\r]+)/i);
-  if (bodyEmailMatch && bodyEmailMatch[1]) {
-    senderEmail = bodyEmailMatch[1].trim().toLowerCase();
-    console.log("[EMAIL-TRIGGER] 途径1-从正文提取邮箱:", senderEmail);
+  var senderMatch = rawFrom.match(/<([^>]+)>/);
+  var extracted = (senderMatch ? senderMatch[1] : rawFrom).trim().toLowerCase();
+  if (/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(extracted)) {
+    senderEmail = extracted;
+    console.log("[EMAIL-TRIGGER] 从 From 信头提取发件人邮箱:", senderEmail);
   }
 
-  // 途径2: 从邮件正文提取任意邮箱（用户名注册的 mailto body 带了注册邮箱）
   if (!senderEmail || !/@/.test(senderEmail)) {
-    var anyEmailMatch = body.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g);
-    if (anyEmailMatch && anyEmailMatch.length > 0) {
-      // 排除系统邮箱
-      for (var ei = 0; ei < anyEmailMatch.length; ei++) {
-        var candidate = anyEmailMatch[ei].trim().toLowerCase();
-        if (candidate.indexOf("yuguoemail@") < 0 && candidate.indexOf("valtown.email") < 0 && candidate.indexOf("noreply@") < 0) {
-          senderEmail = candidate;
-          console.log("[EMAIL-TRIGGER] 途径2-从正文匹配邮箱:", senderEmail);
-          break;
-        }
-      }
+    console.log("[EMAIL-TRIGGER] ❌ 无法从 From 信头提取发件人邮箱, rawFrom=" + rawFrom);
+    return new Response("Could not extract sender email from From header", { status: 400 });
+  }
+
+  // 正文若自报「注册邮箱」，必须与真实发件人一致，否则判定为伪造请求
+  var declaredMatch = body.match(/注册邮箱[：:]\s*([^\s\n\r]+@[^\s\n\r]+)/i);
+  if (declaredMatch && declaredMatch[1]) {
+    var declared = declaredMatch[1].trim().toLowerCase();
+    if (declared !== senderEmail) {
+      console.log("[EMAIL-TRIGGER] ❌ 正文声明邮箱(" + declared + ")与发件人(" + senderEmail + ")不一致，拒绝");
+      return new Response("Declared email does not match sender", { status: 403 });
     }
-  }
-
-  // 途径3: 从 email.from 提取（标准格式 "Name <email>"）
-  if (!senderEmail || !/@/.test(senderEmail)) {
-    var senderMatch = rawFrom.match(/<([^>]+)>/);
-    var extracted = (senderMatch ? senderMatch[1] : rawFrom).trim().toLowerCase();
-    if (extracted && /@/.test(extracted)) {
-      senderEmail = extracted;
-      console.log("[EMAIL-TRIGGER] 途径3-从From头提取邮箱:", senderEmail);
-    }
-  }
-
-  // 途径4: email.from 本身就是纯邮箱
-  if (!senderEmail || !/@/.test(senderEmail)) {
-    var cleanFrom = rawFrom.trim().toLowerCase();
-    if (/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(cleanFrom)) {
-      senderEmail = cleanFrom;
-      console.log("[EMAIL-TRIGGER] 途径4-From头即邮箱:", senderEmail);
-    }
-  }
-
-  if (!senderEmail || !/@/.test(senderEmail)) {
-    console.log("[EMAIL-TRIGGER] ❌ 无法提取发件人邮箱, rawFrom=" + rawFrom + " body(前200)=" + body.substring(0, 200));
-    return new Response("Could not extract sender email from: " + rawFrom, { status: 400 });
   }
 
   console.log("[EMAIL-TRIGGER] 最终使用的发件人邮箱:", senderEmail);
 
-  // 从邮件正文提取 6 位验证码（转发模式下可以没有验证码）
+  // 从邮件正文提取 6 位验证码（可选：有验证码则强校验；无验证码时按发件邮箱匹配待验证记录）
   const codeMatch = body.match(/\b(\d{6})\b/);
   const code = codeMatch ? codeMatch[1] : null;
 
-  console.log("[EMAIL-TRIGGER] 提取的验证码:", code);
+  console.log("[EMAIL-TRIGGER] 提取的验证码:", code || "(无)");
 
   const now = new Date().toISOString();
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  // 验证码 30 分钟有效
+  const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
   console.log("[EMAIL-TRIGGER] 当前时间:", now);
 
   try {
@@ -99,9 +74,9 @@ export default async function (email) {
     console.log("[EMAIL-TRIGGER] 🔍 查询 email_verifications: email=" + senderEmail + " code=" + code);
 
     const regSql = code
-      ? "SELECT username, password_hash, full_name, birthdate, country, province, city, referrer, COALESCE(purpose,'') as purpose FROM email_verifications WHERE email=? AND code=? AND status='pending'"
+      ? "SELECT username, password_hash, full_name, birthdate, country, province, city, referrer, COALESCE(purpose,'') as purpose FROM email_verifications WHERE email=? AND code=? AND status='pending' AND created_at>=?"
       : "SELECT username, password_hash, full_name, birthdate, country, province, city, referrer, COALESCE(purpose,'') as purpose FROM email_verifications WHERE email=? AND status='pending' AND created_at>=? ORDER BY created_at DESC LIMIT 1";
-    const regArgs = code ? [senderEmail, code] : [senderEmail, cutoff];
+    const regArgs = code ? [senderEmail, code, cutoff] : [senderEmail, cutoff];
 
     const checkRes = await fetch(TURSO_API, {
       method: "POST",
@@ -132,9 +107,9 @@ export default async function (email) {
     // 1.5 没有注册记录时，尝试匹配「老用户绑定邮箱」记录
     if (rows.length === 0) {
       const bindSql = code
-        ? "SELECT username FROM email_bindings WHERE email=? AND code=? AND status='pending'"
+        ? "SELECT username FROM email_bindings WHERE email=? AND code=? AND status='pending' AND created_at>=?"
         : "SELECT username FROM email_bindings WHERE email=? AND status='pending' AND created_at>=? ORDER BY created_at DESC LIMIT 1";
-      const bindArgs = code ? [senderEmail, code] : [senderEmail, cutoff];
+      const bindArgs = code ? [senderEmail, code, cutoff] : [senderEmail, cutoff];
       const bindRes = await fetch(TURSO_API, {
         method: "POST",
         headers: {
@@ -225,6 +200,27 @@ export default async function (email) {
       : (Date.now().toString(36) + Math.random().toString(36).substring(2, 15));
 
     console.log("[EMAIL-TRIGGER] 用户数据: username=" + username + " fullName=" + fullName + " regId=" + regId);
+
+    // 防用户名撞库：该用户名已被其他邮箱占用时拒绝写入，避免覆盖他人账号
+    var dupRes = await fetch(TURSO_API, {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + TURSO_TOKEN, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requests: [{
+          type: "execute",
+          stmt: {
+            sql: "SELECT id FROM registrations WHERE username=? AND (email<>? OR oauth_id<>?) LIMIT 1",
+            args: [username, senderEmail, senderEmail].map(function (v) { return { type: "text", value: String(v) }; })
+          }
+        }]
+      })
+    });
+    var dupData = await dupRes.json();
+    var dupRows = dupData.results?.[0]?.response?.result?.rows || [];
+    if (dupRows.length > 0) {
+      console.log("[EMAIL-TRIGGER] ❌ 用户名已被其他邮箱占用，拒绝写入");
+      return new Response("Username already taken", { status: 409 });
+    }
 
     // 3. 标记验证通过 + 创建用户（免审核 approved）+ 写入 registrations 表
     console.log("[EMAIL-TRIGGER] ✍️ 写入数据库: 更新验证状态 + 创建用户 + 插入registrations");

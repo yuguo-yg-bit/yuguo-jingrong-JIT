@@ -1179,7 +1179,10 @@ var JITAdmin = (function() {
 
   var _previewImage = function(src) {
     var overlay = document.getElementById("imagePreviewOverlay");
-    overlay.innerHTML = '<img src="' + src + '">';
+    // 只允许 http(s)/data 图片地址，并对属性做转义，防止用户提交的图片地址注入脚本
+    var safe = String(src || "");
+    if (!/^(https?:\/\/|data:image\/)/i.test(safe)) safe = "";
+    overlay.innerHTML = safe ? '<img src="' + _escapeHtml(safe) + '">' : '<div style="color:#fff;">无效图片地址</div>';
     overlay.style.display = "flex";
     overlay.onclick = function() { overlay.style.display = "none"; };
   };
@@ -2498,8 +2501,8 @@ var JITAdmin = (function() {
   var _saResetPassword = function() {
     if (!_saCurrentUserData) { _showToast("请先搜索用户"); return; }
     var username = _saCurrentUserData.id;
-    var newPwd = prompt("请输入用户 [" + username + "] 的新密码（最少3位）:");
-    if (!newPwd || newPwd.length < 3) { _showToast("密码至少3位"); return; }
+    var newPwd = prompt("请输入用户 [" + username + "] 的新密码（至少8位，含字母和数字）:");
+    if (!newPwd || !/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(newPwd)) { _showToast("密码至少8位，且需包含字母和数字"); return; }
     // 统一走 API：按登录校验使用的盐重新哈希，并写入 registrations（登录读取的就是这张表）
     JITApi.updateUserPassword(username, newPwd).then(function() {
       _showToast("用户 [" + username + "] 密码已重置为: " + newPwd);
@@ -2564,7 +2567,7 @@ var JITAdmin = (function() {
           }).join("") + '</tr>';
         }).join("");
         if (rows.length === 0) {
-          if (body) body.innerHTML = '<tr><td colspan="' + Math.max(cols.length, 1) + '" style="text-align:center;color:#999;padding:20px;">表 [' + tableName + '] 为空</td></tr>';
+          if (body) body.innerHTML = '<tr><td colspan="' + Math.max(cols.length, 1) + '" style="text-align:center;color:#999;padding:20px;">表 [' + _escapeHtml(tableName) + '] 为空</td></tr>';
         }
       }
     }).catch(function(e) {

@@ -9,6 +9,51 @@ import { MailtrapClient } from "npm:mailtrap";
 
 let _negativePointsFixed = false;
 
+// ========== 基础限流（实例内存，防脚本高频刷接口/暴力破解） ==========
+const _IP_BUCKETS = new Map();   // ip -> { start, count }
+const _LOGIN_FAILS = new Map();  // ip|username -> { first, count }
+const RATE_WINDOW_MS = 60 * 1000;
+const RATE_MAX_PER_WINDOW = 300; // 单 IP 每分钟 300 次（前端轮询远低于此值）
+const LOGIN_FAIL_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_FAIL_MAX = 8;
+
+function clientIpOf(req) {
+  const h = req.headers || {};
+  let ip = h.get("cf-connecting-ip") || h.get("x-real-ip") || h.get("x-forwarded-for") || "";
+  if (ip.indexOf(",") > -1) ip = ip.split(",")[0].trim();
+  return ip || "unknown";
+}
+
+function rateLimited(ip) {
+  const now = Date.now();
+  const rec = _IP_BUCKETS.get(ip);
+  if (!rec || now - rec.start > RATE_WINDOW_MS) {
+    _IP_BUCKETS.set(ip, { start: now, count: 1 });
+    if (_IP_BUCKETS.size > 10000) _IP_BUCKETS.clear();
+    return false;
+  }
+  rec.count++;
+  return rec.count > RATE_MAX_PER_WINDOW;
+}
+
+function loginBlocked(key) {
+  const rec = _LOGIN_FAILS.get(key);
+  if (!rec) return false;
+  if (Date.now() - rec.first > LOGIN_FAIL_WINDOW_MS) { _LOGIN_FAILS.delete(key); return false; }
+  return rec.count >= LOGIN_FAIL_MAX;
+}
+
+function noteLoginFail(key) {
+  const now = Date.now();
+  const rec = _LOGIN_FAILS.get(key);
+  if (!rec || now - rec.first > LOGIN_FAIL_WINDOW_MS) _LOGIN_FAILS.set(key, { first: now, count: 1 });
+  else rec.count++;
+  if (_LOGIN_FAILS.size > 10000) _LOGIN_FAILS.clear();
+}
+
+function clearLoginFail(key) { _LOGIN_FAILS.delete(key); }
+
+
 export default async function (req) {
   // ========== HTTP 代理 ==========
 
@@ -41,7 +86,16 @@ export default async function (req) {
     const origin = req.headers.get("origin") || "";
     return new Response(JSON.stringify(data), {
       status,
-      headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+      headers: {
+        ...getCorsHeaders(origin),
+        "Content-Type": "application/json",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "no-referrer",
+        "Permissions-Policy": "geolocation=(), camera=(), microphone=()",
+        "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+        "Cache-Control": "no-store",
+      },
     });
   }
 
@@ -76,6 +130,15 @@ export default async function (req) {
 
   const url = new URL(req.url);
   const path = url.pathname;
+
+  // 全局限流：同一 IP 每分钟超过 300 次直接拒绝（防脚本高频刷接口）
+  const _reqIp = clientIpOf(req);
+  if (rateLimited(_reqIp)) {
+    return new Response(JSON.stringify({ error: "请求过于频繁，请稍后再试" }), {
+      status: 429,
+      headers: { ...getCorsHeaders(req.headers.get("origin") || ""), "Content-Type": "application/json", "Retry-After": "60" },
+    });
+  }
 
   try {
     // ========== 工具：把 Turso 带类型格式转成纯值 ==========
@@ -262,8 +325,21 @@ export default async function (req) {
   "vouchers.list_all": { sql: "SELECT * FROM vouchers WHERE user_id NOT LIKE '【%】%' AND shop_name NOT LIKE '【%】%' ORDER BY created_at DESC LIMIT 500", auth: "admin" },
   "vouchers.get_by_id": { sql: "SELECT * FROM vouchers WHERE id=? LIMIT 1", auth: "user" },
   "vouchers.next_id": { sql: "SELECT COALESCE(MAX(CAST(id AS INTEGER)), 0) + 1 AS next_id FROM vouchers", auth: "user" },
-  "vouchers.mark_completed": { sql: "UPDATE vouchers SET payment_status='completed', payment_method=COALESCE(NULLIF(?,''),payment_method), status='已完成交易', updated_at=? WHERE id=?", auth: "user", voucher: 2 },
-  "vouchers.mark_paid": { sql: "UPDATE vouchers SET payment_status='paid', payment_method=COALESCE(NULLIF(?,''),payment_method), status='已付款·待确认', updated_at=? WHERE id=?", auth: "user", voucher: 2 },
+  // 结算入账只能由管理员确认（用户不得自行把凭证标记为已完成交易）
+  "vouchers.mark_completed": { sql: "UPDATE vouchers SET payment_status='completed', payment_method=COALESCE(NULLIF(?,''),payment_method), status='已完成交易', updated_at=? WHERE id=?", auth: "admin" },
+  // 用户可申报「我已付款」，但必须是审核通过后的凭证，且仅进入待确认状态，不产生结算
+  "vouchers.mark_paid": { auth: "user", voucher: 2, run: async function (p, sess) {
+    var id = String(p[2] || "");
+    var cur = await dbOne("SELECT status FROM vouchers WHERE id=?", [id]);
+    if (!cur) return { ok: false, error: "凭证不存在" };
+    var st = String(cur[0] || "");
+    if (sess.role !== "admin" && ["approved", "paid"].indexOf(st) === -1) {
+      return { ok: false, error: "凭证审核通过后才能提交付款" };
+    }
+    var r = await execTurso("UPDATE vouchers SET payment_status='paid', payment_method=COALESCE(NULLIF(?,''),payment_method), status='已付款·待确认', updated_at=? WHERE id=?", [p[0], p[1], id]);
+    if (!r.ok) return { ok: false, error: "更新失败" };
+    return { ok: true, affectedRowCount: 1 };
+  } },
   "chat.list": { sql: "SELECT * FROM chat_messages WHERE user_id=? ORDER BY created_at ASC LIMIT 500", auth: "public", optionalAuth: true, owner: 0, allowAnonChannel: true },
   "chat.send": { sql: "INSERT INTO chat_messages (id, user_id, sender, content, image_url, is_read, created_at) VALUES (?,?,?,?,?,0,?)", auth: "public", optionalAuth: true, owner: 1, anonRewrite: { 2: "user" }, forceSenderForUser: true, allowAnonChannel: true },
   "chat.users": { sql: "SELECT user_id, MAX(created_at) AS last_at FROM chat_messages GROUP BY user_id ORDER BY last_at DESC", auth: "admin" },
@@ -287,8 +363,21 @@ export default async function (req) {
   "vouchers.urgent_mark": { sql: "UPDATE vouchers SET is_urgent=1, urgent_reason=?, urgent_username=?, urgent_time=?, updated_at=? WHERE id=?", auth: "user", owner: 1, voucher: 4 },
   "vouchers.urgent_remove": { sql: "UPDATE vouchers SET is_urgent=0, urgent_reason='', urgent_username='', urgent_time='', updated_at=? WHERE id=?", auth: "user", voucher: 1 },
   "vouchers.urgent_info": { sql: "SELECT is_urgent, urgent_reason, urgent_username, urgent_time FROM vouchers WHERE id=? LIMIT 1", auth: "user", voucher: 0 },
-  "users.update_password": { sql: "UPDATE users SET password_hash=?, updated_at=? WHERE id=?", auth: "user", owner: 2 },
-  "reg.update_password": { sql: "UPDATE registrations SET password_hash=? WHERE username=? AND review_status='approved'", auth: "user", owner: 1 },
+  // 改密：仅允许本人或管理员，并强制回收旧会话/旧 OAuth 凭证（改密后旧 Token 立即失效）
+  "users.update_password": { auth: "user", owner: 2, run: async function (p, sess) {
+    var id = String(p[2] || "");
+    var r = await execTurso("UPDATE users SET password_hash=?, updated_at=? WHERE id=?", [p[0], p[1], id]);
+    if (!r.ok) return { ok: false, error: "更新失败" };
+    await revokeUserSessions(id, sess);
+    return { ok: true, affectedRowCount: 1, sessionsRevoked: true };
+  } },
+  "reg.update_password": { auth: "user", owner: 1, run: async function (p, sess) {
+    var username = String(p[1] || "");
+    var r = await execTurso("UPDATE registrations SET password_hash=? WHERE username=? AND review_status='approved'", [p[0], username]);
+    if (!r.ok) return { ok: false, error: "更新失败" };
+    await revokeUserSessions(username, sess);
+    return { ok: true, affectedRowCount: 1, sessionsRevoked: true };
+  } },
   "users.profile": { sql: "SELECT * FROM users WHERE id=? LIMIT 1", auth: "user", owner: 0, strip: ["password_hash"] },
   "oauth.token_get": { sql: "SELECT * FROM oauth_tokens WHERE token=? LIMIT 1", auth: "public" },
   "oauth.token_delete": { sql: "DELETE FROM oauth_tokens WHERE token=?", auth: "public" },
@@ -362,16 +451,74 @@ export default async function (req) {
   "points.logs_recent": { sql: "SELECT delta, reason, created_at FROM points_records WHERE user_id = ? ORDER BY created_at DESC LIMIT ?", auth: "user", owner: 0 },
   "points.logs_all": { sql: "SELECT delta, reason, created_at FROM points_records WHERE user_id = ? ORDER BY created_at DESC", auth: "user", owner: 0 },
   "users.list_points": { sql: "SELECT id, points, sign_ins, last_sign_in, streak_days, frozen FROM users", auth: "admin" },
-      "vouchers.create": { sql: "INSERT OR REPLACE INTO vouchers (id, user_id, shop_name, latitude, longitude, amount, discount, order_photos, payment_method, signature, remark, reject_reason, platform, order_no, product_photo, shopping_photos, electric_category, electric_brand, electric_apply_amount, electric_subsidy_rate, electric_subsidy_amount, review_result, final_price, shop_photo, status, order_type, payment_status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", auth: "user", owner: 1, createGuard: true },
-      "vouchers.update_full": { sql: "UPDATE vouchers SET shop_name=?, shop_photo=?, order_photos=?, latitude=?, longitude=?, amount=?, discount=?, payment_method=?, remark=?, signature=?, reject_reason=?, platform=?, order_no=?, product_photo=?, shopping_photos=?, electric_category=?, electric_brand=?, electric_apply_amount=?, electric_subsidy_rate=?, electric_subsidy_amount=?, review_result=?, final_price=?, updated_at=? WHERE id=?", auth: "user", voucher: -1 },
+      "vouchers.create": { sql: "INSERT OR REPLACE INTO vouchers (id, user_id, shop_name, latitude, longitude, amount, discount, order_photos, payment_method, signature, remark, reject_reason, platform, order_no, product_photo, shopping_photos, electric_category, electric_brand, electric_apply_amount, electric_subsidy_rate, electric_subsidy_amount, review_result, final_price, shop_photo, status, order_type, payment_status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", auth: "user", owner: 1, createGuard: true, dailyCreateLimit: 20 },
+      "vouchers.update_full": { auth: "user", voucher: -1, run: async function (p, sess) {
+        var id = String(p[p.length - 1] || "");
+        if (sess.role !== "admin") {
+          var cur = await dbOne("SELECT status, discount, final_price FROM vouchers WHERE id=?", [id]);
+          if (!cur) return { ok: false, error: "凭证不存在" };
+          var st = String(cur[0] || "");
+          // 一旦进入审核/交易流程，金额、结算价等关键字段不能再被用户改写
+          if (["待审核", "pending", ""].indexOf(st) === -1) {
+            return { ok: false, error: "凭证已进入审核/交易流程，不能再修改金额、结算价等关键信息" };
+          }
+          // 已开奖的凭证：折扣与最终结算价由服务端开奖结果锁定，用户编辑不得覆盖
+          var lockedDiscount = String(cur[1] || "");
+          var lockedFinal = String(cur[2] || "");
+          if (lockedDiscount && p.length > 6) p[6] = lockedDiscount;
+          if (lockedFinal && p.length > 21) p[21] = lockedFinal;
+        }
+        var sql = "UPDATE vouchers SET shop_name=?, shop_photo=?, order_photos=?, latitude=?, longitude=?, amount=?, discount=?, payment_method=?, remark=?, signature=?, reject_reason=?, platform=?, order_no=?, product_photo=?, shopping_photos=?, electric_category=?, electric_brand=?, electric_apply_amount=?, electric_subsidy_rate=?, electric_subsidy_amount=?, review_result=?, final_price=?, updated_at=? WHERE id=?";
+        var r = await execTurso(sql, p);
+        if (!r.ok) return { ok: false, error: "更新失败" };
+        return { ok: true, affectedRowCount: 1 };
+      } },
       "lottery.records_mine": { sql: "SELECT * FROM lottery_records WHERE user_id=? ORDER BY created_at DESC LIMIT 200", auth: "user", owner: 0 },
       "lottery.records_all": { sql: "SELECT * FROM lottery_records ORDER BY created_at DESC LIMIT 500", auth: "admin" },
-      "vouchers.update_status": { sql: "UPDATE vouchers SET status=?, reject_reason=COALESCE(NULLIF(?,''),reject_reason), updated_at=? WHERE id=?", auth: "admin" },
-      "vouchers.update_status_electric": { sql: "UPDATE vouchers SET status=?, reject_reason=COALESCE(NULLIF(?,''),reject_reason), electric_subsidy_rate=?, electric_subsidy_amount=?, updated_at=? WHERE id=?", auth: "admin" },
-      "vouchers.update_fields": { auth: "admin", run: async function (p) {
+      // 审核通过：同时把该凭证抽奖应得积分按幂等单号入账（积分不再由开奖接口直接发放）
+      "vouchers.update_status": { auth: "admin", run: async function (p, sess) {
+        var newStatus = String(p[0] || "");
+        var reject = String(p[1] || "");
+        var now = p[2];
+        var id = String(p[3] || "");
+        var cur = await dbOne("SELECT status FROM vouchers WHERE id=?", [id]);
+        if (!cur) return { ok: false, error: "凭证不存在" };
+        var prev = String(cur[0] || "");
+        // 已结算的凭证不可再改状态，防止审核通过后二次篡改
+        if (prev === "completed" && newStatus !== "completed") {
+          return { ok: false, error: "交易已完成，状态不可再变更" };
+        }
+        var r = await execTurso("UPDATE vouchers SET status=?, reject_reason=COALESCE(NULLIF(?,''),reject_reason), updated_at=? WHERE id=?", [newStatus, reject, now, id]);
+        if (!r.ok) return { ok: false, error: "更新失败" };
+        var awarded = 0;
+        if (newStatus === "approved") awarded = await awardVoucherLotteryPoints(id);
+        logAudit("VOUCHER_STATUS", String(sess && sess.username || ""), "vouchers", id, prev + " → " + newStatus + (awarded ? ("，发放奖励 " + awarded + " 积分") : ""), "/db", "", "ok");
+        return { ok: true, affectedRowCount: 1, awarded: awarded };
+      } },
+      "vouchers.update_status_electric": { auth: "admin", run: async function (p, sess) {
+        var newStatus = String(p[0] || "");
+        var reject = String(p[1] || "");
+        var now = p[4];
+        var id = String(p[5] || "");
+        var cur = await dbOne("SELECT status FROM vouchers WHERE id=?", [id]);
+        if (!cur) return { ok: false, error: "凭证不存在" };
+        var prev = String(cur[0] || "");
+        if (prev === "completed" && newStatus !== "completed") {
+          return { ok: false, error: "交易已完成，状态不可再变更" };
+        }
+        var r = await execTurso("UPDATE vouchers SET status=?, reject_reason=COALESCE(NULLIF(?,''),reject_reason), electric_subsidy_rate=?, electric_subsidy_amount=?, updated_at=? WHERE id=?", [newStatus, reject, p[2], p[3], now, id]);
+        if (!r.ok) return { ok: false, error: "更新失败" };
+        var awarded = 0;
+        if (newStatus === "approved") awarded = await awardVoucherLotteryPoints(id);
+        logAudit("VOUCHER_STATUS", String(sess && sess.username || ""), "vouchers", id, prev + " → " + newStatus + "（电器补贴）" + (awarded ? ("，发放奖励 " + awarded + " 积分") : ""), "/db", "", "ok");
+        return { ok: true, affectedRowCount: 1, awarded: awarded };
+      } },
+      "vouchers.update_fields": { auth: "admin", run: async function (p, sess) {
         var allowed = ["shop_name","shop_photo","order_photos","latitude","longitude","amount","discount","payment_method","remark","signature","reject_reason","platform","order_no","product_photo","shopping_photos","electric_category","electric_brand","electric_apply_amount","electric_subsidy_rate","electric_subsidy_amount","review_result","final_price","status","order_type","payment_status"];
         var id = String(p[0] || "");
         var fields = (p[1] && typeof p[1] === "object") ? p[1] : {};
+        var before = fields.status !== undefined ? await dbOne("SELECT status FROM vouchers WHERE id=?", [id]) : null;
+        var prevStatus = before ? String(before[0] || "") : "";
         var sets = [], vals = [];
         Object.keys(fields).forEach(function (k) {
           if (allowed.indexOf(k) > -1) { sets.push(k + "=?"); vals.push(fields[k] === undefined ? "" : fields[k]); }
@@ -380,7 +527,11 @@ export default async function (req) {
         sets.push("updated_at=?"); vals.push(new Date().toISOString()); vals.push(id);
         var r = await execTurso("UPDATE vouchers SET " + sets.join(",") + " WHERE id=?", vals);
         if (!r.ok) return { ok: false, error: "更新失败" };
-        return { ok: true, affectedRowCount: 1 };
+        var awarded = 0;
+        // 通过「编辑字段」把状态改为审核通过时，同样按幂等单号发放抽奖积分
+        if (String(fields.status || "") === "approved" && prevStatus !== "approved") awarded = await awardVoucherLotteryPoints(id);
+        logAudit("VOUCHER_FIELDS_UPDATE", String(sess && sess.username || ""), "vouchers", id, "管理员修改凭证字段: " + Object.keys(fields).filter(function (k) { return allowed.indexOf(k) > -1; }).join(",") + (awarded ? ("，发放奖励 " + awarded + " 积分") : ""), "/db", "", "ok");
+        return { ok: true, affectedRowCount: 1, awarded: awarded };
       } },
       "levels.increment": { auth: "user", owner: 0, run: async function (p) {
         var columnMap = { exp: "exp", streak: "streak_days", totalVouchers: "total_vouchers", basicTickets: "basic_tickets", rareTickets: "rare_tickets" };
@@ -462,6 +613,61 @@ export default async function (req) {
       return String(v && typeof v === "object" ? v.value : v);
     }
 
+    // 读取单行（自动 unwrap Turso 类型），不存在返回 null
+    async function dbOne(sql, params) {
+      const q = await execTurso(sql, params);
+      const inner = q.data?.results?.[0]?.response?.result || q.data?.results?.[0]?.response?.results || q.data?.results?.[0];
+      const rows = (inner && inner.rows) ? inner.rows : [];
+      if (!rows.length) return null;
+      return rows[0].map(function (v) { return (v && typeof v === "object" && "value" in v) ? v.value : v; });
+    }
+
+    // 改密/换绑后回收旧凭证：管理员改他人密码→全部下线；用户改自己密码→保留当前会话，其余全部失效
+    async function revokeUserSessions(username, sess) {
+      const uid = String(username || "");
+      if (!uid) return;
+      try {
+        if (sess && sess.role === "admin" && String(sess.username) !== uid) {
+          await execTurso("DELETE FROM sessions WHERE username=?", [uid]);
+          await execTurso("DELETE FROM oauth_tokens WHERE username=?", [uid]);
+        } else if (sess && sess.token) {
+          await execTurso("DELETE FROM sessions WHERE username=? AND token<>?", [uid, String(sess.token)]);
+          await execTurso("DELETE FROM oauth_tokens WHERE username=? AND token<>?", [uid, String(sess.token)]);
+        } else {
+          await execTurso("DELETE FROM sessions WHERE username=?", [uid]);
+          await execTurso("DELETE FROM oauth_tokens WHERE username=?", [uid]);
+        }
+      } catch (e) {}
+    }
+
+    // 凭证审核通过后发放该凭证的抽奖积分：以 voucher_review_<凭证ID> 作为幂等单号，重复审核不会重复入账
+    async function awardVoucherLotteryPoints(voucherId) {
+      try {
+        // 兼容旧版本：开奖时已直接入账过 lottery_<凭证ID> 的不再补发
+        const legacy = await dbCount("SELECT COUNT(*) AS cnt FROM ledger WHERE biz_no=?", ["lottery_" + String(voucherId)]);
+        if (legacy > 0) return 0;
+        const drow = await dbOne("SELECT points, user_id FROM lottery_draws WHERE voucher_id=? LIMIT 1", [String(voucherId)]);
+        if (!drow) return 0;
+        const pts = Math.max(0, Math.min(100000, parseInt(drow[0], 10) || 0));
+        const uid = String(drow[1] || "");
+        if (!uid || pts <= 0) return 0;
+        const bizNo = "voucher_review_" + String(voucherId);
+        const now = new Date().toISOString();
+        const lid = "ld_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        const mkArg = (v) => ({ type: "text", value: String(v) });
+        const requests = [
+          { type: "execute", stmt: { sql: "INSERT INTO ledger (id,biz_no,user_id,amount,balance_after,reason,ref_id,operator,created_at) SELECT ?,?,?,?,(SELECT COALESCE(points,0) FROM users WHERE id=?)+?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)", args: [lid, bizNo, uid, pts, uid, pts, "凭证审核通过·抽奖奖励", "voucher_review", "engine", now, bizNo].map(mkArg) } },
+          { type: "execute", stmt: { sql: "UPDATE users SET points=MAX(0,(SELECT COALESCE(SUM(amount),0) FROM ledger WHERE user_id=?)), updated_at=? WHERE id=? AND EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)", args: [uid, now, uid, bizNo].map(mkArg) } }
+        ];
+        const r = await fetch(TURSO_API, { method: "POST", headers: { Authorization: "Bearer " + TURSO_TOKEN, "Content-Type": "application/json" }, body: JSON.stringify({ requests }) });
+        if (!r.ok) return 0;
+        logAudit("VOUCHER_LOTTERY_AWARD", "engine", "vouchers", String(voucherId), "审核通过发放抽奖奖励 " + pts + " 积分", "/db", bizNo, "ok");
+        return pts;
+      } catch (e) {
+        return 0;
+      }
+    }
+
     // ========== 具名数据库接口（客户端只传 op 名，不接触 SQL） ==========
     if (path === "/db" && req.method === "POST") {
       const body = await req.json();
@@ -528,6 +734,16 @@ export default async function (req) {
             if (params.length > 24) params[24] = "待审核";
             if (params.length > 21) params[21] = "";
             if (params.length > 26) params[26] = "pending";
+            // 每日建券上限：防止脚本批量创建凭证后逐张抽奖刷积分
+            if (def.dailyCreateLimit) {
+              const cnNow = Date.now();
+              const dayStart = new Date(cnNow - ((cnNow + 8 * 3600 * 1000) % (24 * 3600 * 1000))).toISOString();
+              const createdToday = await dbCount("SELECT COUNT(*) AS cnt FROM vouchers WHERE user_id=? AND created_at>=?", [String(sess.username), dayStart]);
+              if (createdToday >= def.dailyCreateLimit) {
+                logAudit("DB_CREATE_LIMIT", sess.username, "vouchers", "", "每日建券超限 " + opName, "/db", "", "blocked");
+                return jsonResponse({ error: "今日创建凭证数量已达上限，请明天再试" }, 429);
+              }
+            }
           }
         }
       }
@@ -561,7 +777,8 @@ export default async function (req) {
         return jsonResponse({ ok: true, affectedRowCount: inner.rows_affected ?? inner.row_count ?? inner.rows_written ?? 0 });
       } catch (e) {
         logAudit("DB_ERROR", opName, "", "", String(e && e.message || e).slice(0, 200), "/db", "", "fail");
-        return jsonResponse({ error: String(e && e.message || e) }, 400);
+        // 不向前端泄露 SQL/表结构等内部错误细节，排障信息只进审计日志
+        return jsonResponse({ error: "操作失败，请稍后重试" }, 400);
       }
     }
 
@@ -639,6 +856,13 @@ export default async function (req) {
       const isAdmin = String(role || "") === "admin";
       const nowIso = new Date().toISOString();
       const { ip, ua } = getClientInfo();
+      const loginKey = String(ip || "unknown") + "|" + String(username).toLowerCase();
+
+      // 登录失败限流：同一 IP+账号 15 分钟内最多失败 8 次，防暴力枚举
+      if (loginBlocked(loginKey)) {
+        logAudit("LOGIN_RATE_LIMIT", username, "sessions", "", "登录失败次数过多被临时锁定", "/login", "", "blocked");
+        return jsonResponse({ error: "登录失败次数过多，请 15 分钟后再试" }, 429);
+      }
 
       // 人机验证（登录接口全量校验，管理员同样需要）
       const tsr = await verifyTurnstile(body.turnstileToken, ip);
@@ -676,9 +900,11 @@ export default async function (req) {
       }
 
       if (!valid) {
+        noteLoginFail(loginKey);
         logAudit("LOGIN_FAILED", username, "sessions", "", "登录失败（密码错误或用户不存在）", "/login", "", "fail");
         return jsonResponse({ error: "用户名或密码错误" }, 401);
       }
+      clearLoginFail(loginKey);
 
       // 生成会话（7 天有效）
       const token = "sess_" + (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, "") : Date.now().toString(36) + Math.random().toString(36).slice(2, 18));
@@ -705,10 +931,15 @@ export default async function (req) {
       return jsonResponse({ ok: true, username: sess.username, role: sess.role });
     }
 
-    // ========== 邮箱状态检查（已登录用户） ==========
+    // ========== 邮箱状态检查（仅本人或管理员，防止匿名探测账号邮箱） ==========
     if (path === "/session/email-check" && req.method === "GET") {
+      const chkSess = await requireSession();
+      if (chkSess.error) return jsonResponse({ error: chkSess.error }, 401);
       const username = new URL(req.url).searchParams.get("username");
       if (!username) return jsonResponse({ error: "缺少 username 参数" }, 400);
+      if (chkSess.role !== "admin" && String(chkSess.username) !== String(username)) {
+        return jsonResponse({ error: "无权查询他人邮箱" }, 403);
+      }
       const eq = await execTurso("SELECT email FROM users WHERE id=? AND email IS NOT NULL AND email != '' LIMIT 1", [username]);
       const erows = eq.data?.results?.[0]?.response?.result?.rows || eq.data?.results?.[0]?.response?.results?.rows || [];
       return jsonResponse({ hasEmail: erows.length > 0, email: erows.length > 0 ? (erows[0][0]?.value || "") : "" });
@@ -773,13 +1004,25 @@ export default async function (req) {
 
       try { await execTurso("CREATE TABLE IF NOT EXISTS lottery_draws (id TEXT PRIMARY KEY, user_id TEXT, voucher_id TEXT UNIQUE, discount TEXT, value TEXT, points INTEGER, created_at TEXT)", []); } catch (e) {}
 
-      const vq = await execTurso("SELECT user_id, amount, discount FROM vouchers WHERE id=?", [String(voucherId)]);
+      const vq = await execTurso("SELECT user_id, amount, discount, status FROM vouchers WHERE id=?", [String(voucherId)]);
       const vr = vq.data.results?.[0]?.response?.result || vq.data.results?.[0]?.response?.results || vq.data.results?.[0];
       const vrows = (vr && vr.rows) ? vr.rows : [];
       if (vrows.length === 0) return jsonResponse({ error: "凭证不存在" }, 404);
       const vOwner = vrows[0][0]?.value ?? vrows[0][0];
       if (String(vOwner) !== String(userId) && drawSess.role !== "admin") {
         return jsonResponse({ error: "无权操作该凭证" }, 403);
+      }
+      const vStatus = String(vrows[0][3]?.value ?? vrows[0][3] ?? "");
+      if (drawSess.role !== "admin" && ["待审核", "pending", ""].indexOf(vStatus) === -1) {
+        return jsonResponse({ error: "凭证已进入审核/交易流程，不能再抽奖" }, 400);
+      }
+
+      // 每日开奖次数上限（按中国时区 0 点统计），防止脚本批量建券刷抽奖
+      const cnNow = Date.now();
+      const dayStart = new Date(cnNow - ((cnNow + 8 * 3600 * 1000) % (24 * 3600 * 1000))).toISOString();
+      const drawCnt = await dbCount("SELECT COUNT(*) AS cnt FROM lottery_draws WHERE user_id=? AND created_at>=?", [userId, dayStart]);
+      if (drawSess.role !== "admin" && drawCnt >= 20) {
+        return jsonResponse({ error: "今日开奖次数已达上限，请明天再试" }, 429);
       }
 
       const dq = await execTurso("SELECT discount FROM lottery_draws WHERE voucher_id=?", [String(voucherId)]);
@@ -816,13 +1059,13 @@ export default async function (req) {
       const now = new Date().toISOString();
       const drawId = "ldraw_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
       const bizNo = "lottery_" + String(voucherId);
-      const lid = "ld_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
       const mkArg = (v) => ({ type: "text", value: String(v) });
+      // 安全：开奖只记录「应发积分」，不入账。积分必须在管理员审核通过后，
+      // 由 vouchers.update_status 以 voucher_review_<凭证ID> 幂等入账，
+      // 杜绝脚本重复开奖/建券凭空增发积分。
       const requests = [
         { type: "execute", stmt: { sql: "INSERT OR IGNORE INTO lottery_draws (id,user_id,voucher_id,discount,value,points,created_at) VALUES (?,?,?,?,?,?,?)", args: [drawId, userId, String(voucherId), picked.discount, String(picked.value), pointsAward, now].map(mkArg) } },
-        { type: "execute", stmt: { sql: "UPDATE vouchers SET discount=?, final_price=?, updated_at=? WHERE id=? AND user_id=?", args: [picked.discount, finalPrice, now, String(voucherId), userId].map(mkArg) } },
-        { type: "execute", stmt: { sql: "INSERT INTO ledger (id,biz_no,user_id,amount,balance_after,reason,ref_id,operator,created_at) SELECT ?,?,?,?,(SELECT COALESCE(points,0) FROM users WHERE id=?)+?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)", args: [lid, bizNo, userId, pointsAward, userId, pointsAward, "抽到 " + picked.discount + " 奖励", "lottery", "engine", now, bizNo].map(mkArg) } },
-        { type: "execute", stmt: { sql: "UPDATE users SET points=MAX(0,(SELECT COALESCE(SUM(amount),0) FROM ledger WHERE user_id=?)), updated_at=? WHERE id=?", args: [userId, now, userId].map(mkArg) } },
+        { type: "execute", stmt: { sql: "UPDATE vouchers SET discount=?, final_price=?, updated_at=? WHERE id=?", args: [picked.discount, finalPrice, now, String(voucherId)].map(mkArg) } },
         { type: "execute", stmt: { sql: "SELECT COALESCE(points,0) FROM users WHERE id=?", args: [userId].map(mkArg) } }
       ];
       const lres = await fetch(TURSO_API, { method: "POST", headers: { Authorization: "Bearer " + TURSO_TOKEN, "Content-Type": "application/json" }, body: JSON.stringify({ requests }) });
@@ -830,16 +1073,18 @@ export default async function (req) {
       if (!lres.ok) throw new Error("开奖落库失败");
       let balance = null;
       try {
-        const br = (ldata.results || [])[4]?.response?.result || (ldata.results || [])[4]?.response?.results || (ldata.results || [])[4];
+        const br = (ldata.results || [])[2]?.response?.result || (ldata.results || [])[2]?.response?.results || (ldata.results || [])[2];
         if (br && br.rows) balance = br.rows[0]?.[0]?.value ?? br.rows[0]?.[0];
       } catch (e) {}
-      logAudit("LOTTERY_DRAW", userId, "vouchers", String(voucherId), "服务端开奖 " + picked.discount + "，奖励 " + pointsAward + " 积分", "/lottery/draw", bizNo, "ok");
+      logAudit("LOTTERY_DRAW", userId, "vouchers", String(voucherId), "服务端开奖 " + picked.discount + "，待审核发放 " + pointsAward + " 积分", "/lottery/draw", bizNo, "ok");
       return jsonResponse({
         ok: true,
         discount: picked.discount,
         value: picked.value,
         finalPrice: finalPrice,
-        points: pointsAward,
+        points: 0,
+        pointsPending: true,
+        pendingPoints: pointsAward,
         balance: balance,
         poolType: String(poolType || "scratch")
       });
@@ -1086,8 +1331,29 @@ export default async function (req) {
       }
       if (!result || Math.abs(result.delta) > 100000000) return jsonResponse({ error: "变动金额超限" }, 400);
 
+      // 余额护栏：扣分前必须确认余额充足，禁止负余额/超支（不能只靠 MAX(0) 静默兜底）
+      if (result.delta < 0 && actSess.role !== "admin") {
+        const balNow = await _pointsOf(userId);
+        if (balNow + result.delta < 0) {
+          logAudit("POINTS_ACTION_INSUFFICIENT", String(actSess.username || ""), "users", String(userId), "余额不足被拒绝: " + action + "（余额 " + balNow + "，需 " + (-result.delta) + "）", "/points/action", "", "blocked");
+          return jsonResponse({ error: "积分余额不足（当前 " + balNow + " 积分）", balance: balNow }, 400);
+        }
+      }
+
+      // 积分抵消支付：同一凭证只允许抵消一次（幂等单号绑定凭证，防重放重复扣分/重复入账）
+      let fixedBizNo = "";
+      if (action === "points_offset_payment" && p.voucherId) {
+        const vOwner = await dbVoucherOwner(p.voucherId);
+        if (String(vOwner) !== String(userId)) {
+          return jsonResponse({ error: "无权操作该凭证" }, 403);
+        }
+        fixedBizNo = "points_offset_" + String(p.voucherId);
+        const dupCnt = await dbCount("SELECT COUNT(*) AS cnt FROM ledger WHERE biz_no=?", [fixedBizNo]);
+        if (dupCnt > 0) return jsonResponse({ error: "该订单已使用积分抵消，请勿重复提交", duplicate: true, balance: await _pointsOf(userId) }, 409);
+      }
+
       // 复用积分账务逻辑（幂等入账）
-      const bizNo = "biz_" + userId + "_" + action + "_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 5);
+      const bizNo = fixedBizNo || ("biz_" + userId + "_" + action + "_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 5));
       const now = new Date().toISOString();
       const lid = "ld_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
       const mkArg = (v) => ({ type: "text", value: String(v) });
@@ -1645,14 +1911,28 @@ export default async function (req) {
 
     // ========== 老用户绑定邮箱（发送验证码） ==========
     if (path === "/oauth/email/bind" && req.method === "POST") {
-      const { username, email } = await req.json();
+      const bindSess = await requireSession();
+      if (bindSess.error) return jsonResponse({ error: bindSess.error }, 401);
+      const body = await req.json();
+      const email = body.email;
+      // 只能给自己绑定邮箱，忽略客户端传入的 username，防止给任意账号换绑
+      const username = String(bindSess.username || "");
       if (!username || !email) return jsonResponse({ error: "缺少 username 或 email" }, 400);
-      const emailLower = email.toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email))) return jsonResponse({ error: "邮箱格式不正确" }, 400);
+      const emailLower = String(email).toLowerCase();
       const now = new Date().toISOString();
 
       const uq = await execTurso("SELECT id FROM users WHERE id=? LIMIT 1", [username]);
       const urows = uq.data?.results?.[0]?.response?.result?.rows || uq.data?.results?.[0]?.response?.results?.rows || [];
       if (urows.length === 0) return jsonResponse({ error: "用户不存在" }, 404);
+
+      // 邮箱被其他账号占用时拒绝
+      const oq = await execTurso("SELECT id FROM users WHERE email=? AND id<>? LIMIT 1", [emailLower, username]);
+      const orows = oq.data?.results?.[0]?.response?.result?.rows || oq.data?.results?.[0]?.response?.results?.rows || [];
+      if (orows.length > 0) return jsonResponse({ error: "该邮箱已被其他账号绑定" }, 400);
+      const rq = await execTurso("SELECT username FROM registrations WHERE (email=? OR oauth_id=? OR oauth_email=?) AND username<>? LIMIT 1", [emailLower, emailLower, emailLower, username]);
+      const rrows = rq.data?.results?.[0]?.response?.result?.rows || rq.data?.results?.[0]?.response?.results?.rows || [];
+      if (rrows.length > 0) return jsonResponse({ error: "该邮箱已被其他账号使用" }, 400);
 
       const code = String(Math.floor(100000 + Math.random() * 900000));
       await execTurso(
@@ -1697,8 +1977,10 @@ export default async function (req) {
 
     // ========== 老用户绑定邮箱：查询邮箱触发器验证结果 ==========
     if (path === "/oauth/email/check-bind" && req.method === "GET") {
+      const bindSess = await requireSession();
+      if (bindSess.error) return jsonResponse({ error: bindSess.error }, 401);
       const u = new URL(req.url);
-      const username = u.searchParams.get("username");
+      const username = String(bindSess.username || "");
       const email = u.searchParams.get("email");
       if (!username || !email) return jsonResponse({ error: "缺少参数" }, 400);
       const emailLower = email.toLowerCase();
@@ -1710,14 +1992,20 @@ export default async function (req) {
 
     // ========== 老用户绑定邮箱（验证验证码） ==========
     if (path === "/oauth/email/verify-bind" && req.method === "POST") {
-      const { username, email, code } = await req.json();
+      const bindSess = await requireSession();
+      if (bindSess.error) return jsonResponse({ error: bindSess.error }, 401);
+      const body = await req.json();
+      const email = body.email;
+      const code = body.code;
+      const username = String(bindSess.username || "");
       if (!username || !email || !code) return jsonResponse({ error: "缺少参数" }, 400);
-      const emailLower = email.toLowerCase();
+      const emailLower = String(email).toLowerCase();
       const now = new Date().toISOString();
+      const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
 
       const bq = await execTurso(
-        "SELECT code FROM email_bindings WHERE username=? AND email=? AND code=? AND status='pending'",
-        [username, emailLower, code]
+        "SELECT code FROM email_bindings WHERE username=? AND email=? AND code=? AND status='pending' AND created_at>=?",
+        [username, emailLower, String(code), cutoff]
       );
       const brows = bq.data?.results?.[0]?.response?.result?.rows || bq.data?.results?.[0]?.response?.results?.rows || [];
       if (brows.length === 0) return jsonResponse({ verified: false, error: "验证码错误或已过期" });
@@ -1725,6 +2013,8 @@ export default async function (req) {
       await execTurso("UPDATE email_bindings SET status='verified', verified_at=? WHERE email=? AND username=?", [now, emailLower, username]);
       await execTurso("UPDATE users SET email=?, updated_at=? WHERE id=?", [emailLower, now, username]);
       await execTurso("UPDATE registrations SET email=?, oauth_id=?, oauth_email=? WHERE username=?", [emailLower, emailLower, emailLower, username]);
+      // 换绑邮箱后旧会话全部作废（保留当前会话），防止旧 Token 继续接管账号
+      await revokeUserSessions(username, bindSess);
 
       return jsonResponse({ verified: true, message: "邮箱绑定成功" });
     }
@@ -1737,7 +2027,7 @@ export default async function (req) {
       const { email, username, password, passwordHash: clientHash, fullName, birthdate, country, province, city, referrer, turnstileToken } = await req.json();
       if (!email || !username || !password) return jsonResponse({ error: "缺少必填字段" }, 400);
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonResponse({ error: "邮箱格式不正确" }, 400);
-      if (password.length < 6) return jsonResponse({ error: "密码至少需要6位" }, 400);
+      if (!/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(String(password))) return jsonResponse({ error: "密码至少 8 位，且必须同时包含字母和数字" }, 400);
 
       // 人机验证（防止脚本批量注册 / 刷邮件）
       const { ip: regIp } = getClientInfo();
@@ -1786,7 +2076,8 @@ export default async function (req) {
           mode = "code";
           mailSent = true;
         } catch (e) {
-          mailError = e.message || "unknown";
+          // 不向前端暴露邮件服务商内部错误
+          mailError = "邮件发送失败，请稍后重试或使用转发验证";
         }
       } else if (skipMailtrap) {
         mailError = "该邮箱域名暂不支持自动投递，已自动切换为转发验证模式";
@@ -1826,13 +2117,18 @@ export default async function (req) {
       const now = new Date().toISOString();
 
       const { data: verData } = await execTurso(
-        "SELECT username, password_hash, full_name, birthdate, country, province, city, referrer FROM email_verifications WHERE email=? AND code=? AND status='pending'",
+        "SELECT username, password_hash, full_name, birthdate, country, province, city, referrer, created_at FROM email_verifications WHERE email=? AND code=? AND status='pending'",
         [emailLower, code]
       );
       const vrows = verData.results?.[0]?.response?.result?.rows || [];
       if (vrows.length === 0) return jsonResponse({ verified: false, error: "验证码错误或已过期" });
 
       const row = vrows[0];
+      // 验证码 30 分钟内有效，过期需重新发送
+      const createdAt = row[8]?.value || row[8] || "";
+      if (createdAt && (Date.now() - new Date(createdAt).getTime()) > 30 * 60 * 1000) {
+        return jsonResponse({ verified: false, error: "验证码已过期，请重新发送" });
+      }
       const gv = function(cell) {
         return cell !== null && typeof cell === "object" && "value" in cell ? cell.value : cell;
       };
@@ -1845,6 +2141,11 @@ export default async function (req) {
       const city = gv(row[6]);
       const referrer = gv(row[7]);
       const regId = crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).substring(2,15));
+
+      // 防用户名撞库：若该用户名已被其他邮箱占用，拒绝写入（避免 INSERT OR REPLACE 覆盖他人账号）
+      const dupUq = await execTurso("SELECT id FROM registrations WHERE username=? AND (email<>? OR oauth_id<>?) LIMIT 1", [username, emailLower, emailLower]);
+      const dupRows = dupUq.data?.results?.[0]?.response?.result?.rows || dupUq.data?.results?.[0]?.response?.results?.rows || [];
+      if (dupRows.length > 0) return jsonResponse({ verified: false, error: "该用户名已被使用，请更换用户名重新注册" });
 
       // 标记验证通过
       await execTurso("UPDATE email_verifications SET status='verified', verified_at=? WHERE email=?", [now, emailLower]);
@@ -1890,13 +2191,9 @@ export default async function (req) {
       const status = (vrows[0][0]?.value || vrows[0][0] || "");
       if (status === "verified") {
         const uname = (vrows[0][1]?.value || vrows[0][1] || "");
-        const loginToken = crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).substring(2,15));
-        const loginExpires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-        await execTurso(
-          "INSERT INTO oauth_tokens (token, username, oauth_id, provider, created_at, expires_at) VALUES (?,?,?,?,?,?)",
-          [loginToken, uname, emailLower, "email", now, loginExpires]
-        );
-        return jsonResponse({ verified: true, oauth_token: loginToken, username: uname });
+        // 安全：该接口匿名可访问，绝不能凭邮箱直接下发登录 Token
+        // 用户需使用注册密码走 /login 正常登录
+        return jsonResponse({ verified: true, username: uname, needLogin: true, message: "邮箱已验证，请使用密码登录" });
       }
       return jsonResponse({ verified: false, status: "pending" });
     }

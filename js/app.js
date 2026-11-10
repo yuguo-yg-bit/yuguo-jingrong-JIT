@@ -2160,7 +2160,9 @@ var JITApp = (function() {
           prize.value = res.value;
           var dEl = document.getElementById("lotteryResultDiscount");
           if (dEl) dEl.textContent = res.discount;
-          _showToast("🎯 开奖结果：" + res.discount + "（+" + res.points + " 积分）", "success");
+          // 积分改为凭证审核通过后发放，开奖当下不再直接入账
+          var ptsTip = res.pointsPending ? ("（" + (res.pendingPoints || 0) + " 积分审核通过后发放）") : ("（+" + (res.points || 0) + " 积分）");
+          _showToast("🎯 开奖结果：" + res.discount + ptsTip, "success");
         }
         JITApi.invalidateCache("allVouchers");
         JITApi.invalidateCache("allVouchersForId");
@@ -3868,7 +3870,7 @@ var JITApp = (function() {
     }
   };
 
-  // 使用积分抵消差额（审核通过后可用，抵消完自动标记已完成交易）
+  // 使用积分抵消差额（审核通过后可用；交易完成需管理员确认）
   var _doUsePointsOffset = function() {
     if (!_pendingPaymentVoucher) return;
     if (_pointsOffsetUsed) {
@@ -3901,22 +3903,14 @@ var JITApp = (function() {
     var offsetResultEl = document.getElementById("offsetResult");
     if (offsetResultEl) offsetResultEl.textContent = "抵消中...";
     var actualOffsetYuan = usePoints / 10;
-    var issueNum = _pendingPaymentVoucher._issueNumber;
-    JITPoints.doAction("points_offset_payment", _currentUser, { maxPoints: usePoints }).then(function() {
+    JITPoints.doAction("points_offset_payment", _currentUser, { maxPoints: usePoints, voucherId: _pendingPaymentVoucher._issueNumber }).then(function() {
       _pointsOffsetUsed = true;
       if (offsetResultEl) offsetResultEl.textContent = "✅ 已抵消 ¥" + actualOffsetYuan.toFixed(2);
-      _showToast("成功使用 " + usePoints + " 积分抵消 ¥" + actualOffsetYuan.toFixed(2), "success");
-      // 抵消完毕 → 自动标记为已完成交易
-      if (issueNum && JITApi.markVoucherCompleted) {
-        return JITApi.markVoucherCompleted(issueNum).then(function() {
-          _showToast("交易已完成", "success");
-          JITApi.invalidateCache("allVouchers");
-          JITApi.invalidateCache("allVouchersForId");
-          _loadData();
-        });
-      }
-      return _refreshPointsDisplay(true);
-    }).then(function() {
+      _showToast("成功使用 " + usePoints + " 积分抵消 ¥" + actualOffsetYuan.toFixed(2) + "，交易完成需管理员确认", "success");
+      // 安全：交易完成只能由管理员确认，用户端不得自行标记「已完成交易」
+      JITApi.invalidateCache("allVouchers");
+      JITApi.invalidateCache("allVouchersForId");
+      _loadData();
       return _refreshPointsDisplay(true);
     }).catch(function(err) {
       if (offsetResultEl) offsetResultEl.textContent = "";
