@@ -1,0 +1,20 @@
+# 安全响应头（供支持 _headers 的托管使用：Cloudflare Pages / Netlify / Vercel）
+#
+# ⚠️ GitHub Pages 会【忽略】本文件，也会忽略 .htaccess。
+#    只要继续托管在 GitHub Pages 上，下面这些头一条都不会生效。
+#    本文件有两个作用：
+#      1) 迁移到支持自定义头的托管时，零改动即生效；
+#      2) 作为“当前线上到底缺什么”的书面证据。
+#
+# 注：CSP 保留 'unsafe-inline'，因为现有页面大量使用内联 <script>。
+#     这会让 CSP 的 XSS 防护力打折，但仍能挡住 object-src 劫持、
+#     base-uri 劫持与第三方脚本加载。彻底收紧需把内联脚本外置（Phase 2）。
+
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=()
+  Cross-Origin-Opener-Policy: same-origin
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  Content-Security-Policy: default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data: https://raw.githubusercontent.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://yuguoygbit--efeee912c58011f1af2f1607ee4eb77e.web.val.run https://yuguoygbit--8f55f7b6d02111f18f891607ee4eb77e.web.val.run

@@ -6,6 +6,10 @@
 // ============================================================
 
 import { MailtrapClient } from "npm:mailtrap";
+import {
+  SECURITY_HEADERS, corsHeaders, timingSafeEqual, pbkdf2Hash, pbkdf2Verify,
+  isRateLimited, isValidUsername,
+} from "./security/core.js";
 
 let _negativePointsFixed = false;
 
@@ -63,14 +67,10 @@ export default async function (req) {
   const Github_TOKEN = process.env.GitHub_API_TOKEN;
   const MAILTRAP_TOKEN = process.env.MAILTRAP_TOKEN;
 
+  // 严格 CORS：未命中白名单【不下发】Access-Control-Allow-Origin。
+  // 原实现回退到 ALLOW_ORIGINS[0]，等于给任意第三方站点开了“可读取接口返回”的口子。
   function getCorsHeaders(origin) {
-    const allowed = ALLOW_ORIGINS.includes(origin) ? origin : ALLOW_ORIGINS[0];
-    return {
-      "Access-Control-Allow-Origin": allowed,
-      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, X-Auth-Token, X-Session-Token",
-      "Access-Control-Max-Age": "86400",
-    };
+    return corsHeaders(origin, ALLOW_ORIGINS);
   }
 
   // return_url 只允许精确匹配白名单 origin，防止开放重定向把 token 送到攻击者域名
@@ -87,6 +87,7 @@ export default async function (req) {
     return new Response(JSON.stringify(data), {
       status,
       headers: {
+        ...SECURITY_HEADERS,
         ...getCorsHeaders(origin),
         "Content-Type": "application/json",
         "X-Content-Type-Options": "nosniff",
@@ -104,8 +105,13 @@ export default async function (req) {
   const TURNSTILE_SECRET = process.env.TURNSTILE_SECRET;
   const TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
   async function verifyTurnstile(token, ip) {
-    // 未配置密钥时视为功能未开启（便于部署过渡，不阻断登录）；配置后严格校验
-    if (!TURNSTILE_SECRET) return { ok: true, skipped: true };
+    // 安全默认：未配置密钥一律拒绝（fail-closed）。
+    // 原实现 fail-open，等于“忘了配环境变量 = 全站人机验证作废”。
+    // 确需过渡时显式设置 TURNSTILE_FAIL_OPEN=1，并立刻补配置。
+    if (!TURNSTILE_SECRET) {
+      if (String(process.env.TURNSTILE_FAIL_OPEN || "") === "1") return { ok: true, skipped: true };
+      return { ok: false, error: "服务端未完成人机验证配置，已拒绝请求" };
+    }
     if (!token) return { ok: false, error: "请先完成人机验证" };
     try {
       const form = new URLSearchParams();
@@ -172,20 +178,15 @@ export default async function (req) {
     try { await execTurso("ALTER TABLE user_levels ADD COLUMN last_wheel_free TEXT DEFAULT ''", []); } catch (e) {}
     try { await execTurso("ALTER TABLE user_levels ADD COLUMN discount_backup TEXT DEFAULT '[]'", []); } catch (e) {}
 
-    // ========== 密码哈希：SHA-256(盐 + 密码) ==========
-    const SALT = "yuguo-jr-salt-2024";
+    // ========== 密码哈希：PBKDF2-HMAC-SHA256 ==========
+    // 原实现是单轮 SHA-256(SALT + 密码)，且 SALT 硬编码在公开仓库里：
+    // 拿到任一哈希即可 GPU 每秒上亿次离线爆破，盐本身也失去意义。
+    // 现在改为 PBKDF2（12 万次迭代 + 每用户随机盐 + 服务端 pepper）。
+    const PASSWORD_PEPPER = process.env.PASSWORD_PEPPER || "";
     async function hashPassword(password) {
-      const input = SALT + password;
-      if (crypto.subtle && crypto.subtle.digest) {
-        const enc = new TextEncoder();
-        const buf = await crypto.subtle.digest("SHA-256", enc.encode(input));
-        const hex = Array.from(new Uint8Array(buf)).map(function(b) { return b.toString(16).padStart(2, "0"); }).join("");
-        return "sha256$" + hex;
-      }
-      // 回退：简易哈希（Val.town 环境不一定支持 crypto.subtle）
-      var h = 0;
-      for (var i = 0; i < input.length; i++) { h = ((h << 5) - h + input.charCodeAt(i)) | 0; }
-      return "sha256$" + (h >>> 0).toString(16).padStart(8, "0");
+      // 入参可能是明文，也可能是前端已算好的 sha256$ 摘要；
+      // 两种都作为 secret 再套一层慢哈希，从而在不改前端的前提下完成升级。
+      return await pbkdf2Hash(String(password || ""), { pepper: PASSWORD_PEPPER, iterations: 120000 });
     }
 
     // ========== SQL 安全校验层（防注入/防删库） ==========
@@ -243,6 +244,22 @@ export default async function (req) {
       if (/\bINSERT\s+(?:OR\s+\w+\s+)?INTO\s+users\s/i.test(trimmed) && /\bpoints\b/i.test(trimmed)) {
         throw new Error("禁止直接操作积分字段，请通过 /points 端点操作");
       }
+      // 8) 身份/账务类表禁止走通用 SQL 通道：
+      //    管理员后台只需要读，写必须走具名操作，
+      //    避免“一条 UPDATE 就把任意账号改成 admin / 直接造一条会话”。
+      const SENSITIVE_WRITE = ["sessions","oauth_tokens","users","registrations","ledger","audit_logs","email_verifications","email_bindings"];
+      if (/^(INSERT|UPDATE|DELETE|REPLACE)\s/i.test(trimmed)) {
+        for (let i = 0; i < SENSITIVE_WRITE.length; i++) {
+          const t = SENSITIVE_WRITE[i];
+          if (new RegExp("^(INSERT|UPDATE|DELETE|REPLACE)\\b[^;]*\\b" + t + "\\b", "i").test(trimmed)) {
+            throw new Error("禁止通过 /sql 写身份/账务表: " + t);
+          }
+        }
+      }
+      // 9) UPDATE/DELETE 必须带参数占位符：拦住 UPDATE x SET y=1 WHERE 1 这类全表操作
+      if (/^(UPDATE|DELETE)\s/i.test(trimmed) && trimmed.indexOf("?") === -1) {
+        throw new Error("UPDATE/DELETE 必须使用参数占位符");
+      }
     }
 
     // ========== 通用：执行 Turso 请求 ==========
@@ -297,6 +314,16 @@ export default async function (req) {
       return { ip, ua };
     }
 
+    // ========== 跨实例限流（Turso 存储） ==========
+    // 进程内计数器在 Val.town 的冷启动/多实例下会重置，这里补一层数据库计数。
+    async function guardRate(key, limit, windowSec) {
+      const limited = await isRateLimited(execTurso, key, limit, windowSec);
+      if (limited) {
+        logAudit("RATE_LIMITED", String(key).slice(0, 60), "", "", "触发限流: " + key, "guard", "", "blocked");
+      }
+      return limited;
+    }
+
     function logAudit(action, operator, targetType, targetId, detail, endpoint, bizNo, status) {
       const { ip, ua } = getClientInfo();
       const aid = "aud_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -323,7 +350,8 @@ export default async function (req) {
     const DB_OPS = {
   "vouchers.list_mine": { sql: "SELECT * FROM vouchers WHERE user_id=? AND user_id NOT LIKE '【%】%' AND shop_name NOT LIKE '【%】%' ORDER BY created_at DESC LIMIT 500", auth: "user", owner: 0 },
   "vouchers.list_all": { sql: "SELECT * FROM vouchers WHERE user_id NOT LIKE '【%】%' AND shop_name NOT LIKE '【%】%' ORDER BY created_at DESC LIMIT 500", auth: "admin" },
-  "vouchers.get_by_id": { sql: "SELECT * FROM vouchers WHERE id=? LIMIT 1", auth: "user" },
+  // 凭证 id 是连续整数，不加归属校验即可枚举全站凭证（姓名/门店/金额/折扣）
+  "vouchers.get_by_id": { sql: "SELECT * FROM vouchers WHERE id=? LIMIT 1", auth: "user", voucher: 0 },
   "vouchers.next_id": { sql: "SELECT COALESCE(MAX(CAST(id AS INTEGER)), 0) + 1 AS next_id FROM vouchers", auth: "user" },
   // 结算入账只能由管理员确认（用户不得自行把凭证标记为已完成交易）
   "vouchers.mark_completed": { sql: "UPDATE vouchers SET payment_status='completed', payment_method=COALESCE(NULLIF(?,''),payment_method), status='已完成交易', updated_at=? WHERE id=?", auth: "admin" },
@@ -345,7 +373,7 @@ export default async function (req) {
   "chat.users": { sql: "SELECT user_id, MAX(created_at) AS last_at FROM chat_messages GROUP BY user_id ORDER BY last_at DESC", auth: "admin" },
   "vouchers.users": { sql: "SELECT DISTINCT user_id FROM vouchers ORDER BY user_id ASC LIMIT 1000", auth: "admin" },
   "chat.mark_read": { sql: "UPDATE chat_messages SET is_read=1 WHERE user_id=?", auth: "user", owner: 0 },
-  "levels.get": { sql: "SELECT * FROM user_levels WHERE user_id=? LIMIT 1", auth: "user" },
+  "levels.get": { sql: "SELECT * FROM user_levels WHERE user_id=? LIMIT 1", auth: "user", owner: 0 },
   "vouchers.delete": { sql: "DELETE FROM vouchers WHERE id=?", auth: "user", voucher: 0 },
   "vouchers.update_lottery": { sql: "UPDATE vouchers SET discount=?, final_price=?, updated_at=? WHERE id=?", auth: "admin" },
   "reg.list": { sql: "SELECT * FROM registrations ORDER BY created_at DESC LIMIT 500", auth: "admin" },
@@ -353,7 +381,7 @@ export default async function (req) {
   "reg.reject": { sql: "UPDATE registrations SET review_status='rejected' WHERE id=?", auth: "admin" },
   "reg.find_approved": { sql: "SELECT id, username, full_name, review_status, created_at FROM registrations WHERE username=? AND review_status='approved' LIMIT 1", auth: "public" },
   "reg.find_pending": { sql: "SELECT id, username, created_at FROM registrations WHERE username=? AND review_status='pending' LIMIT 1", auth: "public" },
-  "reg.create": { sql: "INSERT INTO registrations (id, username, password_hash, full_name, birthdate, country, province, city, referrer, review_status, created_at) VALUES (?,?,?,?,?,?,?,?,?,'pending',?)", auth: "public" },
+  "reg.create": { sql: "INSERT INTO registrations (id, username, password_hash, full_name, birthdate, country, province, city, referrer, review_status, created_at) VALUES (?,?,?,?,?,?,?,?,?,'pending',?)", auth: "public", kdfParams: [2], usernameParam: 1 },
   "reg.pending_list": { sql: "SELECT * FROM registrations WHERE review_status='pending' ORDER BY created_at DESC", auth: "admin" },
   "reg.referrals": { sql: "SELECT * FROM registrations WHERE referrer=? AND review_status='approved' ORDER BY created_at DESC", auth: "user", owner: 0 },
   "notif.send": { sql: "INSERT INTO notifications (id, title, content, target_users, created_at) VALUES (?,?,?,?,?)", auth: "admin" },
@@ -364,14 +392,14 @@ export default async function (req) {
   "vouchers.urgent_remove": { sql: "UPDATE vouchers SET is_urgent=0, urgent_reason='', urgent_username='', urgent_time='', updated_at=? WHERE id=?", auth: "user", voucher: 1 },
   "vouchers.urgent_info": { sql: "SELECT is_urgent, urgent_reason, urgent_username, urgent_time FROM vouchers WHERE id=? LIMIT 1", auth: "user", voucher: 0 },
   // 改密：仅允许本人或管理员，并强制回收旧会话/旧 OAuth 凭证（改密后旧 Token 立即失效）
-  "users.update_password": { auth: "user", owner: 2, run: async function (p, sess) {
+  "users.update_password": { auth: "user", owner: 2, kdfParams: [0], run: async function (p, sess) {
     var id = String(p[2] || "");
     var r = await execTurso("UPDATE users SET password_hash=?, updated_at=? WHERE id=?", [p[0], p[1], id]);
     if (!r.ok) return { ok: false, error: "更新失败" };
     await revokeUserSessions(id, sess);
     return { ok: true, affectedRowCount: 1, sessionsRevoked: true };
   } },
-  "reg.update_password": { auth: "user", owner: 1, run: async function (p, sess) {
+  "reg.update_password": { auth: "user", owner: 1, kdfParams: [0], run: async function (p, sess) {
     var username = String(p[1] || "");
     var r = await execTurso("UPDATE registrations SET password_hash=? WHERE username=? AND review_status='approved'", [p[0], username]);
     if (!r.ok) return { ok: false, error: "更新失败" };
@@ -703,6 +731,21 @@ export default async function (req) {
       if (sess.role !== "admin" && def.forceSenderForUser) {
         params[2] = "user";
       }
+      // 口令类参数在写库前统一做慢哈希（把前端传来的 sha256$ 摘要再套 PBKDF2）
+      if (def.kdfParams && Array.isArray(def.kdfParams)) {
+        for (let ki = 0; ki < def.kdfParams.length; ki++) {
+          const idx = def.kdfParams[ki];
+          const v = String(params[idx] == null ? "" : params[idx]);
+          if (v.startsWith("sha256$")) params[idx] = await pbkdf2Hash(v, { pepper: PASSWORD_PEPPER, iterations: 120000 });
+        }
+      }
+      // 用户名白名单：从源头切断“用户名带引号 → 后台表格属性注入 XSS”
+      if (def.usernameParam !== undefined && sess.role !== "admin") {
+        const un = String(params[def.usernameParam] == null ? "" : params[def.usernameParam]);
+        if (un && un !== "匿名" && !isValidUsername(un)) {
+          return jsonResponse({ error: "用户名只能包含中文、字母、数字、下划线、短横，长度 2-20" }, 400);
+        }
+      }
       if (sess.role !== "admin") {
         if (def.owner !== undefined) {
           const ownerVal = String(params[def.owner] === undefined ? "" : params[def.owner]);
@@ -863,6 +906,11 @@ export default async function (req) {
         logAudit("LOGIN_RATE_LIMIT", username, "sessions", "", "登录失败次数过多被临时锁定", "/login", "", "blocked");
         return jsonResponse({ error: "登录失败次数过多，请 15 分钟后再试" }, 429);
       }
+      // 跨实例兜底：进程内计数在冷启动后归零，这里再挡一层（账号维度 10 次/15 分钟）
+      if (await guardRate("login:u:" + String(username).toLowerCase(), 10, 900)) {
+        logAudit("LOGIN_LOCKED_DB", username, "sessions", "", "账号维度跨实例限流", "/login", "", "blocked");
+        return jsonResponse({ error: "该账号尝试过于频繁，请稍后再试" }, 429);
+      }
 
       // 人机验证（登录接口全量校验，管理员同样需要）
       const tsr = await verifyTurnstile(body.turnstileToken, ip);
@@ -878,7 +926,16 @@ export default async function (req) {
         if (!passwordHash) return jsonResponse({ error: "缺少 passwordHash" }, 400);
         const q = await execTurso("SELECT id, password_hash FROM users WHERE id='admin' AND is_admin=1", []);
         const rows = q.data?.results?.[0]?.response?.result?.rows || q.data?.results?.[0]?.response?.results?.rows || [];
-        if (rows.length > 0 && rows[0][1]?.value === passwordHash) valid = true;
+        if (rows.length > 0) {
+          const stored = String(rows[0][1]?.value ?? rows[0][1] ?? "");
+          if (stored.startsWith("pbkdf2$")) {
+            const vr = await pbkdf2Verify(String(passwordHash), stored, { pepper: PASSWORD_PEPPER });
+            valid = vr.ok;
+          } else {
+            // 历史值：常数时间比较，避免计时侧信道
+            valid = timingSafeEqual(stored, String(passwordHash));
+          }
+        }
         dbUser = { username: "admin", role: "admin" };
       } else {
         // 注册用户：密码哈希为唯一验证方式（不再兼容明文）
@@ -893,9 +950,30 @@ export default async function (req) {
           rows = q.data?.results?.[0]?.response?.result?.rows || q.data?.results?.[0]?.response?.results?.rows || [];
         }
         if (rows.length > 0) {
-          const s = String(rows[0][1]?.value ?? "");
-          if (s === String(passwordHash)) valid = true;
-          dbUser = { username: rows[0][0]?.value || username, role: "user" };
+          const stored = String(rows[0][1]?.value ?? rows[0][1] ?? "");
+          const realName = String(rows[0][0]?.value || username);
+          if (stored.startsWith("pbkdf2$")) {
+            const vr = await pbkdf2Verify(String(passwordHash), stored, { pepper: PASSWORD_PEPPER, iterations: 120000 });
+            valid = vr.ok;
+            if (vr.ok && vr.needsRehash) {
+              try {
+                const up = await pbkdf2Hash(String(passwordHash), { pepper: PASSWORD_PEPPER, iterations: 120000 });
+                await execTurso("UPDATE registrations SET password_hash=? WHERE username=?", [up, realName]);
+                await execTurso("UPDATE users SET password_hash=? WHERE id=?", [up, realName]);
+                logAudit("PASSWORD_REHASH", realName, "users", realName, "登录时透明升级口令哈希", "/login", "", "ok");
+              } catch (e) {}
+            }
+          } else if (timingSafeEqual(stored, String(passwordHash))) {
+            // 旧 sha256$ 值：校验通过后立即升级为 PBKDF2（用户无感）
+            valid = true;
+            try {
+              const up = await pbkdf2Hash(String(passwordHash), { pepper: PASSWORD_PEPPER, iterations: 120000 });
+              await execTurso("UPDATE registrations SET password_hash=? WHERE username=?", [up, realName]);
+              await execTurso("UPDATE users SET password_hash=? WHERE id=?", [up, realName]);
+              logAudit("PASSWORD_UPGRADED", realName, "users", realName, "旧 SHA-256 口令升级为 PBKDF2", "/login", "", "ok");
+            } catch (e) {}
+          }
+          dbUser = { username: realName, role: "user" };
         }
       }
 
@@ -942,7 +1020,8 @@ export default async function (req) {
       }
       const eq = await execTurso("SELECT email FROM users WHERE id=? AND email IS NOT NULL AND email != '' LIMIT 1", [username]);
       const erows = eq.data?.results?.[0]?.response?.result?.rows || eq.data?.results?.[0]?.response?.results?.rows || [];
-      return jsonResponse({ hasEmail: erows.length > 0, email: erows.length > 0 ? (erows[0][0]?.value || "") : "" });
+      // 只回答“有没有绑”，不回传邮箱明文（减少前端 XSS 命中后的二次泄密面）
+      return jsonResponse({ hasEmail: erows.length > 0 });
     }
 
     // ========== 会话校验（写资金操作强制） ==========
@@ -1357,8 +1436,17 @@ export default async function (req) {
       const now = new Date().toISOString();
       const lid = "ld_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
       const mkArg = (v) => ({ type: "text", value: String(v) });
+      // 借记护栏（第二道）：上面是 JS 预检，并发下仍可能同时通过；
+      // 这里把“流水余额 >= 扣减额”写进同一条 INSERT 的 WHERE，
+      // 让数据库单语句原子地拒绝超额扣减，不依赖 MAX(0) 静默兜底。
+      const debitGuard = result.delta < 0
+        ? " AND (SELECT COALESCE(SUM(amount),0) FROM ledger WHERE user_id=?)+? >= 0"
+        : "";
+      const ledgerSql = "INSERT INTO ledger (id, biz_no, user_id, amount, balance_after, reason, ref_id, operator, created_at) SELECT ?,?,?,?,(SELECT COALESCE(points,0) FROM users WHERE id=?)+?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)" + debitGuard;
+      const ledgerArgs = [lid, bizNo, userId, result.delta, userId, result.delta, result.reason, action, "engine", now, bizNo].map(mkArg);
+      if (result.delta < 0) { ledgerArgs.push(mkArg(userId)); ledgerArgs.push(mkArg(result.delta)); }
       const requests = [
-        { type: "execute", stmt: { sql: "INSERT INTO ledger (id, biz_no, user_id, amount, balance_after, reason, ref_id, operator, created_at) SELECT ?,?,?,?,(SELECT COALESCE(points,0) FROM users WHERE id=?)+?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)", args: [lid, bizNo, userId, result.delta, userId, result.delta, result.reason, action, "engine", now, bizNo].map(mkArg) } },
+        { type: "execute", stmt: { sql: ledgerSql, args: ledgerArgs } },
         { type: "execute", stmt: { sql: "UPDATE users SET points=MAX(0,(SELECT COALESCE(SUM(amount),0) FROM ledger WHERE user_id=?)), updated_at=? WHERE id=? AND EXISTS (SELECT 1 FROM ledger WHERE biz_no=?)", args: [userId, now, userId, bizNo].map(mkArg) } },
         { type: "execute", stmt: { sql: "SELECT COALESCE(points,0) AS p FROM users WHERE id=?", args: [userId].map(mkArg) } }
       ];
@@ -1367,6 +1455,10 @@ export default async function (req) {
       if (!tres.ok) throw new Error("账务执行失败: " + JSON.stringify(td).substring(0,300));
       const first = (td.results||[])[0]?.response?.result || (td.results||[])[0]?.response?.results || (td.results||[])[0];
       const inserted = (first ? (first.rows_affected ?? first.row_count ?? first.rows_written ?? 0) : 0) > 0;
+      if (!inserted && result.delta < 0) {
+        logAudit("POINTS_INSUFFICIENT_ATOMIC", String(actSess.username || ""), "users", userId, "并发下余额不足，原子护栏拒绝扣减: " + action, "/points/action", "", "blocked");
+        return jsonResponse({ error: "积分余额不足，操作未执行" }, 400);
+      }
       let balance = null;
       try { const br = (td.results||[])[2]?.response?.result || (td.results||[])[2]?.response?.results || (td.results||[])[2]; if (br&&br.rows) balance = br.rows[0]?.[0]?.value ?? br.rows[0]?.[0]; } catch(e){}
       logAudit("POINTS_ACTION", "engine", "users", userId, action + " → " + (result.delta>0?"+":"")+result.delta+" 积分", "/points/action", bizNo, inserted?"ok":"dup");
@@ -1534,10 +1626,22 @@ export default async function (req) {
       if (upSess.error) {
         return jsonResponse({ error: "未登录或会话已失效，请重新登录" }, 401);
       }
+      // 配额：单用户每小时最多 20 张，防止刷爆仓库配额
+      if (upSess.role !== "admin" && await guardRate("upload:u:" + upSess.username, 20, 3600)) {
+        return jsonResponse({ error: "上传过于频繁，请稍后再试" }, 429);
+      }
+      // 文件头校验：只接受真实 JPEG / PNG，拒绝“伪装成 .jpg 的 HTML/SVG”
+      const head = String(base64Data).replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, "");
+      let magic = "";
+      try { magic = atob(head.substring(0, 12)); } catch (e) { magic = ""; }
+      const isJpeg = magic.charCodeAt(0) === 0xFF && magic.charCodeAt(1) === 0xD8;
+      const isPng = magic.charCodeAt(0) === 0x89 && magic.charCodeAt(1) === 0x50 && magic.charCodeAt(2) === 0x4E && magic.charCodeAt(3) === 0x47;
+      if (!isJpeg && !isPng) return jsonResponse({ error: "只允许上传 JPEG / PNG 图片" }, 415);
+      const ext = isPng ? "png" : "jpg";
 
       const ts = Date.now();
       const rand = Math.random().toString(36).substring(2, 8);
-      const fileName = `${ts}-${rand}.jpg`;
+      const fileName = `${ts}-${rand}.${ext}`;
       const filePath = folder ? `${folder}/${fileName}` : fileName;
       const repo = "yuguo-yg-bit/yuguo-jingrong-JIT-images";
 
@@ -2028,6 +2132,10 @@ export default async function (req) {
       if (!email || !username || !password) return jsonResponse({ error: "缺少必填字段" }, 400);
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonResponse({ error: "邮箱格式不正确" }, 400);
       if (!/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(String(password))) return jsonResponse({ error: "密码至少 8 位，且必须同时包含字母和数字" }, 400);
+      // 用户名白名单：从源头切断“用户名带引号 → 后台表格属性注入 XSS”
+      if (!isValidUsername(username)) {
+        return jsonResponse({ error: "用户名只能包含中文、字母、数字、下划线、短横，长度 2-20" }, 400);
+      }
 
       // 人机验证（防止脚本批量注册 / 刷邮件）
       const { ip: regIp } = getClientInfo();

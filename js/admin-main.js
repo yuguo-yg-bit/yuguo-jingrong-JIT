@@ -89,11 +89,14 @@ var JITAdmin = (function() {
     }
   };
 
+  // textContent → innerHTML 只转义 <、>、&，【不转义引号】；
+  // 而本函数结果被拼进 data-user="..." 等 HTML 属性，用户名带一个双引号
+  // 就能闭合属性并注入新属性/事件。这里手工补引号转义。
   var _escapeHtml = function(str) {
     if (!str) return "";
     var div = document.createElement("div");
     div.textContent = str;
-    return div.innerHTML;
+    return div.innerHTML.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   };
 
   var _translatePaymentMethod = function(method) {

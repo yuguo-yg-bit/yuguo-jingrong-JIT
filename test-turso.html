@@ -197,7 +197,7 @@
 
       const schemaSql = [
         `CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, password_hash TEXT NOT NULL, full_name TEXT DEFAULT '', birthdate TEXT DEFAULT '', country TEXT DEFAULT '', province TEXT DEFAULT '', city TEXT DEFAULT '', referrer TEXT DEFAULT '', review_status TEXT DEFAULT 'pending', points INTEGER DEFAULT 0, frozen INTEGER DEFAULT 0, sign_ins TEXT DEFAULT '[]', last_sign_in TEXT DEFAULT '', streak_days INTEGER DEFAULT 0, is_admin INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')))`,
-        `INSERT OR IGNORE INTO users (id, password_hash, full_name, review_status, points, is_admin) VALUES ('admin', '86e1df29a846be596ceb035cec48c0d536c5549aa367722febb77ddb4b9e2556', '管理员', 'approved', 0, 1)`,
+        `INSERT OR IGNORE INTO users (id, password_hash, full_name, review_status, points, is_admin) VALUES ('admin', '<ADMIN_PASSWORD_HASH_请从环境变量注入>', '管理员', 'approved', 0, 1)`,
         `INSERT OR IGNORE INTO users (id, password_hash, full_name, review_status, points) VALUES ('谭绣云', 'a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3', '谭绣云', 'approved', 0)`,
         `CREATE TABLE IF NOT EXISTS vouchers (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, shop_name TEXT NOT NULL, amount REAL NOT NULL DEFAULT 0, status TEXT DEFAULT '待审核', created_at TEXT DEFAULT (datetime('now')))`,
         `CREATE TABLE IF NOT EXISTS points_records (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, delta INTEGER NOT NULL, reason TEXT DEFAULT '', created_at TEXT DEFAULT (datetime('now')))`,
