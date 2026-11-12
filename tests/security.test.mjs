@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   corsHeaders, timingSafeEqual, isValidUsername, pbkdf2Hash, pbkdf2Verify,
   isFreshTimestamp, maskEmail, maskIp, hmacSign, hmacVerify, buildSignPayload,
+  isRateLimited,
 } from "../security/core.js";
 
 let passed = 0;
@@ -108,6 +109,38 @@ ok("邮箱打码", () => {
 ok("IP 打码", () => {
   assert.equal(maskIp("203.0.113.42"), "203.0.*.*");
   assert.equal(maskIp("2001:db8::1"), "2001:db8::");
+});
+
+console.log("\n跨实例限流");
+await okAsync("peek 只读检查不递增计数（登录锁号 DoS 修复）", async () => {
+  const store = new Map();
+  const exec = async function (sql, params) {
+    const s = String(sql);
+    if (/^CREATE TABLE/i.test(s)) return {};
+    if (/^INSERT INTO rate_limits/i.test(s)) {
+      const k = params[0];
+      const start = Number(params[1]);
+      const rec = store.get(k);
+      if (rec && rec.windowStart >= start) rec.count++;
+      else store.set(k, { count: 1, windowStart: start });
+      return {};
+    }
+    if (/^SELECT count, window_start/i.test(s)) {
+      const rec = store.get(params[0]);
+      return { data: { results: [{ response: { result: { rows: rec ? [[rec.count, rec.windowStart]] : [] } } }] } };
+    }
+    if (/^SELECT count FROM/i.test(s)) {
+      const rec = store.get(params[0]);
+      return { data: { results: [{ response: { result: { rows: rec ? [[rec.count]] : [] } } }] } };
+    }
+    return {};
+  };
+  // 记一次失败
+  assert.equal(await isRateLimited(exec, "loginfail:a|bob", 8, 900), false);
+  const before = store.get("loginfail:a|bob").count;
+  // 只读检查不应改变计数
+  assert.equal(await isRateLimited(exec, "loginfail:a|bob", 8, 900, { peek: true }), false);
+  assert.equal(store.get("loginfail:a|bob").count, before);
 });
 
 console.log("\n共 " + passed + " 项断言通过\n");

@@ -12,6 +12,7 @@ import {
 } from "./security/core.js";
 
 let _negativePointsFixed = false;
+let _turnstileWarned = false;
 
 // ========== 基础限流（实例内存，防脚本高频刷接口/暴力破解） ==========
 const _IP_BUCKETS = new Map();   // ip -> { start, count }
@@ -61,7 +62,9 @@ function clearLoginFail(key) { _LOGIN_FAILS.delete(key); }
 export default async function (req) {
   // ========== HTTP 代理 ==========
 
-  const ALLOW_ORIGINS = ["https://www.yuguojinrong.cc.cd", "https://yuguo-yg-bit.github.io", "https://yuguoygbit.github.io"];
+  // 无 www 与带 www 都要收录：用户直接访问裸域名时 Origin 不带 www，
+  // 漏配会导致整站接口被 CORS 拦掉（表现为「页面能开、数据全空」）。
+  const ALLOW_ORIGINS = ["https://www.yuguojinrong.cc.cd", "https://yuguojinrong.cc.cd", "https://yuguo-yg-bit.github.io", "https://yuguoygbit.github.io"];
   const TURSO_API = process.env.TURSO_API_URL;
   const TURSO_TOKEN = process.env.TURSO_RW_TOKEN;
   const Github_TOKEN = process.env.GitHub_API_TOKEN;
@@ -103,14 +106,20 @@ export default async function (req) {
   // ========== Cloudflare Turnstile 服务端校验 ==========
   // 密钥只从环境变量读取，绝不写进前端或仓库
   const TURNSTILE_SECRET = process.env.TURNSTILE_SECRET;
+  const TURNSTILE_ENFORCE = String(process.env.TURNSTILE_ENFORCE || "") === "1";
   const TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
   async function verifyTurnstile(token, ip) {
-    // 安全默认：未配置密钥一律拒绝（fail-closed）。
-    // 原实现 fail-open，等于“忘了配环境变量 = 全站人机验证作废”。
-    // 确需过渡时显式设置 TURNSTILE_FAIL_OPEN=1，并立刻补配置。
+    // 没配 TURNSTILE_SECRET 视为「未启用」：放行并在审计里留痕。
+    // 之前无条件 fail-closed，导致新环境一部署就全站无法登录/注册（部署可用性问题）。
+    // 配好密钥即自动强制校验；如需在未配密钥时也强制拒绝，设 TURNSTILE_ENFORCE=1。
     if (!TURNSTILE_SECRET) {
-      if (String(process.env.TURNSTILE_FAIL_OPEN || "") === "1") return { ok: true, skipped: true };
-      return { ok: false, error: "服务端未完成人机验证配置，已拒绝请求" };
+      if (TURNSTILE_ENFORCE) return { ok: false, error: "服务端未完成人机验证配置，已拒绝请求" };
+      if (!_turnstileWarned) {
+        _turnstileWarned = true;
+        // 注意：logAudit 定义在下方 try 块内，此处不可见，用运行日志留痕即可
+        try { console.warn("[turnstile] TURNSTILE_SECRET 未配置，已跳过人机验证"); } catch (e) {}
+      }
+      return { ok: true, skipped: true };
     }
     if (!token) return { ok: false, error: "请先完成人机验证" };
     try {
@@ -124,7 +133,8 @@ export default async function (req) {
       const codes = Array.isArray(d["error-codes"]) ? d["error-codes"].join(",") : "";
       return { ok: false, error: "人机验证未通过" + (codes ? "（" + codes + "）" : ""), codes: codes };
     } catch (e) {
-      return { ok: false, error: "人机验证服务暂不可用，请稍后重试" };
+      // 与「校验不通过」区分：网络/服务故障返回 503，避免误报为密码错误或人机失败
+      return { ok: false, error: "人机验证服务暂不可用，请稍后重试", unavailable: true };
     }
   }
 
@@ -187,6 +197,19 @@ export default async function (req) {
       // 入参可能是明文，也可能是前端已算好的 sha256$ 摘要；
       // 两种都作为 secret 再套一层慢哈希，从而在不改前端的前提下完成升级。
       return await pbkdf2Hash(String(password || ""), { pepper: PASSWORD_PEPPER, iterations: 120000 });
+    }
+
+    // 兼容「pepper 后补配置」：先用当前 pepper 校验，失败再试空 pepper。
+    // 命中空 pepper 说明该哈希是在未配置 pepper 时生成的，返回 needsRehash，
+    // 由调用方用当前 pepper 重写，逐步完成轮换（否则补配 pepper 会让老用户全部登不上）。
+    async function verifyPasswordHash(secret, stored, opts) {
+      const o = opts || {};
+      const iterations = Number(o.iterations || 120000);
+      const r = await pbkdf2Verify(String(secret), stored, { pepper: PASSWORD_PEPPER, iterations: iterations });
+      if (r.ok || !PASSWORD_PEPPER) return r;
+      const legacy = await pbkdf2Verify(String(secret), stored, { pepper: "", iterations: iterations });
+      if (legacy.ok) return { ok: true, needsRehash: true };
+      return r;
     }
 
     // ========== SQL 安全校验层（防注入/防删库） ==========
@@ -322,6 +345,11 @@ export default async function (req) {
         logAudit("RATE_LIMITED", String(key).slice(0, 60), "", "", "触发限流: " + key, "guard", "", "blocked");
       }
       return limited;
+    }
+
+    // 只读检查，不递增计数（用于登录失败计数：先看历史、失败才累加）
+    async function guardRatePeek(key, limit, windowSec) {
+      return await isRateLimited(execTurso, key, limit, windowSec, { peek: true });
     }
 
     function logAudit(action, operator, targetType, targetId, detail, endpoint, bizNo, status) {
@@ -906,9 +934,11 @@ export default async function (req) {
         logAudit("LOGIN_RATE_LIMIT", username, "sessions", "", "登录失败次数过多被临时锁定", "/login", "", "blocked");
         return jsonResponse({ error: "登录失败次数过多，请 15 分钟后再试" }, 429);
       }
-      // 跨实例兜底：进程内计数在冷启动后归零，这里再挡一层（账号维度 10 次/15 分钟）
-      if (await guardRate("login:u:" + String(username).toLowerCase(), 10, 900)) {
-        logAudit("LOGIN_LOCKED_DB", username, "sessions", "", "账号维度跨实例限流", "/login", "", "blocked");
+      // 跨实例兜底（进程内计数冷启动会归零）改为「只读检查 + 只统计失败」：
+      // 旧实现在验密【之前】就自增，任何人知道用户名即可把账号锁 15 分钟（锁号 DoS）。
+      // 现在计数只在登录失败时累加，成功即清零；未登录成功前无法抬高计数。
+      if (await guardRatePeek("loginfail:" + loginKey, 8, 900)) {
+        logAudit("LOGIN_LOCKED_DB", username, "sessions", "", "账号维度跨实例失败限流", "/login", "", "blocked");
         return jsonResponse({ error: "该账号尝试过于频繁，请稍后再试" }, 429);
       }
 
@@ -916,7 +946,7 @@ export default async function (req) {
       const tsr = await verifyTurnstile(body.turnstileToken, ip);
       if (!tsr.ok) {
         logAudit("LOGIN_TURNSTILE_FAILED", username, "sessions", "", tsr.error || "人机验证失败", "/login", "", "fail");
-        return jsonResponse({ error: tsr.error, turnstileFailed: true }, 403);
+        return jsonResponse({ error: tsr.error, turnstileFailed: !tsr.unavailable }, tsr.unavailable ? 503 : 403);
       }
 
       let valid = false;
@@ -929,7 +959,7 @@ export default async function (req) {
         if (rows.length > 0) {
           const stored = String(rows[0][1]?.value ?? rows[0][1] ?? "");
           if (stored.startsWith("pbkdf2$")) {
-            const vr = await pbkdf2Verify(String(passwordHash), stored, { pepper: PASSWORD_PEPPER });
+            const vr = await verifyPasswordHash(String(passwordHash), stored, {});
             valid = vr.ok;
           } else {
             // 历史值：常数时间比较，避免计时侧信道
@@ -953,7 +983,7 @@ export default async function (req) {
           const stored = String(rows[0][1]?.value ?? rows[0][1] ?? "");
           const realName = String(rows[0][0]?.value || username);
           if (stored.startsWith("pbkdf2$")) {
-            const vr = await pbkdf2Verify(String(passwordHash), stored, { pepper: PASSWORD_PEPPER, iterations: 120000 });
+            const vr = await verifyPasswordHash(String(passwordHash), stored, { iterations: 120000 });
             valid = vr.ok;
             if (vr.ok && vr.needsRehash) {
               try {
@@ -979,10 +1009,13 @@ export default async function (req) {
 
       if (!valid) {
         noteLoginFail(loginKey);
+        // 跨实例失败计数：只统计失败，成功不计数，避免「知道用户名就能锁号」
+        try { await guardRate("loginfail:" + loginKey, 8, 900); } catch (e) {}
         logAudit("LOGIN_FAILED", username, "sessions", "", "登录失败（密码错误或用户不存在）", "/login", "", "fail");
         return jsonResponse({ error: "用户名或密码错误" }, 401);
       }
       clearLoginFail(loginKey);
+      try { await execTurso("DELETE FROM rate_limits WHERE key=?", ["loginfail:" + loginKey]); } catch (e) {}
 
       // 生成会话（7 天有效）
       const token = "sess_" + (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, "") : Date.now().toString(36) + Math.random().toString(36).slice(2, 18));
@@ -2140,7 +2173,7 @@ export default async function (req) {
       // 人机验证（防止脚本批量注册 / 刷邮件）
       const { ip: regIp } = getClientInfo();
       const tsr = await verifyTurnstile(turnstileToken, regIp);
-      if (!tsr.ok) return jsonResponse({ error: tsr.error, turnstileFailed: true }, 403);
+      if (!tsr.ok) return jsonResponse({ error: tsr.error, turnstileFailed: !tsr.unavailable }, tsr.unavailable ? 503 : 403);
 
       const emailLower = email.toLowerCase();
       const now = new Date().toISOString();

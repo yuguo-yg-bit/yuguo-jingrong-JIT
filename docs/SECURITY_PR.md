@@ -46,10 +46,12 @@
 |---|---|
 | CORS 严格化 | `getCorsHeaders` 直接走 `corsHeaders(origin, ALLOW_ORIGINS)`，不再回退 |
 | 响应头合并 | `jsonResponse` 改为展开 `SECURITY_HEADERS`，补 HSTS / COOP / CORP |
-| Turnstile fail-closed | 未配密钥即拒绝；确需过渡必须显式 `TURNSTILE_FAIL_OPEN=1` |
+| Turnstile 可配置 | 配了 `TURNSTILE_SECRET` 即强制校验；未配视为「未启用」放行并留审计，避免新环境部署后全站登录不可用。要强制拒绝可设 `TURNSTILE_ENFORCE=1`；验证服务网络故障返回 503（与校验失败 403 区分） |
 | 口令升级 PBKDF2 | `hashPassword` 改为 PBKDF2；**登录时透明升级**旧 `sha256$` 值，用户无感 |
 | 口令参数统一慢哈希 | `/db` 新增 `kdfParams` 钩子，`reg.create` / `users.update_password` / `reg.update_password` 写库前自动套 PBKDF2（防止“改密/重置”路径绕开新哈希） |
-| 登录跨实例锁定 | 在原有进程内失败计数之上，加 **账号维度 10 次 / 15 分钟** 的数据库计数 |
+| 登录跨实例锁定 | 失败计数改为 **IP+账号维度、只统计失败**；先只读检查（`peek`）再验证，成功即清零。旧实现验密前自增，知道用户名就能锁号 15 分钟（锁号 DoS） |
+| CORS 白名单 | 补裸域名 `https://yuguojinrong.cc.cd`（用户不带 www 访问时 Origin 不同，漏配会整站接口被拦）；`Allow-Headers` 补 `X-Auth-Token`，方法补 `PUT/DELETE` |
+| pepper 兼容 | 先用当前 `PASSWORD_PEPPER` 校验，失败再试空 pepper；命中即按当前 pepper 重哈希，避免后补配置导致老用户全部登不上 |
 | 管理员比对常数时间 | `===` 改为 `timingSafeEqual`，并支持 PBKDF2 存量 |
 | 对象级授权 | `vouchers.get_by_id` 加 `voucher: 0`；`levels.get` 加 `owner: 0` |
 | 用户名白名单 | `/db` 新增 `usernameParam` 钩子，`reg.create` 与邮箱注册入口统一校验 |
@@ -65,10 +67,11 @@
 ### 4. `migrations/001_security_hardening_phase2.sql`
 
 - `ledger.biz_no` **唯一索引**（当前幂等仅靠应用层 `WHERE NOT EXISTS`，并发会双写）；
+- 去重后按账本回算 `users.points`（否则删了重复流水、余额仍保留重复加分）；
 - `ledger(user_id, created_at)`、`audit_logs(action, created_at)` 检索索引；
 - `rate_limits` 表（跨实例限流依赖）。
 
-> ⚠️ 含 `DELETE` 去重。执行前先跑文件顶部的体检 SQL 并备份。
+> ⚠️ 含 `DELETE` 去重与余额回算。执行前先跑文件顶部的体检 SQL 并备份。
 
 ---
 
@@ -76,7 +79,7 @@
 
 1. 备份 Turso。
 2. 跑体检 SQL → 有重复先人工确认 → 执行迁移。
-3. Val.town 配置 `PASSWORD_PEPPER`（32 字节随机串；设了就别随意改）与 `TURNSTILE_SECRET`（现在是必需项）。
+3. Val.town 配置 `PASSWORD_PEPPER`（32 字节随机串；设了就别随意改）与 `TURNSTILE_SECRET`（可选：配了才强制人机验证；不配则自动跳过并在审计留痕）。
 4. **先传 `security/core.js`，再传 `val-town-proxy.js`**（相对 import 依赖它已存在）。
 5. 传 `js/admin-main.js`。
 6. 回归验证（见下）。

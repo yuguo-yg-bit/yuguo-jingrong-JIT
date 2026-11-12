@@ -32,8 +32,8 @@ export function corsHeaders(origin, allowList) {
   if (!o || allow.indexOf(o) === -1) return {};
   return {
     "Access-Control-Allow-Origin": o,
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, X-Session-Token, X-Request-Signature, X-Request-Timestamp",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, X-Session-Token, X-Auth-Token, X-Request-Signature, X-Request-Timestamp",
     "Access-Control-Max-Age": "600",
     "Vary": "Origin",
   };
@@ -154,17 +154,32 @@ export function isValidUsername(name) {
  * 注意：这是“尽力而为”的限流——单条语句原子递增，能挡住脚本刷，
  * 但无法替代 WAF 的分布式防护。
  */
-export async function isRateLimited(execTurso, key, limit, windowSec) {
+export async function isRateLimited(execTurso, key, limit, windowSec, options) {
   const now = Date.now();
   const windowMs = Number(windowSec || 60) * 1000;
   const limitN = Number(limit || 10);
   const start = now - (now % windowMs);
   const k = String(key).slice(0, 160);
+  const peek = !!(options && options.peek);
   try {
     await execTurso(
       "CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, window_start INTEGER NOT NULL DEFAULT 0, count INTEGER NOT NULL DEFAULT 0, updated_at TEXT)",
       []
     );
+    if (peek) {
+      // 只读检查：不递增计数。用于「先看历史失败次数、登录成功后再清零」的场景，
+      // 避免攻击者仅凭用户名就把账号锁死（计数只由失败累加）。
+      const pq = await execTurso("SELECT count, window_start FROM rate_limits WHERE key=?", [k]);
+      const prows = pq.data?.results?.[0]?.response?.result?.rows
+        || pq.data?.results?.[0]?.response?.results?.rows
+        || pq.data?.results?.[0]?.rows
+        || [];
+      if (!prows.length) return false;
+      const pc = Number(prows[0][0]?.value ?? prows[0][0] ?? 0);
+      const pws = Number(prows[0][1]?.value ?? prows[0][1] ?? 0);
+      if (pws < start) return false;
+      return pc >= limitN;
+    }
     // 单语句原子自增：窗口过期则重置为 1，否则 +1
     await execTurso(
       "INSERT INTO rate_limits (key, window_start, count, updated_at) VALUES (?,?,1,?) " +

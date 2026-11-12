@@ -28,11 +28,19 @@ WHERE rowid NOT IN (
 )
 AND biz_no IS NOT NULL AND biz_no <> '';
 
--- 1.2 建唯一索引（部分索引，排除历史空单号）
+-- 1.2 去重后回算余额
+-- ledger 是权威账本，users.points 是派生缓存。删掉重复流水后如果不回算，
+-- 会出现“账本已去重、余额仍保留重复加分”的资损差异，且后续对账永远不平。
+UPDATE users
+SET points = MAX(0, (
+  SELECT COALESCE(SUM(amount), 0) FROM ledger WHERE ledger.user_id = users.id
+));
+
+-- 1.3 建唯一索引（部分索引，排除历史空单号）
 CREATE UNIQUE INDEX IF NOT EXISTS ux_ledger_biz_no
   ON ledger(biz_no) WHERE biz_no IS NOT NULL AND biz_no <> '';
 
--- 1.3 账务查询索引（余额与日限统计都按 user_id + 时间扫描）
+-- 1.4 账务查询索引（余额与日限统计都按 user_id + 时间扫描）
 CREATE INDEX IF NOT EXISTS ix_ledger_user_time ON ledger(user_id, created_at);
 
 -- ------------------------------------------------------------------

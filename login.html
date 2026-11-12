@@ -700,6 +700,11 @@ function _turnstileToken(containerId) {
   if (!window.turnstile || _tsWidgets[containerId] === undefined) return "";
   try { return window.turnstile.getResponse(_tsWidgets[containerId]) || ""; } catch (e) { return ""; }
 }
+// 组件根本没加载成功时不拦提交：是否强制人机验证以服务端为准，
+// 否则 site key / 域名没配好会表现为“整站登录按钮点了没反应”。
+function _tsUsable(containerId) {
+  return !!window.turnstile && _tsWidgets[containerId] !== undefined;
+}
 function _resetTurnstile(containerId) {
   if (!window.turnstile || _tsWidgets[containerId] === undefined) return;
   try { window.turnstile.reset(_tsWidgets[containerId]); } catch (e) {}
@@ -855,7 +860,7 @@ if (window.turnstile) {
 
     errorEl.style.display = "none";
     var tsToken = _turnstileToken("loginTurnstile");
-    if (!tsToken && TURNSTILE_REQUIRED) {
+    if (!tsToken && TURNSTILE_REQUIRED && _tsUsable("loginTurnstile")) {
       var tsErr = _turnstileError("loginTurnstile");
       errorEl.style.display = "block";
       errorEl.textContent = !window.turnstile
@@ -986,7 +991,7 @@ if (window.turnstile) {
     var btn = document.getElementById("btnResetPwdSend");
     btn.disabled = true; btn.textContent = "发送中...";
     var tsToken = _turnstileToken("resetPwdTurnstile");
-    if (!tsToken && TURNSTILE_REQUIRED) {
+    if (!tsToken && TURNSTILE_REQUIRED && _tsUsable("resetPwdTurnstile")) {
       errEl.style.display = "block";
       errEl.textContent = !window.turnstile
         ? "安全组件加载失败，请刷新页面后重试"
@@ -1511,7 +1516,7 @@ if (window.turnstile) {
     if (password !== password2) { errorEl.style.display = "block"; errorEl.textContent = "两次密码输入不一致"; return; }
 
     var tsToken = _turnstileToken("regTurnstile");
-    if (!tsToken && TURNSTILE_REQUIRED) {
+    if (!tsToken && TURNSTILE_REQUIRED && _tsUsable("regTurnstile")) {
       var tsErr = _turnstileError("regTurnstile");
       errorEl.style.display = "block";
       errorEl.textContent = !window.turnstile
@@ -1653,8 +1658,8 @@ if (window.turnstile) {
     }
     var btn = document.getElementById("btnEmailResend");
     var tsToken = _turnstileToken("regTurnstile");
-    if (!tsToken && TURNSTILE_REQUIRED) {
-      _showToast(window.turnstile ? "请先在上方完成人机验证" : "人机验证组件加载失败，请刷新页面后重试", "error");
+    if (!tsToken && TURNSTILE_REQUIRED && _tsUsable("regTurnstile")) {
+      _showToast("请先在上方完成人机验证", "error");
       return;
     }
     _emailRegResendCount++;
